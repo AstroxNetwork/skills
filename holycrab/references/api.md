@@ -1,8 +1,23 @@
 # HolyCrab Generation API 文档
 
-> 来源：`light-mode` 分支当前的 `client/user-front/public/api-docs.html`  
-> Base URL：`https://abgzfc.holycrab.ai`  
-> 更新日期：2026-07-27
+> 来源：HolyCrab Public API Contract
+>
+> Base URL：`https://abgzfc.holycrab.ai`
+>
+> 更新日期：2026-08-14
+>
+> 机器可读快照：[capabilities.json](capabilities.json)
+
+## 目录
+
+- [1. 通用约定](#1-通用约定)
+- [2. 账户信息](#2-账户信息)
+- [3. 任务查询](#3-任务查询)
+- [4. 素材管理](#4-素材管理)
+- [5. 视频生成](#5-视频生成)
+- [6. 图片生成](#6-图片生成)
+- [7. 语音生成](#7-语音生成)
+- [8. 推荐调用流程](#8-推荐调用流程)
 
 ## 1. 通用约定
 
@@ -36,7 +51,7 @@
 
 所有接口调用均使用：
 
-`X-User-Token: YOUR_32_CHAR_USER_TOKEN`
+API Key 鉴权由 HolyCrab CLI 在本机添加；不要把 Key 写入文档、脚本参数或聊天消息。
 
 缺少、无效或已停用的 API Key 会返回 `401`。
 
@@ -65,7 +80,7 @@
 
 ```bash
 curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
-  -H 'X-User-Token: YOUR_32_CHAR_USER_TOKEN'
+  -H 'X-User-Token: <API_KEY>'
 ```
 
 ---
@@ -215,7 +230,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 
 视频提交后异步创建任务；使用任务详情接口轮询进度与结果。
 
-### 5.1 提交视频生成任务
+### 5.1 提交 Seedance 视频生成任务
 
 `POST /api/tasks/generation`
 
@@ -224,9 +239,9 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `prompt` | string | 是 | 提示词 |
-| `model` | string | 是 | `seedance-2-0`、`seedance-2-0-fast`、`seedance-2-0-mini` |
-| `ratio` | string | 否 | 例如 `16:9`；默认沿用来源比例 |
-| `duration` | integer | 是 | `4`–`15` 秒 |
+| `model` | string | 是 | `seedance-2-0`、`seedance-2-0-fast`、`seedance-2-0-mini`、`dreamina-seedance-2-5-260628` |
+| `ratio` | string | 否 | `source`、`adaptive` 或具体画幅；受模型和任务模式限制 |
+| `duration` | integer | 是 | 普通生成 `4`–`15` 秒；Seedance 2.5 可到 `30` 秒；智能编辑固定为 `-1` |
 | `resolution` | string | 是 | `480p`、`720p`、`1080p`、`4k`；受模型限制 |
 | `generateAudio` | boolean | 否 | 是否生成伴随音频；默认 `false` |
 | `imageAssetIds` | string[] | 否 | 当前账户拥有的图片素材 `uniqId` |
@@ -234,46 +249,111 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 | `audioAssetIds` | string[] | 否 | 当前账户拥有的音频素材 `uniqId` |
 | `firstFrameAssetId` | string | 否 | 首帧图片素材 `uniqId` |
 | `lastFrameAssetId` | string | 否 | 尾帧图片素材 `uniqId` |
+| `videoTaskType` | string | 否 | `reference`、`frames`、`edit`、`extend`；省略时根据首帧推断 |
+| `sourceVideoAssetId` | string | 条件必填 | `edit` 或 `extend` 的主视频素材 `uniqId` |
 
 返回：`uniqId: string`、`step: integer`。
 
-规则：
+通用规则：
 
-1. `480p`、`720p` 支持三个 Seedance 模型；`1080p`、`4k` 只支持 `seedance-2-0`。
-2. `duration` 必须是 `4` 到 `15` 的整数。
-3. 最多 9 张图片、3 段视频、3 段音频参考。
-4. 每段参考视频：2–15 秒、最大 200 MB、仅 `mp4`/`mov`、宽高比 0.4–2.5；多段参考视频总时长不超过 15 秒。
-5. 每段参考音频：2–15 秒、最大 15 MB、仅 `wav`/`mp3`；多段总时长不超过 15 秒。
-6. 有尾帧必须同时有首帧；首尾帧模式不能和图片、视频、音频参考列表同时使用。
-7. 音频不能是唯一参考，至少还要有一张图片或一段视频。
+1. `seedance-2-0` 支持 `480p`、`720p`、`1080p`、`4k`；Fast、Mini 和 Seedance 2.5 只支持 `480p`、`720p`。
+2. 有尾帧必须同时有首帧；首尾帧不能和图片、视频、音频参考列表同时使用。
+3. `frames` 必须提供首帧；`edit`、`extend` 必须且只能配合 `sourceVideoAssetId`，并且不能使用首尾帧。
+4. 素材 ID 必须属于当前 API Key 对应账户，并且素材类型与字段一致。
+
+Seedance 2.0 / Fast / Mini：
+
+- `duration` 为 `4`–`15` 秒。
+- 最多 9 张图片、3 段视频、3 段音频；音频不能是唯一参考类型。
+- 参考视频和参考音频的合计时长分别不能超过 15 秒。
+
+Seedance 2.5（`dreamina-seedance-2-5-260628`）：
+
+- `reference`、`frames`、`extend` 的 `duration` 为 `4`–`30` 秒；`edit` 必须传 `-1`。
+- 支持最多 30 张图片、10 段视频、10 段音频，三类合计不超过 50 个；允许仅音频参考。
+- 参考视频和参考音频的合计时长分别不能超过 30 秒。
+- `frames`、`edit`、`extend` 强制把 `ratio` 规范化为 `adaptive`。
+- `edit` 主视频必须为 4–30 秒；`extend` 主视频必须为 2–30 秒。
 
 ```bash
 curl -sS 'https://abgzfc.holycrab.ai/api/tasks/generation' \
-  -H 'X-User-Token: YOUR_32_CHAR_USER_TOKEN' \
+  -H 'X-User-Token: <API_KEY>' \
   -H 'Content-Type: application/json' \
   -d '{
     "prompt": "A cinematic sunset over the ocean",
-    "model": "seedance-2-0",
-    "ratio": "16:9",
-    "duration": 5,
+    "model": "dreamina-seedance-2-5-260628",
+    "ratio": "adaptive",
+    "duration": 10,
     "resolution": "720p",
-    "generateAudio": false
+    "generateAudio": true,
+    "videoTaskType": "reference"
   }'
 ```
 
-### 5.2 预估视频冻结积分
+### 5.2 预估 Seedance 视频冻结积分
 
 `POST /api/tasks/generation/freeze-credit`
 
 鉴权：API Key
 
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `model` | string | 是 | 视频模型 ID |
-| `duration` | integer | 是 | 请求时长 |
-| `resolution` | string | 是 | 请求清晰度 |
+该接口使用与 5.1 相同的请求结构和校验器。`model`、`duration`、`resolution` 必填；使用参考素材、首尾帧、智能编辑或视频续写时，必须把正式提交会使用的下列字段原样传入：
+
+- `imageAssetIds`、`videoAssetIds`、`audioAssetIds`
+- `firstFrameAssetId`、`lastFrameAssetId`
+- `videoTaskType`、`sourceVideoAssetId`
+
+参考视频会影响冻结积分；不要只传模型、时长和清晰度来估算一个实际包含素材的任务。`prompt`、`ratio`、`generateAudio` 可随正式请求传入，但当前冻结金额不直接使用它们。
 
 返回：`frozenCredit: integer`。该接口只预估，不创建任务。
+
+### 5.3 提交 MiniMax H3 视频生成任务
+
+`POST /api/tasks/minimax-generation`
+
+鉴权：API Key
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `model` | string | 是 | 仅支持 `MiniMax-H3` |
+| `prompt` | string | 是 | 非空提示词 |
+| `resolution` | string | 是 | `768P` 或 `2K` |
+| `duration` | integer | 是 | `4`–`15` 秒 |
+| `ratio` | string | 条件必填 | `adaptive`、`21:9`、`16:9`、`4:3`、`1:1`、`3:4`、`9:16` |
+| `imageAssetIds` | string[] | 否 | 最多 9 张账户图片素材 |
+| `videoAssetIds` | string[] | 否 | 最多 3 段账户视频素材 |
+| `audioAssetIds` | string[] | 否 | 最多 3 段账户音频素材 |
+| `firstFrameAssetId` | string | 否 | 首帧图片素材；可单独使用 |
+| `lastFrameAssetId` | string | 否 | 尾帧图片素材；H3 允许没有首帧 |
+
+规则：
+
+1. 纯文字生成必须选择具体画幅，不能使用 `adaptive`。
+2. 有参考素材但没有首尾帧时，省略 `ratio` 会规范化为 `adaptive`。
+3. 提供任一首尾帧时强制使用 `adaptive`，且不能再提供图片、视频或音频参考列表。
+4. 音频不能作为唯一参考类型；必须同时提供至少一张图片或一段视频。
+5. 每段参考视频和音频为 2–15 秒；两类素材的合计时长分别不能超过 15 秒。
+6. H3 不支持 `generateAudio`，请求中不要发送该字段。
+
+```bash
+curl -sS 'https://abgzfc.holycrab.ai/api/tasks/minimax-generation' \
+  -H 'X-User-Token: <API_KEY>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "MiniMax-H3",
+    "prompt": "A cinematic sunrise over a quiet mountain lake",
+    "resolution": "768P",
+    "duration": 5,
+    "ratio": "16:9"
+  }'
+```
+
+### 5.4 预估 MiniMax H3 冻结积分
+
+`POST /api/tasks/minimax-generation/freeze-credit`
+
+鉴权：API Key
+
+请求体必须与 5.3 的正式提交完全一致，包括 `prompt`、画幅和全部素材字段；服务端运行同一套请求与素材校验。返回：`frozenCredit: integer`。该接口只预估，不创建任务。
 
 ---
 
@@ -312,7 +392,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/generation' \
 
 ```bash
 curl -sS 'https://abgzfc.holycrab.ai/api/tasks/image-generation' \
-  -H 'X-User-Token: YOUR_32_CHAR_USER_TOKEN' \
+  -H 'X-User-Token: <API_KEY>' \
   -H 'Content-Type: application/json' \
   -d '{
     "prompt": "A crab astronaut on the moon",
@@ -348,6 +428,8 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/image-generation' \
 
 鉴权：API Key
 
+固定模型：`seed-audio-1.0`（服务端自动设置，请求体不传 `model`）。
+
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `textPrompt` | string | 是 | 最多 3000 字符 |
@@ -373,7 +455,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/image-generation' \
 
 ```bash
 curl -sS 'https://abgzfc.holycrab.ai/api/tasks/audio-generation' \
-  -H 'X-User-Token: YOUR_32_CHAR_USER_TOKEN' \
+  -H 'X-User-Token: <API_KEY>' \
   -H 'Content-Type: application/json' \
   -d '{
     "textPrompt": "A calm narrator describes a quiet morning.",
@@ -415,9 +497,11 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/audio-generation' \
 
 ## 9. 变更说明
 
-本版本包含 `light-mode` 分支已更新的：
+本公开版本包含：
 
-- 视频首尾帧、全能参考对应的服务端请求字段与互斥规则。
+- 新增 Seedance 2.5 模型、30 秒生成、智能编辑、视频续写和 50 个参考素材限制。
+- 新增 MiniMax H3 独立生成与冻结积分接口。
+- 修正 Seedance `freeze-credit` 必须携带实际素材和任务模式字段的说明。
 - Seedream 5.0 Pro / Lite / 4.5 的图片尺寸、参考图、格式约束。
 - 语音生成的参考对象、配置字段与兼容别名。
 - 素材预签名上传、登记和按 URL 创建的完整流程。

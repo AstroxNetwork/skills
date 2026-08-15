@@ -1,80 +1,73 @@
-# Codex Skills
+# HolyCrab Agent Tools
 
-本目录统一存放 Astrox 项目使用的 Codex Skills。各 Skill 独立维护，可供多个项目复用。
+这个仓库提供一套运行在用户电脑上的 HolyCrab 工具：
 
-## Skill 清单
+- `holycrab` CLI：配置 API Key、查模型、估积分、上传本地素材、创建和查询任务。
+- 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
+- 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-| Skill | 用途 | 鉴权 | 文档 |
-| --- | --- | --- | --- |
-| `holycrab` | 调用 HolyCrab Generation API，支持账户、任务、素材、视频、图片和语音生成 | 环境变量 `HOLYCRAB_API_KEY` | [SKILL.md](holycrab/SKILL.md) |
+它们共用同一份公开能力清单和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。
 
-## Holycrab
+## 一键安装
 
-`holycrab` Skill 提供以下能力：
-
-- 查询当前账户、积分、任务列表和任务详情。
-- 管理素材，包括列表、详情、URL 导入、删除以及本地文件上传登记。
-- 提交 Seedance 视频、Seedream 图片和语音生成任务。
-- 调用对应的 `freeze-credit` 接口预估冻结积分。
-- 根据任务 `uniqId` 轮询异步任务，直到完成、失败或超时。
-- 使用通用请求命令调用 API Key 鉴权的 HolyCrab 接口。
-
-所有请求只使用环境变量 `HOLYCRAB_API_KEY`：
+macOS / Linux：
 
 ```bash
-export HOLYCRAB_API_KEY='YOUR_32_CHAR_USER_TOKEN'
+curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/main/install.sh | sh
 ```
 
-可选使用 `HOLYCRAB_BASE_URL` 覆盖默认服务地址：
+安装器会把命令放到 `~/.local/bin/holycrab`，安装 Codex 与 Claude Code 的 Skill，并在检测到对应客户端时登记本地 MCP。它不会写入 API Key。
+
+如果终端还找不到命令，把下面一行加入 shell 配置：
 
 ```bash
-export HOLYCRAB_BASE_URL='https://abgzfc.holycrab.ai'
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-常用命令：
+## 配置 Key 和自检
+
+先在 [HolyCrab API Key 页面](https://generate.holycrab.ai/user-tokens) 创建或复制 Key，然后运行：
 
 ```bash
-# 查询账户
-python3 holycrab/scripts/holycrab_api.py request GET /api/user/me
+holycrab setup
+holycrab doctor --json
+holycrab auth status
+```
 
-# 查询任务
-python3 holycrab/scripts/holycrab_api.py \
-  request GET /api/tasks --query page=1 --query pageSize=20
+`holycrab setup` 会隐藏输入、验证并保存 Key；`holycrab auth set-key` 提供相同的显式配置入口。API Key 保存在本机 `~/.config/holycrab/config.json`，文件权限为 `0600`。临时环境变量 `HOLYCRAB_API_KEY` 会覆盖本地配置；如果看到覆盖警告，请先运行 `unset HOLYCRAB_API_KEY`，再检查 Key 状态。
 
-# 提交图片生成任务；写请求会立即执行
-python3 holycrab/scripts/holycrab_api.py \
-  request POST /api/tasks/image-generation \
+## 常用命令
+
+```bash
+holycrab models list
+holycrab models show dreamina-seedance-2-5-260628
+holycrab credits balance
+
+holycrab generate estimate --kind image \
   --json '{"prompt":"A crab astronaut","model":"seedream-5-0-lite-260128","size":"2k"}'
 
-# 轮询任务
-python3 holycrab/scripts/holycrab_api.py poll-task TASK_UNIQ_ID
+holycrab generate create --kind image \
+  --json '{"prompt":"A crab astronaut","model":"seedream-5-0-lite-260128","size":"2k"}'
 
-# 上传并登记本地素材
-python3 holycrab/scripts/holycrab_api.py \
-  upload-asset /absolute/path/media.mp4 \
-  --content-type video/mp4 \
-  --duration-seconds 8
+holycrab tasks list
+holycrab tasks get TASK_ID
+holycrab tasks wait TASK_ID --timeout 600
+holycrab assets upload /absolute/path/reference.mp4 --duration-seconds 8
 ```
 
-完整接口约束参见 [HolyCrab API 参考](holycrab/references/api.md)。写操作不会二次确认，调用前必须检查接口、参数和费用。
+没有 `--yes` 时，创建命令会先显示积分估算并询问确认。脚本或 Agent 只有在用户已经明确确认后才能加 `--yes`。
 
-## 新增 Skill 约定
+同一提示词可以主动生成多次。每次明确确认都会创建新的本地 attempt ID 和新的线上任务；同一个 attempt ID 不能重复提交，网络结果不明确时也不会自动重试付费请求。
 
-后续新增 Skill 时，统一采用小写短横线命名，并使用以下结构：
+完整体验步骤见 [HolyCrab CLI 使用指南](HolyCrab%20CLI%20使用指南.md)。公开模型限制见 [capabilities.json](holycrab/references/capabilities.json)。
 
-```text
-skills/<skill-name>/
-├── SKILL.md
-├── agents/
-│   └── openai.yaml
-├── scripts/       # 可选：可重复执行的工具
-├── references/    # 可选：API、协议或领域文档
-└── assets/        # 可选：输出所需模板和静态资源
+## 本地开发验证
+
+```bash
+python3 -m unittest discover -s holycrab/tests -v
+python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py
+python3 holycrab/scripts/validate_capabilities.py
+sh -n install.sh bin/holycrab
 ```
 
-新增后需要：
-
-1. 在上方“Skill 清单”中登记名称、用途、鉴权和文档入口。
-2. 在本 README 增加对应的简要说明、环境变量和最常用示例。
-3. 凭据只通过环境变量读取，不写入代码、命令示例或仓库。
-4. 使用 Skill 校验工具验证目录结构和 `SKILL.md` 元数据。
+本仓库不会自动提交真实付费生成任务。安全问题请按 [SECURITY.md](SECURITY.md) 联系我们。

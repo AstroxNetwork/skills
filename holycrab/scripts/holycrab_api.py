@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
+
+
 def credential() -> tuple[str, str]:
     value = os.environ.get("HOLYCRAB_API_KEY")
     if not value:
@@ -24,7 +26,98 @@ def credential() -> tuple[str, str]:
 
 
 def base_url() -> str:
-    return os.environ.get("HOLYCRAB_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
+    value = os.environ.get("HOLYCRAB_BASE_URL", DEFAULT_BASE_URL).strip()
+    parsed = urllib.parse.urlsplit(value)
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise SystemExit(f"HOLYCRAB_BASE_URL must be a credential-free HTTPS origin: {error}") from error
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise SystemExit("HOLYCRAB_BASE_URL must be a credential-free HTTPS origin")
+    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+    return f"https://{host}{f':{port}' if port is not None else ''}"
+
+
+def url_origin(url: str) -> tuple[str, str, int]:
+    parsed = urllib.parse.urlsplit(url)
+    if not parsed.hostname:
+        raise ValueError("URL has no hostname")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("URL contains embedded credentials")
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError(f"URL has an invalid port: {error}") from error
+    scheme = parsed.scheme.lower()
+    effective_port = port if port is not None else 443 if scheme == "https" else 80
+    return scheme, parsed.hostname.lower(), effective_port
+
+
+class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Follow redirects only when an authenticated request stays on its origin."""
+
+    def __init__(self, trusted_origin: str) -> None:
+        super().__init__()
+        self.trusted_origin = url_origin(trusted_origin)
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        try:
+            redirect_origin = url_origin(newurl)
+        except ValueError as error:
+            raise urllib.error.HTTPError(newurl, code, f"Cross-origin redirect blocked: {error}", headers, fp)
+        if redirect_origin != self.trusted_origin:
+            raise urllib.error.HTTPError(newurl, code, "Cross-origin redirect blocked", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def validate_presigned_upload_url(value: Any) -> str:
+    if not isinstance(value, str):
+        raise SystemExit("Presigned upload URL must be a credential-free HTTPS URL")
+    parsed = urllib.parse.urlsplit(value)
+    try:
+        parsed.port
+    except ValueError as error:
+        raise SystemExit(f"Presigned upload URL must be a credential-free HTTPS URL: {error}") from error
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise SystemExit("Presigned upload URL must be a credential-free HTTPS URL")
+    return value
+
+
+def sanitize_for_output(value: Any) -> Any:
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            normalized_key = "".join(character for character in str(key).lower() if character.isalnum())
+            sanitized[key] = (
+                "<redacted-presigned-url>"
+                if normalized_key == "presignedurl"
+                else sanitize_for_output(item)
+            )
+        return sanitized
+    if isinstance(value, list):
+        return [sanitize_for_output(item) for item in value]
+    return value
 
 
 def parse_pairs(pairs: list[str]) -> list[tuple[str, str]]:
@@ -54,7 +147,8 @@ def send(
     method = method.upper()
     if not path.startswith("/"):
         raise SystemExit("API path must start with /")
-    url = base_url() + path
+    trusted_base_url = base_url()
+    url = trusted_base_url + path
     if query:
         url += "?" + urllib.parse.urlencode(query)
     header_name, header_value = credential()
@@ -65,14 +159,16 @@ def send(
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        opener = urllib.request.build_opener(SameOriginRedirectHandler(trusted_base_url))
+        with opener.open(request, timeout=60) as response:
             return response.status, decode_json(response.read())
     except urllib.error.HTTPError as error:
         return error.code, decode_json(error.read())
 
 
 def print_response(status: int, response: Any) -> int:
-    print(json.dumps({"httpStatus": status, "response": response}, ensure_ascii=False, indent=2))
+    output = sanitize_for_output({"httpStatus": status, "response": response})
+    print(json.dumps(output, ensure_ascii=False, indent=2))
     if status < 200 or status >= 300:
         return 1
     if isinstance(response, dict) and response.get("code", 0) != 0:
@@ -130,6 +226,7 @@ def command_upload_asset(args: argparse.Namespace) -> int:
     if not presigned_url or not object_key:
         print("Presign response omitted preSignedUrl or objectKey.", file=sys.stderr)
         return 1
+    presigned_url = validate_presigned_upload_url(presigned_url)
 
     upload_request = urllib.request.Request(
         presigned_url,
@@ -155,7 +252,7 @@ def command_upload_asset(args: argparse.Namespace) -> int:
         "registrationHttpStatus": register_status,
         "response": register_response,
     }
-    print(json.dumps(output, ensure_ascii=False, indent=2))
+    print(json.dumps(sanitize_for_output(output), ensure_ascii=False, indent=2))
     envelope_ok = not isinstance(register_response, dict) or register_response.get("code", 0) == 0
     return 0 if 200 <= register_status < 300 and envelope_ok else 1
 

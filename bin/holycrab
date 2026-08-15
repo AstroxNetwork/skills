@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+COMMAND_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec python3 "$COMMAND_DIR/../lib/holycrab/holycrab_cli.py" "$@"
