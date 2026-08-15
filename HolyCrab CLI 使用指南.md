@@ -24,10 +24,10 @@ flowchart TD
 
 ## 1. 安装
 
-公开版本发布后，macOS / Linux 运行：
+macOS / Linux 推荐安装固定版本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.0/install.sh | sh
 ```
 
 当前仓库尚未发布时，可以在仓库目录里测试完全相同的安装过程：

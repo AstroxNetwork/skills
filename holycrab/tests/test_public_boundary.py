@@ -38,6 +38,12 @@ class PublicBoundaryTests(unittest.TestCase):
         self.assertNotIn("holycrab auth logout", joined)
         self.assertNotIn('"loggedIn"', joined)
 
+    def test_readme_distinguishes_test_safety_from_real_paid_generation(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("本仓库不会自动提交真实付费生成任务", readme)
+        self.assertIn("测试和开发验证不会调用正式生成接口或产生费用", readme)
+        self.assertIn("用户确认后会提交真实付费任务", readme)
+
 
 if __name__ == "__main__":
     unittest.main()

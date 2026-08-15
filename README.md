@@ -13,7 +13,7 @@
 macOS / Linux：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.0/install.sh | sh
 ```
 
 安装器会把命令放到 `~/.local/bin/holycrab`，安装 Codex 与 Claude Code 的 Skill，并在检测到对应客户端时登记本地 MCP。它不会写入 API Key。
@@ -70,4 +70,4 @@ python3 holycrab/scripts/validate_capabilities.py
 sh -n install.sh bin/holycrab
 ```
 
-本仓库不会自动提交真实付费生成任务。安全问题请按 [SECURITY.md](SECURITY.md) 联系我们。
+仓库中的测试和开发验证不会调用正式生成接口或产生费用；实际使用 `holycrab generate create` 时，用户确认后会提交真实付费任务。安全问题请按 [SECURITY.md](SECURITY.md) 联系我们。
