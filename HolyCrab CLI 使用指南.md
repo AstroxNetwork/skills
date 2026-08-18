@@ -26,8 +26,10 @@ flowchart TD
 
 macOS / Linux 推荐安装固定版本：
 
+这条命令只在 `v0.2.1` 正式发布后可用；仅保存为 Draft Release 时，内部测试人员仍应使用下面的仓库源码安装方式。
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.1/install.sh | sh
 ```
 
 当前仓库尚未发布时，可以在仓库目录里测试完全相同的安装过程：
@@ -140,6 +142,8 @@ holycrab generate estimate --kind video \
   --json '{"model":"dreamina-seedance-2-5-260628","prompt":"A paper boat crosses a neon puddle","duration":8,"resolution":"720p","ratio":"16:9","videoTaskType":"reference"}'
 ```
 
+Seedance 视频默认生成伴随音频。要生成静音视频，请在 JSON 中加入 `"generateAudio": false`。MiniMax H3 不支持自动生成音频，CLI 不会给 H3 添加这个字段。
+
 MiniMax H3 视频估算示例：
 
 ```bash
@@ -163,6 +167,8 @@ holycrab assets upload /absolute/path/reference.mp4 \
   --content-type video/mp4 \
   --duration-seconds 8
 ```
+
+CLI 会自动完成预签名上传和 multipart 素材登记；不需要另外编写上传脚本。
 
 上传成功后只保留返回的素材 ID。临时上传地址不会显示在终端或 Agent 回复里。
 

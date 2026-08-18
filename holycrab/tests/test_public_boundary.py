@@ -16,6 +16,7 @@ PUBLIC_FILES = (
     REPO_ROOT / "holycrab" / "references" / "api.md",
     REPO_ROOT / "holycrab" / "references" / "capabilities.json",
     REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py",
+    REPO_ROOT / "holycrab" / "scripts" / "holycrab_api.py",
 )
 
 

@@ -183,13 +183,14 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 鉴权：API Key
 
 先 PUT 文件到 `preSignedUrl`，成功后再调用此接口登记素材并启动处理。
+请求必须使用 `multipart/form-data`；不能发送 JSON。此请求只登记上一步已经上传的对象，文件本身不需要再次放入表单。
 
 | 参数 | 位置 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- | --- |
-| `name` | Body | string | 是 | 素材展示名 |
-| `object_key` | Body | string | 是 | 上一步返回的 `objectKey` |
-| `content_type` | Body | string | 是 | 与上传所用 MIME type 一致 |
-| `duration_seconds` | Body | integer | 否 | 音频或视频时长（秒） |
+| `name` | multipart field | string | 是 | 素材展示名 |
+| `object_key` | multipart field | string | 是 | 上一步返回的 `objectKey` |
+| `content_type` | multipart field | string | 是 | 与上传所用 MIME type 一致 |
+| `duration_seconds` | multipart field | integer | 否 | 音频或视频时长（秒） |
 
 成功登记没有业务 payload（`data: null`）。
 
@@ -243,7 +244,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 | `ratio` | string | 否 | `source`、`adaptive` 或具体画幅；受模型和任务模式限制 |
 | `duration` | integer | 是 | 普通生成 `4`–`15` 秒；Seedance 2.5 可到 `30` 秒；智能编辑固定为 `-1` |
 | `resolution` | string | 是 | `480p`、`720p`、`1080p`、`4k`；受模型限制 |
-| `generateAudio` | boolean | 否 | 是否生成伴随音频；默认 `false` |
+| `generateAudio` | boolean | 否 | 是否生成伴随音频；服务端默认 `false`，HolyCrab CLI 和本地 MCP 对支持该能力的 Seedance 模型在省略时默认补为 `true`；显式 `false` 保持静音 |
 | `imageAssetIds` | string[] | 否 | 当前账户拥有的图片素材 `uniqId` |
 | `videoAssetIds` | string[] | 否 | 当前账户拥有的视频素材 `uniqId` |
 | `audioAssetIds` | string[] | 否 | 当前账户拥有的音频素材 `uniqId` |
@@ -484,7 +485,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/audio-generation' \
 
 1. 调用“获取预签名上传地址”。
 2. 用返回的 `preSignedUrl` 将文件 PUT 到对象存储。
-3. 调用“登记已上传素材”，把 `objectKey` 原样传给 `object_key`。
+3. 用 `multipart/form-data` 调用“登记已上传素材”，把 `objectKey` 原样传给 `object_key`。
 4. 轮询素材详情，直到 `step` 成功或失败。
 5. 将成功素材的 `uniqId` 填入视频生成的素材字段。
 

@@ -12,8 +12,10 @@
 
 macOS / Linux：
 
+下面的固定版本命令只在 `v0.2.1` 正式发布后可用；GitHub Draft Release 不算公开发布。内部测试请先克隆仓库，再使用后面的本地源码安装方式。
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.0/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.1/install.sh | sh
 ```
 
 安装器会把命令放到 `~/.local/bin/holycrab`，安装 Codex 与 Claude Code 的 Skill，并在检测到对应客户端时登记本地 MCP。它不会写入 API Key。
@@ -56,6 +58,8 @@ holycrab assets upload /absolute/path/reference.mp4 --duration-seconds 8
 ```
 
 没有 `--yes` 时，创建命令会先显示积分估算并询问确认。脚本或 Agent 只有在用户已经明确确认后才能加 `--yes`。
+
+Seedance 视频在没有填写 `generateAudio` 时，CLI 和本地 MCP 会默认补成 `true`；想要静音视频时显式传入 `"generateAudio": false`。MiniMax H3 不支持这个字段，因此不会自动添加。
 
 同一提示词可以主动生成多次。每次明确确认都会创建新的本地 attempt ID 和新的线上任务；同一个 attempt ID 不能重复提交，网络结果不明确时也不会自动重试付费请求。
 

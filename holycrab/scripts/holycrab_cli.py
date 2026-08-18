@@ -6,12 +6,15 @@ from __future__ import annotations
 import argparse
 import getpass
 import hashlib
+import html
 import importlib.util
 import json
 import mimetypes
 import os
+import re
 import stat
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -33,7 +36,7 @@ except ImportError:  # pragma: no cover - POSIX runtime
     msvcrt = None
 
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
 PUBLIC_ACCOUNT_URL = "https://generate.holycrab.ai/user-tokens"
 LATEST_INITIALIZE_PROTOCOL = "2025-11-25"
@@ -41,6 +44,53 @@ SUPPORTED_INITIALIZE_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18", "202
 SENSITIVE_OUTPUT_KEYS = {
     "presignedurl", "authorization", "xusertoken", "apikey", "accesstoken", "refreshtoken"
 }
+SENSITIVE_OUTPUT_VALUES: set[str] = set()
+SENSITIVE_URL_QUERY_KEYS = {
+    "signature",
+    "sig",
+    "token",
+    "accesstoken",
+    "credential",
+    "securitytoken",
+    "policy",
+    "googleaccessid",
+    "ossaccesskeyid",
+    "awsaccesskeyid",
+    "xamzsignature",
+    "xamzcredential",
+    "xamzsecuritytoken",
+    "xtossignature",
+    "xtoscredential",
+    "xtossecuritytoken",
+    "xgoogsignature",
+    "xgoogcredential",
+}
+URL_IN_TEXT_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+PUBLIC_ACCOUNT_FIELDS = ("username", "email", "nickname", "credit", "inviteCode")
+PUBLIC_TASK_FIELDS = (
+    "uniqId",
+    "taskId",
+    "taskType",
+    "model",
+    "step",
+    "status",
+    "progress",
+    "error",
+    "frozenCredit",
+    "duration",
+    "resolution",
+    "ratio",
+    "generateAudio",
+    "videoUrl",
+    "imageUrls",
+    "audioIds",
+    "videoIds",
+    "imageIds",
+    "cdnUrl",
+    "textResult",
+    "createTime",
+    "updateTime",
+)
 
 
 def config_dir() -> Path:
@@ -149,7 +199,10 @@ def credential(explicit: str | None = None) -> tuple[str, str]:
             "HolyCrab API Key is not configured. Run `holycrab setup` and paste a Key from "
             + PUBLIC_ACCOUNT_URL
         )
-    return "X-User-Token", value.strip()
+    resolved = value.strip()
+    if len(resolved) >= 8:
+        SENSITIVE_OUTPUT_VALUES.add(resolved)
+    return "X-User-Token", resolved
 
 
 def base_url() -> str:
@@ -213,15 +266,42 @@ def validate_presigned_upload_url(value: Any) -> str:
     return value
 
 
+def normalized_name(value: Any) -> str:
+    return "".join(character for character in str(value).lower() if character.isalnum())
+
+
+def is_signed_url(value: str) -> bool:
+    parsed = urllib.parse.urlsplit(html.unescape(value))
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname or not parsed.query:
+        return False
+    return any(
+        normalized_name(key) in SENSITIVE_URL_QUERY_KEYS
+        for key, _ in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    )
+
+
+def sanitize_text_for_output(value: str) -> str:
+    def replace_url(match: re.Match[str]) -> str:
+        candidate = match.group(0)
+        return "<redacted-signed-url>" if is_signed_url(candidate) else candidate
+
+    sanitized = URL_IN_TEXT_PATTERN.sub(replace_url, value)
+    for secret in sorted(SENSITIVE_OUTPUT_VALUES, key=len, reverse=True):
+        sanitized = sanitized.replace(secret, "<redacted-secret>")
+    return sanitized
+
+
 def sanitize_for_output(value: Any) -> Any:
     if isinstance(value, dict):
         output: dict[Any, Any] = {}
         for key, item in value.items():
-            normalized = "".join(character for character in str(key).lower() if character.isalnum())
+            normalized = normalized_name(key)
             output[key] = "<redacted>" if normalized in SENSITIVE_OUTPUT_KEYS else sanitize_for_output(item)
         return output
     if isinstance(value, list):
         return [sanitize_for_output(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_text_for_output(value)
     return value
 
 
@@ -233,12 +313,35 @@ def decode_json(raw: bytes) -> Any:
         return {"raw": text}
 
 
+def encode_multipart_form(
+    fields: dict[str, Any], *, boundary: str | None = None
+) -> tuple[bytes, str]:
+    resolved_boundary = boundary or f"HolyCrab{uuid.uuid4().hex}"
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        if value is None:
+            continue
+        if any(character in name for character in ('"', "\r", "\n")):
+            raise ValueError("Multipart field name contains an unsafe character")
+        parts.extend(
+            (
+                f"--{resolved_boundary}\r\n".encode("ascii"),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii"),
+                str(value).encode("utf-8"),
+                b"\r\n",
+            )
+        )
+    parts.append(f"--{resolved_boundary}--\r\n".encode("ascii"))
+    return b"".join(parts), f"multipart/form-data; boundary={resolved_boundary}"
+
+
 def send(
     method: str,
     path: str,
     *,
     query: list[tuple[str, str]] | None = None,
     payload: Any = None,
+    form: dict[str, Any] | None = None,
     api_key: str | None = None,
 ) -> tuple[int, Any]:
     if not path.startswith("/") or path.startswith("//"):
@@ -253,8 +356,12 @@ def send(
         "Accept": "application/json",
         "User-Agent": f"holycrab-cli/{VERSION}",
     }
-    body = None
-    if payload is not None:
+    if payload is not None and form is not None:
+        raise ValueError("Use either payload or form, not both")
+    body: bytes | None = None
+    if form is not None:
+        body, headers["Content-Type"] = encode_multipart_form(form)
+    elif payload is not None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=body, headers=headers, method=method.upper())
@@ -276,11 +383,54 @@ def response_data(status: int, response: Any) -> Any:
     if not response_ok(status, response):
         message = response.get("message") if isinstance(response, dict) else None
         request_id = response.get("requestId") if isinstance(response, dict) else None
-        detail = f": {message}" if message else ""
+        detail = f": {sanitize_text_for_output(str(message))}" if message else ""
         if request_id:
-            detail += f" (requestId: {request_id})"
+            detail += f" (requestId: {sanitize_text_for_output(str(request_id))})"
         raise SystemExit(f"HolyCrab API request failed with HTTP {status}{detail}")
     return response.get("data") if isinstance(response, dict) and "data" in response else response
+
+
+def public_envelope(response: Any, projector: Any) -> Any:
+    if not isinstance(response, dict):
+        return response
+    output = {
+        key: response[key]
+        for key in ("code", "message", "errorCode", "requestId")
+        if key in response
+    }
+    if "data" in response:
+        output["data"] = projector(response.get("data"))
+    return output
+
+
+def public_account_data(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    return {key: value[key] for key in PUBLIC_ACCOUNT_FIELDS if key in value}
+
+
+def public_account_response(response: Any) -> Any:
+    return public_envelope(response, public_account_data)
+
+
+def public_task_data(value: Any) -> Any:
+    if isinstance(value, list):
+        return [public_task_data(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if isinstance(value.get("records"), list):
+        output = {
+            key: value[key]
+            for key in ("total", "size", "current", "pages")
+            if key in value
+        }
+        output["records"] = [public_task_data(item) for item in value["records"]]
+        return output
+    return {key: value[key] for key in PUBLIC_TASK_FIELDS if key in value}
+
+
+def public_task_response(response: Any) -> Any:
+    return public_envelope(response, public_task_data)
 
 
 def print_json(value: Any) -> None:
@@ -343,6 +493,20 @@ def generation_endpoints(kind: str, payload: dict[str, Any]) -> tuple[str, str]:
     return endpoints["freezeCredit"], endpoints["create"]
 
 
+def normalize_generation_request(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise SystemExit("Generation request must be an object")
+    normalized = dict(payload)
+    if kind == "video":
+        model_id = normalized.get("model")
+        if not isinstance(model_id, str):
+            raise SystemExit("Generation request must include model")
+        model = find_model(model_id)
+        if model.get("generateAudioSupported") is True and model.get("generateAudioDefault") is True:
+            normalized.setdefault("generateAudio", True)
+    return normalized
+
+
 def canonical_request_hash(kind: str, payload: dict[str, Any]) -> str:
     raw = json.dumps(
         {"kind": kind, "request": payload}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -389,8 +553,9 @@ def extract_task_id(response: Any) -> str | None:
 
 
 def estimate_generation(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
-    freeze_endpoint, _ = generation_endpoints(kind, payload)
-    status, response = send("POST", freeze_endpoint, payload=None if kind == "audio" else payload)
+    normalized = normalize_generation_request(kind, payload)
+    freeze_endpoint, _ = generation_endpoints(kind, normalized)
+    status, response = send("POST", freeze_endpoint, payload=None if kind == "audio" else normalized)
     return {"kind": kind, "endpoint": freeze_endpoint, "estimate": response_data(status, response)}
 
 
@@ -400,15 +565,15 @@ def create_generation(
     *,
     confirmed: bool,
     attempt_id: str | None = None,
+    approved_estimate: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise SystemExit("Generation request must be a JSON object")
+    payload = normalize_generation_request(kind, payload)
     selected_attempt = attempt_id or uuid.uuid4().hex
     if confirmed and attempt_exists(selected_attempt):
         raise SystemExit(
             f"Local submission attempt {selected_attempt} already exists; query it instead of submitting again"
         )
-    estimate = estimate_generation(kind, payload)
+    estimate = approved_estimate or estimate_generation(kind, payload)
     if not confirmed:
         return {
             **estimate,
@@ -446,7 +611,7 @@ def create_generation(
         "taskId": task_id,
         "state": "created",
         "estimate": estimate["estimate"],
-        "response": response_data(status, response),
+        "response": public_task_data(response_data(status, response)),
     }
 
 
@@ -496,7 +661,7 @@ def command_auth_status(args: argparse.Namespace) -> int:
     if not response_ok(status, response):
         print_json({"configured": True, "valid": False, "credentialSource": source, "httpStatus": status})
         return 1
-    print_json({"configured": True, "valid": True, "credentialSource": source, "account": response_data(status, response)})
+    print_json({"configured": True, "valid": True, "credentialSource": source, "account": public_account_data(response_data(status, response))})
     return 0
 
 
@@ -522,7 +687,7 @@ def command_models_show(args: argparse.Namespace) -> int:
 
 def command_credits_balance(args: argparse.Namespace) -> int:
     status, response = send("GET", "/api/user/me")
-    return print_response(status, response)
+    return print_response(status, public_account_response(response))
 
 
 def command_generation_estimate(args: argparse.Namespace) -> int:
@@ -532,8 +697,10 @@ def command_generation_estimate(args: argparse.Namespace) -> int:
 
 def command_generation_create(args: argparse.Namespace) -> int:
     payload = parse_json_argument(args.json)
+    approved_estimate = None
     if not args.yes:
-        print_json(create_generation(args.kind, payload, confirmed=False))
+        approved_estimate = create_generation(args.kind, payload, confirmed=False)
+        print_json(approved_estimate)
         if not sys.stdin.isatty():
             print("Not submitted. Re-run with --yes only after the user confirms the estimate.", file=sys.stderr)
             return 2
@@ -541,20 +708,28 @@ def command_generation_create(args: argparse.Namespace) -> int:
         if answer not in {"y", "yes"}:
             print("Cancelled; no generation task was created.")
             return 2
-    print_json(create_generation(args.kind, payload, confirmed=True, attempt_id=args.attempt_id))
+    print_json(
+        create_generation(
+            args.kind,
+            payload,
+            confirmed=True,
+            attempt_id=args.attempt_id,
+            approved_estimate=approved_estimate,
+        )
+    )
     return 0
 
 
 def command_task_get(args: argparse.Namespace) -> int:
     status, response = send("GET", f"/api/tasks/{urllib.parse.quote(args.uniq_id, safe='')}")
-    return print_response(status, response)
+    return print_response(status, public_task_response(response))
 
 
 def command_task_list(args: argparse.Namespace) -> int:
     status, response = send(
         "GET", "/api/tasks", query=[("page", str(args.page)), ("pageSize", str(args.page_size))]
     )
-    return print_response(status, response)
+    return print_response(status, public_task_response(response))
 
 
 def poll_task(uniq_id: str, timeout: float, interval: float, *, emit: bool = False) -> tuple[int, Any]:
@@ -563,7 +738,7 @@ def poll_task(uniq_id: str, timeout: float, interval: float, *, emit: bool = Fal
     while True:
         status, latest = send("GET", f"/api/tasks/{urllib.parse.quote(uniq_id, safe='')}")
         if emit:
-            print_response(status, latest)
+            print_response(status, public_task_response(latest))
         if not response_ok(status, latest):
             return 1, latest
         data = response_data(status, latest)
@@ -621,10 +796,14 @@ def command_download(args: argparse.Namespace) -> int:
     url = validate_download_url(urls[args.index])
     destination = Path(args.output).expanduser().resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
-    partial = destination.with_name(f".{destination.name}.part")
+    descriptor, partial_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
+    )
+    partial = Path(partial_name)
     total = 0
     try:
-        with urllib.request.urlopen(url, timeout=300) as remote, partial.open("wb") as local:
+        with urllib.request.urlopen(url, timeout=300) as remote, os.fdopen(descriptor, "wb") as local:
+            descriptor = -1
             while True:
                 chunk = remote.read(1024 * 1024)
                 if not chunk:
@@ -633,6 +812,8 @@ def command_download(args: argparse.Namespace) -> int:
                 total += len(chunk)
         os.replace(partial, destination)
     finally:
+        if descriptor >= 0:
+            os.close(descriptor)
         try:
             partial.unlink()
         except FileNotFoundError:
@@ -677,7 +858,7 @@ def upload_asset(
     }
     if duration_seconds is not None:
         payload["duration_seconds"] = duration_seconds
-    register_status, register_response = send("POST", "/api/user-assets/upload", payload=payload)
+    register_status, register_response = send("POST", "/api/user-assets/upload", form=payload)
     return {
         "assetUniqId": data.get("uniqId"),
         "registration": response_data(register_status, register_response),
@@ -718,7 +899,7 @@ MCP_TOOLS = [
 def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
     if name == "account_get":
         status, response = send("GET", "/api/user/me")
-        return response_data(status, response)
+        return public_account_data(response_data(status, response))
     if name == "capabilities_list":
         return all_models()
     if name == "capability_get":
@@ -738,11 +919,11 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
     if name == "generation_get":
         task_id = urllib.parse.quote(str(arguments.get("taskId", "")), safe="")
         status, response = send("GET", f"/api/tasks/{task_id}")
-        return response_data(status, response)
+        return public_task_data(response_data(status, response))
     if name == "generation_list":
         query = [("page", str(arguments.get("page", 1))), ("pageSize", str(arguments.get("pageSize", 20)))]
         status, response = send("GET", "/api/tasks", query=query)
-        return response_data(status, response)
+        return public_task_data(response_data(status, response))
     raise SystemExit(f"Unknown MCP tool: {name}")
 
 
@@ -767,6 +948,8 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if method == "initialize":
         params = message.get("params") or {}
+        if not isinstance(params, dict):
+            return {"jsonrpc": "2.0", "id": identifier, "error": {"code": -32602, "message": "Invalid params"}}
         requested = params.get("protocolVersion")
         negotiated = requested if requested in SUPPORTED_INITIALIZE_PROTOCOLS else LATEST_INITIALIZE_PROTOCOL
         return {
@@ -784,11 +967,16 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
         return {"jsonrpc": "2.0", "id": identifier, "result": {"tools": MCP_TOOLS}}
     if method == "tools/call":
         params = message.get("params") or {}
+        if not isinstance(params, dict):
+            return {"jsonrpc": "2.0", "id": identifier, "error": {"code": -32602, "message": "Invalid params"}}
         try:
-            value = mcp_tool_call(str(params.get("name", "")), params.get("arguments") or {})
+            arguments = params.get("arguments") or {}
+            if not isinstance(arguments, dict):
+                raise ValueError("arguments must be an object")
+            value = mcp_tool_call(str(params.get("name", "")), arguments)
             return mcp_result(identifier, value)
-        except (SystemExit, urllib.error.URLError, TimeoutError, ValueError) as error:
-            text = str(error) or error.__class__.__name__
+        except (SystemExit, urllib.error.URLError, TimeoutError, ValueError, TypeError, AttributeError) as error:
+            text = sanitize_text_for_output(str(error) or error.__class__.__name__)
             return {
                 "jsonrpc": "2.0",
                 "id": identifier,
@@ -806,6 +994,8 @@ def command_mcp_serve(args: argparse.Namespace) -> int:
             response = mcp_dispatch(message)
         except (json.JSONDecodeError, ValueError) as error:
             response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(error)}}
+        except Exception:
+            response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": "Internal MCP error"}}
         if response is not None:
             sys.stdout.write(json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n")
             sys.stdout.flush()
@@ -915,7 +1105,7 @@ def main() -> int:
         print(f"Invalid JSON: {error}", file=sys.stderr)
         return 2
     except urllib.error.URLError as error:
-        print(f"Network error: {error.reason}", file=sys.stderr)
+        print(f"Network error: {sanitize_text_for_output(str(error.reason))}", file=sys.stderr)
         return 1
 
 

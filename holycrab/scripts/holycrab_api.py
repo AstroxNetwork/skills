@@ -4,24 +4,54 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import mimetypes
 import os
+import re
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
 
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
+SENSITIVE_OUTPUT_KEYS = {
+    "presignedurl", "authorization", "xusertoken", "apikey", "accesstoken", "refreshtoken"
+}
+SENSITIVE_OUTPUT_VALUES: set[str] = set()
+SENSITIVE_URL_QUERY_KEYS = {
+    "signature",
+    "sig",
+    "token",
+    "accesstoken",
+    "credential",
+    "securitytoken",
+    "policy",
+    "googleaccessid",
+    "ossaccesskeyid",
+    "awsaccesskeyid",
+    "xamzsignature",
+    "xamzcredential",
+    "xamzsecuritytoken",
+    "xtossignature",
+    "xtoscredential",
+    "xtossecuritytoken",
+    "xgoogsignature",
+    "xgoogcredential",
+}
+URL_IN_TEXT_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 
 
 def credential() -> tuple[str, str]:
     value = os.environ.get("HOLYCRAB_API_KEY")
     if not value:
         raise SystemExit("HOLYCRAB_API_KEY is required")
+    if len(value) >= 8:
+        SENSITIVE_OUTPUT_VALUES.add(value)
     return "X-User-Token", value
 
 
@@ -104,19 +134,44 @@ def validate_presigned_upload_url(value: Any) -> str:
     return value
 
 
+def normalized_name(value: Any) -> str:
+    return "".join(character for character in str(value).lower() if character.isalnum())
+
+
+def is_signed_url(value: str) -> bool:
+    parsed = urllib.parse.urlsplit(html.unescape(value))
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname or not parsed.query:
+        return False
+    return any(
+        normalized_name(key) in SENSITIVE_URL_QUERY_KEYS
+        for key, _ in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    )
+
+
+def sanitize_text_for_output(value: str) -> str:
+    def replace_url(match: re.Match[str]) -> str:
+        candidate = match.group(0)
+        return "<redacted-signed-url>" if is_signed_url(candidate) else candidate
+
+    sanitized = URL_IN_TEXT_PATTERN.sub(replace_url, value)
+    for secret in sorted(SENSITIVE_OUTPUT_VALUES, key=len, reverse=True):
+        sanitized = sanitized.replace(secret, "<redacted-secret>")
+    return sanitized
+
+
 def sanitize_for_output(value: Any) -> Any:
     if isinstance(value, dict):
         sanitized = {}
         for key, item in value.items():
-            normalized_key = "".join(character for character in str(key).lower() if character.isalnum())
-            sanitized[key] = (
-                "<redacted-presigned-url>"
-                if normalized_key == "presignedurl"
-                else sanitize_for_output(item)
+            normalized_key = normalized_name(key)
+            sanitized[key] = "<redacted-presigned-url>" if normalized_key == "presignedurl" else (
+                "<redacted>" if normalized_key in SENSITIVE_OUTPUT_KEYS else sanitize_for_output(item)
             )
         return sanitized
     if isinstance(value, list):
         return [sanitize_for_output(item) for item in value]
+    if isinstance(value, str):
+        return sanitize_text_for_output(value)
     return value
 
 
@@ -137,12 +192,35 @@ def decode_json(raw: bytes) -> Any:
         return {"raw": text}
 
 
+def encode_multipart_form(
+    fields: dict[str, Any], *, boundary: str | None = None
+) -> tuple[bytes, str]:
+    resolved_boundary = boundary or f"HolyCrab{uuid.uuid4().hex}"
+    parts: list[bytes] = []
+    for name, value in fields.items():
+        if value is None:
+            continue
+        if any(character in name for character in ('"', "\r", "\n")):
+            raise ValueError("Multipart field name contains an unsafe character")
+        parts.extend(
+            (
+                f"--{resolved_boundary}\r\n".encode("ascii"),
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("ascii"),
+                str(value).encode("utf-8"),
+                b"\r\n",
+            )
+        )
+    parts.append(f"--{resolved_boundary}--\r\n".encode("ascii"))
+    return b"".join(parts), f"multipart/form-data; boundary={resolved_boundary}"
+
+
 def send(
     method: str,
     path: str,
     *,
     query: list[tuple[str, str]] | None = None,
     payload: Any = None,
+    form: dict[str, Any] | None = None,
 ) -> tuple[int, Any]:
     method = method.upper()
     if not path.startswith("/"):
@@ -153,8 +231,12 @@ def send(
         url += "?" + urllib.parse.urlencode(query)
     header_name, header_value = credential()
     headers = {header_name: header_value, "Accept": "application/json"}
-    body = None
-    if payload is not None:
+    if payload is not None and form is not None:
+        raise ValueError("Use either payload or form, not both")
+    body: bytes | None = None
+    if form is not None:
+        body, headers["Content-Type"] = encode_multipart_form(form)
+    elif payload is not None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
@@ -166,25 +248,16 @@ def send(
         return error.code, decode_json(error.read())
 
 
+def response_ok(status: int, response: Any) -> bool:
+    return 200 <= status < 300 and (
+        not isinstance(response, dict) or response.get("code", 0) in (0, 200)
+    )
+
+
 def print_response(status: int, response: Any) -> int:
     output = sanitize_for_output({"httpStatus": status, "response": response})
     print(json.dumps(output, ensure_ascii=False, indent=2))
-    if status < 200 or status >= 300:
-        return 1
-    if isinstance(response, dict) and response.get("code", 0) != 0:
-        return 1
-    return 0
-
-
-def command_request(args: argparse.Namespace) -> int:
-    payload = json.loads(args.json) if args.json is not None else None
-    status, response = send(
-        args.method,
-        args.path,
-        query=parse_pairs(args.query),
-        payload=payload,
-    )
-    return print_response(status, response)
+    return 0 if response_ok(status, response) else 1
 
 
 def command_poll_task(args: argparse.Namespace) -> int:
@@ -217,7 +290,7 @@ def command_upload_asset(args: argparse.Namespace) -> int:
     if args.duration_seconds is not None:
         query.append(("duration_seconds", str(args.duration_seconds)))
     status, response = send("GET", "/api/user-assets/pre-signed-download-url", query=query)
-    if status < 200 or status >= 300 or not isinstance(response, dict) or response.get("code", 0) != 0:
+    if not response_ok(status, response) or not isinstance(response, dict):
         return print_response(status, response)
     data = response.get("data") or {}
     presigned_url = data.get("preSignedUrl")
@@ -246,27 +319,21 @@ def command_upload_asset(args: argparse.Namespace) -> int:
     payload = {"name": args.name or path.name, "object_key": object_key, "content_type": content_type}
     if args.duration_seconds is not None:
         payload["duration_seconds"] = args.duration_seconds
-    register_status, register_response = send("POST", "/api/user-assets/upload", payload=payload)
+    register_status, register_response = send("POST", "/api/user-assets/upload", form=payload)
+    if not response_ok(register_status, register_response):
+        return print_response(register_status, register_response)
     output = {
         "assetUniqId": uniq_id,
         "registrationHttpStatus": register_status,
         "response": register_response,
     }
     print(json.dumps(sanitize_for_output(output), ensure_ascii=False, indent=2))
-    envelope_ok = not isinstance(register_response, dict) or register_response.get("code", 0) == 0
-    return 0 if 200 <= register_status < 300 and envelope_ok else 1
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Call the HolyCrab Generation API")
     subparsers = parser.add_subparsers(dest="command", required=True)
-
-    request = subparsers.add_parser("request", help="Call an API endpoint")
-    request.add_argument("method", choices=["GET", "POST", "PUT", "PATCH", "DELETE"])
-    request.add_argument("path")
-    request.add_argument("--query", action="append", default=[], metavar="KEY=VALUE")
-    request.add_argument("--json", help="JSON request body")
-    request.set_defaults(func=command_request)
 
     poll = subparsers.add_parser("poll-task", help="Poll until a task completes or fails")
     poll.add_argument("uniq_id")
@@ -291,7 +358,7 @@ def main() -> int:
         print(f"Invalid JSON: {error}", file=sys.stderr)
         return 2
     except urllib.error.URLError as error:
-        print(f"Network error: {error.reason}", file=sys.stderr)
+        print(f"Network error: {sanitize_text_for_output(str(error.reason))}", file=sys.stderr)
         return 1
 
 

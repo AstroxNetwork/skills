@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import io
+import json
 import os
+import tempfile
 import unittest
 import urllib.error
 import urllib.request
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -119,6 +121,29 @@ class OutputRedactionTests(unittest.TestCase):
         self.assertEqual(sanitized["data"]["nested"][0]["presigned_url"], "<redacted-presigned-url>")
         self.assertEqual(sanitized["data"]["uniqId"], "asset-1")
 
+    def test_redacts_signed_result_urls_without_relying_on_field_names(self) -> None:
+        signed_url = "https://cdn.example/result.mp4?X-Tos-Credential=temporary&X-Tos-Signature=secret"
+        stable_url = "https://cdn.example/public.mp4?version=2"
+        sanitized = holycrab_api.sanitize_for_output(
+            {"data": {"videoUrl": signed_url, "imageUrls": [signed_url], "stableUrl": stable_url}}
+        )
+        self.assertEqual(sanitized["data"]["videoUrl"], "<redacted-signed-url>")
+        self.assertEqual(sanitized["data"]["imageUrls"], ["<redacted-signed-url>"])
+        self.assertEqual(sanitized["data"]["stableUrl"], stable_url)
+
+    def test_redacts_embedded_signed_urls_and_sensitive_field_aliases(self) -> None:
+        value = {
+            "apiKey": "example-api-secret",
+            "raw": "failed: https://cdn.example/object?X-Tos-Signature=embedded-secret",
+        }
+        sanitized = holycrab_api.sanitize_for_output(value)
+        self.assertNotIn("example-api-secret", json.dumps(sanitized))
+        self.assertNotIn("embedded-secret", sanitized["raw"])
+
+    def test_redacts_html_escaped_signed_url_query(self) -> None:
+        value = "https://cdn.example/object?download=1&amp;X-Amz-Signature=html-secret"
+        self.assertEqual(holycrab_api.sanitize_for_output(value), "<redacted-signed-url>")
+
     def test_print_response_never_writes_presigned_query_secret(self) -> None:
         output = io.StringIO()
         response = {
@@ -160,6 +185,96 @@ class PollingBehaviorTests(unittest.TestCase):
             with redirect_stdout(io.StringIO()), patch("sys.stderr", new=io.StringIO()):
                 self.assertEqual(holycrab_api.command_poll_task(args), 2)
         send.assert_called_once()
+
+
+class AssetUploadTests(unittest.TestCase):
+    def test_legacy_multipart_encoder_preserves_utf8_values(self) -> None:
+        encoder = getattr(holycrab_api, "encode_multipart_form", None)
+        self.assertIsNotNone(encoder)
+        body, content_type = encoder(
+            {"name": "懵懵.jpeg", "object_key": "user/asset.jpeg"},
+            boundary="HolyCrabBoundary",
+        )
+        self.assertEqual(content_type, "multipart/form-data; boundary=HolyCrabBoundary")
+        self.assertIn("懵懵.jpeg".encode("utf-8"), body)
+        self.assertTrue(body.endswith(b"--HolyCrabBoundary--\r\n"))
+
+    def test_legacy_upload_registers_with_multipart(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "懵懵.jpeg"
+            image.write_bytes(b"jpeg-bytes")
+            args = argparse.Namespace(
+                file=str(image), content_type=None, duration_seconds=None, name=None
+            )
+            replies = [
+                (
+                    200,
+                    {
+                        "code": 200,
+                        "data": {
+                            "preSignedUrl": "https://storage.example/object?signature=secret",
+                            "objectKey": "user/asset.jpeg",
+                            "uniqId": "asset-1",
+                        },
+                    },
+                ),
+                (200, {"code": 200, "data": None}),
+            ]
+            upload_response = unittest.mock.MagicMock()
+            upload_response.__enter__.return_value.status = 200
+            with patch.object(holycrab_api, "send", side_effect=replies) as send, patch.object(
+                holycrab_api.urllib.request, "urlopen", return_value=upload_response
+            ), redirect_stdout(io.StringIO()):
+                self.assertEqual(holycrab_api.command_upload_asset(args), 0)
+
+        send.assert_any_call(
+            "POST",
+            "/api/user-assets/upload",
+            form={
+                "name": "懵懵.jpeg",
+                "object_key": "user/asset.jpeg",
+                "content_type": "image/jpeg",
+            },
+        )
+
+    def test_legacy_registration_400_does_not_print_asset_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            image = Path(directory) / "yuna.jpeg"
+            image.write_bytes(b"jpeg-bytes")
+            args = argparse.Namespace(
+                file=str(image), content_type=None, duration_seconds=None, name=None
+            )
+            replies = [
+                (
+                    200,
+                    {
+                        "code": 0,
+                        "data": {
+                            "preSignedUrl": "https://storage.example/object?signature=secret",
+                            "objectKey": "user/asset.jpeg",
+                            "uniqId": "asset-not-registered",
+                        },
+                    },
+                ),
+                (400, {"code": 400, "message": "missing multipart field"}),
+            ]
+            upload_response = unittest.mock.MagicMock()
+            upload_response.__enter__.return_value.status = 200
+            output = io.StringIO()
+            with patch.object(holycrab_api, "send", side_effect=replies), patch.object(
+                holycrab_api.urllib.request, "urlopen", return_value=upload_response
+            ), redirect_stdout(output):
+                self.assertEqual(holycrab_api.command_upload_asset(args), 1)
+
+        self.assertNotIn("asset-not-registered", output.getvalue())
+        self.assertIn("missing multipart field", output.getvalue())
+
+
+class LegacySurfaceTests(unittest.TestCase):
+    def test_public_legacy_parser_has_no_generic_request_command(self) -> None:
+        parser = holycrab_api.build_parser()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["request", "POST", "/api/tasks/generation", "--json", "{}"])
 
 
 if __name__ == "__main__":

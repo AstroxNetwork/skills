@@ -11,6 +11,7 @@ Use the installed `holycrab` CLI or its local MCP tools. Treat the capability re
 
 1. Check the configured API Key with `holycrab auth status`. If missing, ask the user to run `holycrab setup` locally. Never ask them to paste the API Key into chat.
 2. Query `capabilities_list` / `capability_get`, or `holycrab models list|show`, before building a request.
+   Seedance video requests default to `generateAudio: true` when the field is omitted. Preserve an explicit `false`. Never add this field to a model whose capability says audio generation is unsupported.
 3. For a local media file, use `holycrab assets upload` and keep only the returned stable asset ID.
 4. Call `generation_estimate` or `holycrab generate estimate`. Tell the user the model, output specification, duration, and estimated credit.
 5. Wait for explicit confirmation. Create one new stable `attemptId` for that draw, then call `generation_create` once with `confirmed: true` and that ID, or run `holycrab generate create ... --yes` once.

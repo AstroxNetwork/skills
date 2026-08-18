@@ -50,6 +50,12 @@ class McpProtocolTests(unittest.TestCase):
         )
         self.assertEqual(response["result"]["protocolVersion"], "2025-11-25")
 
+    def test_initialize_rejects_non_object_params_without_raising(self) -> None:
+        response = holycrab.mcp_dispatch(
+            {"jsonrpc": "2.0", "id": 10, "method": "initialize", "params": "bad"}
+        )
+        self.assertEqual(response["error"]["code"], -32602)
+
     def test_tools_list_is_small_and_has_no_raw_request_tool(self) -> None:
         response = holycrab.mcp_dispatch(
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}
@@ -133,6 +139,43 @@ class McpProtocolTests(unittest.TestCase):
         )
         tool = next(item for item in response["result"]["tools"] if item["name"] == "generation_create")
         self.assertIn("attemptId", tool["inputSchema"]["required"])
+
+    def test_malformed_tool_arguments_return_error_without_raising(self) -> None:
+        response = holycrab.mcp_dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "tools/call",
+                "params": {"name": "generation_estimate", "arguments": {"kind": "video", "request": "bad"}},
+            }
+        )
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn("request must be an object", response["result"]["content"][0]["text"])
+
+    def test_mcp_task_result_omits_private_and_internal_backend_fields(self) -> None:
+        backend = {
+            "code": 0,
+            "data": {
+                "uniqId": "task-1",
+                "step": 2,
+                "imageUrls": ["https://cdn.example/result.jpg"],
+                "provider": "internal-provider",
+                "request": {"prompt": "private prompt"},
+            },
+        }
+        with patch.object(holycrab, "send", return_value=(200, backend)):
+            response = holycrab.mcp_dispatch(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 9,
+                    "method": "tools/call",
+                    "params": {"name": "generation_get", "arguments": {"taskId": "task-1"}},
+                }
+            )
+        content = response["result"]["structuredContent"]
+        self.assertEqual(content["uniqId"], "task-1")
+        self.assertNotIn("provider", content)
+        self.assertNotIn("request", content)
 
 
 if __name__ == "__main__":

@@ -41,12 +41,21 @@ class CapabilityManifestTests(unittest.TestCase):
         self.assertEqual(seedance_25["durationSeconds"], {"min": 4, "max": 30})
         self.assertEqual(seedance_25["taskTypes"], ["reference", "frames", "edit", "extend"])
         self.assertEqual(seedance_25["referenceLimits"]["total"], 50)
+        for model_id in (
+            "seedance-2-0",
+            "seedance-2-0-fast",
+            "seedance-2-0-mini",
+            "dreamina-seedance-2-5-260628",
+        ):
+            self.assertIs(models[model_id]["generateAudioSupported"], True)
+            self.assertIs(models[model_id]["generateAudioDefault"], True)
 
         h3 = models["MiniMax-H3"]
         self.assertEqual(h3["endpoints"]["create"], "/api/tasks/minimax-generation")
         self.assertEqual(h3["endpoints"]["freezeCredit"], "/api/tasks/minimax-generation/freeze-credit")
         self.assertEqual(h3["resolutions"], ["768P", "2K"])
         self.assertEqual(h3["durationSeconds"], {"min": 4, "max": 15})
+        self.assertIs(h3["rules"]["generateAudioSupported"], False)
 
     def test_lists_current_image_and_audio_models(self) -> None:
         self.assertEqual(

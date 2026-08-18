@@ -11,11 +11,11 @@ REPO_ROOT = Path(__file__).parents[2]
 
 
 class InstallerTests(unittest.TestCase):
-    def test_public_install_is_pinned_to_release_v020(self) -> None:
+    def test_public_install_is_pinned_to_release_v021(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
-        self.assertIn('VERSION=${HOLYCRAB_INSTALL_VERSION:-v0.2.0}', installer)
+        self.assertIn('VERSION=${HOLYCRAB_INSTALL_VERSION:-v0.2.1}', installer)
 
-        release_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.0/install.sh"
+        release_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.1/install.sh"
         for document in (REPO_ROOT / "README.md", REPO_ROOT / "HolyCrab CLI 使用指南.md"):
             content = document.read_text(encoding="utf-8")
             self.assertIn(release_url, content)
