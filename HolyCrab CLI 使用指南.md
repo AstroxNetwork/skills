@@ -24,7 +24,7 @@ flowchart TD
 
 ## 1. 安装
 
-macOS / Linux 推荐安装固定版本：
+支持 macOS 和 Linux，需要 Python 3.10+ 与 `curl`。推荐安装固定版本：
 
 这条命令只在 `v0.2.1` 正式发布后可用；仅保存为 Draft Release 时，内部测试人员仍应使用下面的仓库源码安装方式。
 
@@ -59,6 +59,8 @@ holycrab doctor --json
 ```
 
 看到 `"ok": true` 就说明本地文件齐了。`"keyConfigured": false` 很正常，因为还没配置 API Key。
+
+覆盖安装或升级时直接重新运行安装命令，不需要先卸载；本机保存的 Key 和任务记录不会被安装器删除。完整卸载命令见仓库 README。
 
 ## 2. 注册并配置 API Key
 
@@ -100,7 +102,7 @@ holycrab models show dreamina-seedance-2-5-260628
 holycrab models show MiniMax-H3
 ```
 
-先查再用，不要凭记忆猜时长、清晰度或素材数量。模型更新时，CLI 和 MCP 读取同一份公开能力清单。
+先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.2.1` 的快照版本是 `2026-08-22`。
 
 ## 4. 第一次生成图片
 
@@ -231,3 +233,11 @@ holycrab auth clear-key
 ```
 
 这只删除本机保存的 Key。需要彻底撤销时，还要去 HolyCrab 网页禁用该 Key。
+
+## 11. 隐私、条款与支持
+
+HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政策和服务条款。
+
+- [Privacy Policy](https://holycrab.ai/privacy/)
+- [Terms of Service](https://holycrab.ai/terms/)
+- 普通使用问题：`cs@holycrab.ai`

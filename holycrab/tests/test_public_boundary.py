@@ -13,6 +13,7 @@ PUBLIC_FILES = (
     REPO_ROOT / "install.sh",
     REPO_ROOT / "bin" / "holycrab",
     REPO_ROOT / "holycrab" / "SKILL.md",
+    REPO_ROOT / "holycrab" / "agents" / "openai.yaml",
     REPO_ROOT / "holycrab" / "references" / "api.md",
     REPO_ROOT / "holycrab" / "references" / "capabilities.json",
     REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py",
@@ -44,6 +45,26 @@ class PublicBoundaryTests(unittest.TestCase):
         self.assertNotIn("本仓库不会自动提交真实付费生成任务", readme)
         self.assertIn("测试和开发验证不会调用正式生成接口或产生费用", readme)
         self.assertIn("用户确认后会提交真实付费任务", readme)
+
+    def test_public_docs_use_the_approved_privacy_wording_and_links(self) -> None:
+        joined = "\n".join(path.read_text(encoding="utf-8") for path in PUBLIC_FILES)
+        approved = "HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政策和服务条款。"
+        self.assertIn(approved, joined)
+        self.assertIn("https://holycrab.ai/privacy/", joined)
+        self.assertIn("https://holycrab.ai/terms/", joined)
+        self.assertIn("cs@holycrab.ai", joined)
+        self.assertNotIn("提示词和素材会上传", joined)
+
+    def test_public_docs_describe_a_versioned_snapshot_not_live_capabilities(self) -> None:
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        skill = (REPO_ROOT / "holycrab" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("2026-08-22", readme)
+        self.assertIn("versioned capability snapshot", skill)
+        self.assertNotIn("Treat the capability response as current", skill)
+
+    def test_skill_explains_the_seed_audio_model_field_exception(self) -> None:
+        skill = (REPO_ROOT / "holycrab" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("omit `model` from the Seed Audio request body", skill)
 
 
 if __name__ == "__main__":

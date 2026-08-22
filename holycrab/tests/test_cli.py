@@ -41,6 +41,23 @@ class LocalAuthenticationTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         self.assertEqual(holycrab.credential(), ("X-User-Token", "local-secret"))
 
+    def test_custom_base_url_is_rejected_before_reading_a_key(self) -> None:
+        with patch.dict(os.environ, {"HOLYCRAB_BASE_URL": "https://other.example"}), patch.object(
+            holycrab, "credential"
+        ) as credential:
+            with self.assertRaisesRegex(SystemExit, "unset HOLYCRAB_BASE_URL"):
+                holycrab.send("GET", "/api/user/me")
+        credential.assert_not_called()
+
+    def test_saved_base_url_is_never_used(self) -> None:
+        holycrab.save_config({"apiKey": "local-secret", "baseUrl": "https://other.example"})
+        self.assertEqual(holycrab.base_url(), holycrab.DEFAULT_BASE_URL)
+
+    def test_capability_manifest_path_cannot_be_overridden(self) -> None:
+        with patch.dict(os.environ, {"HOLYCRAB_CAPABILITIES_PATH": "/tmp/forged.json"}):
+            with self.assertRaisesRegex(SystemExit, "unset HOLYCRAB_CAPABILITIES_PATH"):
+                holycrab.capabilities_path()
+
     def test_environment_api_key_overrides_saved_key(self) -> None:
         holycrab.save_config({"apiKey": "saved-secret"})
         with patch.dict(os.environ, {"HOLYCRAB_API_KEY": "environment-secret"}):
@@ -52,7 +69,7 @@ class LocalAuthenticationTests(unittest.TestCase):
         with patch("sys.stdin", io.StringIO("entered-secret\n")), patch.object(
             holycrab,
             "send",
-            return_value=(200, {"code": 0, "data": {"email": "student@example.com"}}),
+            return_value=(200, {"code": 0, "data": {"username": "student", "credit": 100}}),
         ) as send, redirect_stdout(output):
             self.assertEqual(holycrab.command_set_key(args), 0)
         self.assertNotIn("entered-secret", output.getvalue())
@@ -65,11 +82,12 @@ class LocalAuthenticationTests(unittest.TestCase):
         with patch("sys.stdin", io.StringIO("entered-secret\n")), patch.object(
             holycrab,
             "send",
-            return_value=(200, {"code": 200, "data": {"email": "student@example.com"}}),
+            return_value=(200, {"code": 200, "data": {"username": "student", "credit": 100}}),
         ), redirect_stdout(output):
             self.assertEqual(holycrab.command_set_key(args), 0)
         self.assertEqual(holycrab.load_config()["apiKey"], "entered-secret")
-        self.assertIn("student@example.com", output.getvalue())
+        self.assertIn('"username": "student"', output.getvalue())
+        self.assertNotIn("email", output.getvalue())
 
     def test_set_key_warns_when_environment_key_will_override_saved_key(self) -> None:
         args = argparse.Namespace(stdin=True, no_verify=False)
@@ -79,7 +97,7 @@ class LocalAuthenticationTests(unittest.TestCase):
         ), patch.object(
             holycrab,
             "send",
-            return_value=(200, {"code": 200, "data": {"email": "student@example.com"}}),
+            return_value=(200, {"code": 200, "data": {"username": "student", "credit": 100}}),
         ), redirect_stdout(output):
             self.assertEqual(holycrab.command_set_key(args), 0)
         self.assertEqual(holycrab.load_config()["apiKey"], "new-saved-secret")
@@ -99,7 +117,7 @@ class LocalAuthenticationTests(unittest.TestCase):
         with patch.object(
             holycrab,
             "send",
-            return_value=(200, {"code": 200, "data": {"email": "student@example.com"}}),
+            return_value=(200, {"code": 200, "data": {"username": "student", "credit": 100}}),
         ), redirect_stdout(output):
             self.assertEqual(holycrab.command_auth_status(argparse.Namespace()), 0)
         value = json.loads(output.getvalue())
@@ -209,6 +227,27 @@ class GenerationWorkflowTests(unittest.TestCase):
             ("/api/tasks/minimax-generation/freeze-credit", "/api/tasks/minimax-generation"),
         )
 
+    def test_public_capability_resolves_schema_without_routes(self) -> None:
+        model = holycrab.find_model("seedream-5-0-pro-260628")
+        self.assertNotIn("endpoints", model)
+        self.assertNotIn("requestSchemaRef", model)
+        self.assertEqual(model["requestSchema"]["properties"]["size"]["type"], "string")
+        self.assertEqual(model["sizes"], ["1K", "2K"])
+
+    def test_public_snapshot_can_describe_three_release_scenarios(self) -> None:
+        image = holycrab.find_model("seedream-5-0-pro-260628")
+        self.assertIn("1K", image["sizes"])
+        self.assertIn("imageUrls", image["requestSchema"]["properties"])
+
+        video = holycrab.find_model("dreamina-seedance-2-5-260628")
+        self.assertIn("1080p", video["resolutions"])
+        self.assertIs(video["generateAudioDefault"], True)
+        self.assertIn("generateAudio", video["requestSchema"]["properties"])
+
+        audio = holycrab.find_model("seed-audio-1.0")
+        self.assertIn("mp3", audio["formats"])
+        self.assertIn("audioConfig", audio["requestSchema"]["properties"])
+
     def test_seedance_video_defaults_to_generated_audio(self) -> None:
         payload = {
             "model": "seedance-2-0-mini",
@@ -304,6 +343,7 @@ class GenerationWorkflowTests(unittest.TestCase):
         ) as send:
             result = holycrab.create_generation("image", payload, confirmed=False)
         self.assertTrue(result["confirmationRequired"])
+        self.assertNotIn("endpoint", result)
         send.assert_called_once_with(
             "POST", "/api/tasks/image-generation/freeze-credit", payload=payload
         )
@@ -411,12 +451,20 @@ class PublicProjectionTests(unittest.TestCase):
         output = io.StringIO()
         response = {
             "code": 0,
-            "data": {"email": "student@example.com", "credit": 100, "databaseId": 42, "admin": True},
+            "data": {
+                "username": "student",
+                "nickname": "Student",
+                "credit": 100,
+                "email": "student@example.com",
+                "inviteCode": "PRIVATE",
+                "databaseId": 42,
+                "admin": True,
+            },
         }
         with patch.object(holycrab, "send", return_value=(200, response)), redirect_stdout(output):
             self.assertEqual(holycrab.command_credits_balance(argparse.Namespace()), 0)
         data = json.loads(output.getvalue())["response"]["data"]
-        self.assertEqual(data, {"email": "student@example.com", "credit": 100})
+        self.assertEqual(data, {"username": "student", "nickname": "Student", "credit": 100})
 
 
 class AssetUploadTests(unittest.TestCase):

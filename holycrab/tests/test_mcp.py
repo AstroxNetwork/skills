@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import tempfile
 import unittest
@@ -66,6 +67,32 @@ class McpProtocolTests(unittest.TestCase):
         self.assertNotIn("request", names)
         self.assertLessEqual(len(names), 9)
 
+    def test_capability_get_returns_public_schema_without_api_routes(self) -> None:
+        response = holycrab.mcp_dispatch(
+            {
+                "jsonrpc": "2.0",
+                "id": 21,
+                "method": "tools/call",
+                "params": {
+                    "name": "capability_get",
+                    "arguments": {"model": "seedream-5-0-pro-260628"},
+                },
+            }
+        )
+        result = response["result"]
+        self.assertFalse(result["isError"])
+        content = json.loads(result["content"][0]["text"])
+        self.assertNotIn("endpoints", content)
+        self.assertIn("requestSchema", content)
+        self.assertEqual(content["capabilitySnapshotVersion"], "2026-08-22")
+        self.assertIn("1K", content["sizes"])
+
+    def test_capabilities_list_identifies_the_versioned_snapshot(self) -> None:
+        result = holycrab.mcp_tool_call("capabilities_list", {})
+        self.assertEqual(result["snapshotVersion"], "2026-08-22")
+        self.assertEqual(result["publishedAt"], "2026-08-22")
+        self.assertGreater(len(result["models"]), 0)
+
     def test_generation_create_without_confirmation_only_returns_estimate(self) -> None:
         params = {
             "name": "generation_create",
@@ -90,6 +117,7 @@ class McpProtocolTests(unittest.TestCase):
             )
         self.assertFalse(response["result"]["isError"])
         self.assertIn("confirmationRequired", response["result"]["structuredContent"])
+        self.assertNotIn("endpoint", response["result"]["structuredContent"])
         self.assertEqual(send.call_count, 1)
 
     def test_confirmed_generation_requires_stable_attempt_id(self) -> None:

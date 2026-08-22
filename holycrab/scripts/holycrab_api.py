@@ -56,24 +56,11 @@ def credential() -> tuple[str, str]:
 
 
 def base_url() -> str:
-    value = os.environ.get("HOLYCRAB_BASE_URL", DEFAULT_BASE_URL).strip()
-    parsed = urllib.parse.urlsplit(value)
-    try:
-        port = parsed.port
-    except ValueError as error:
-        raise SystemExit(f"HOLYCRAB_BASE_URL must be a credential-free HTTPS origin: {error}") from error
-    if (
-        parsed.scheme.lower() != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.path not in ("", "/")
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise SystemExit("HOLYCRAB_BASE_URL must be a credential-free HTTPS origin")
-    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
-    return f"https://{host}{f':{port}' if port is not None else ''}"
+    if "HOLYCRAB_BASE_URL" in os.environ:
+        raise SystemExit(
+            "Custom API origins are not supported. Run `unset HOLYCRAB_BASE_URL` and try again."
+        )
+    return DEFAULT_BASE_URL
 
 
 def url_origin(url: str) -> tuple[str, str, int]:

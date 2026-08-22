@@ -22,22 +22,17 @@ SPEC.loader.exec_module(holycrab_api)
 
 
 class BaseUrlSecurityTests(unittest.TestCase):
-    def test_accepts_credential_free_https_origin(self) -> None:
-        with patch.dict(os.environ, {"HOLYCRAB_BASE_URL": "https://staging.holycrab.ai:8443/"}):
-            self.assertEqual(holycrab_api.base_url(), "https://staging.holycrab.ai:8443")
+    def test_uses_the_fixed_production_origin(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(holycrab_api.base_url(), holycrab_api.DEFAULT_BASE_URL)
 
-    def test_rejects_unsafe_base_urls(self) -> None:
-        unsafe_urls = (
-            "http://holycrab.example",
-            "https://user:password@holycrab.example",
-            "https://holycrab.example/api",
-            "https://holycrab.example?token=secret",
-            "https://holycrab.example#fragment",
-        )
-        for value in unsafe_urls:
-            with self.subTest(value=value), patch.dict(os.environ, {"HOLYCRAB_BASE_URL": value}):
-                with self.assertRaisesRegex(SystemExit, "HTTPS origin"):
-                    holycrab_api.base_url()
+    def test_rejects_every_base_url_override_before_reading_a_key(self) -> None:
+        with patch.dict(os.environ, {"HOLYCRAB_BASE_URL": holycrab_api.DEFAULT_BASE_URL}), patch.object(
+            holycrab_api, "credential"
+        ) as credential:
+            with self.assertRaisesRegex(SystemExit, "unset HOLYCRAB_BASE_URL"):
+                holycrab_api.send("GET", "/api/user/me")
+        credential.assert_not_called()
 
     def test_allows_same_origin_redirect(self) -> None:
         handler = holycrab_api.SameOriginRedirectHandler("https://api.holycrab.ai")

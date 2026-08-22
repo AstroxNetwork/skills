@@ -5,13 +5,14 @@ description: Use when a user wants to discover, estimate, create, upload media f
 
 # HolyCrab
 
-Use the installed `holycrab` CLI or its local MCP tools. Treat the capability response as current; do not guess model limits from memory.
+Use the installed `holycrab` CLI or its local MCP tools. Treat its versioned capability snapshot as the contract bundled with the installed release; do not call it live data and do not guess model limits from memory.
 
 ## Safe workflow
 
 1. Check the configured API Key with `holycrab auth status`. If missing, ask the user to run `holycrab setup` locally. Never ask them to paste the API Key into chat.
 2. Query `capabilities_list` / `capability_get`, or `holycrab models list|show`, before building a request.
    Seedance video requests default to `generateAudio: true` when the field is omitted. Preserve an explicit `false`. Never add this field to a model whose capability says audio generation is unsupported.
+   Select `seed-audio-1.0` for Seed Audio capability discovery, but omit `model` from the Seed Audio request body as indicated by `modelFieldInRequest: false`.
 3. For a local media file, use `holycrab assets upload` and keep only the returned stable asset ID.
 4. Call `generation_estimate` or `holycrab generate estimate`. Tell the user the model, output specification, duration, and estimated credit.
 5. Wait for explicit confirmation. Create one new stable `attemptId` for that draw, then call `generation_create` once with `confirmed: true` and that ID, or run `holycrab generate create ... --yes` once.
@@ -30,4 +31,4 @@ Do not retry the same submission after a timeout or broken connection. Keep its 
 - Do not use a generic raw-request path when a named CLI command or MCP tool exists.
 - Do not invent output URLs or retry a paid operation during polling.
 
-The bundled [public capability manifest](references/capabilities.json) is a fallback for discovery. Prefer the installed CLI/MCP response when available.
+The bundled [public capability manifest](references/capabilities.json) is the release snapshot for discovery. Prefer the installed CLI/MCP response because it identifies the snapshot version in its output.

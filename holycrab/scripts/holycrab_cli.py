@@ -39,6 +39,21 @@ except ImportError:  # pragma: no cover - POSIX runtime
 VERSION = "0.2.1"
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
 PUBLIC_ACCOUNT_URL = "https://generate.holycrab.ai/user-tokens"
+GENERATION_ROUTES = {
+    "seedanceVideo": ("/api/tasks/generation/freeze-credit", "/api/tasks/generation"),
+    "minimaxVideo": (
+        "/api/tasks/minimax-generation/freeze-credit",
+        "/api/tasks/minimax-generation",
+    ),
+    "imageGeneration": (
+        "/api/tasks/image-generation/freeze-credit",
+        "/api/tasks/image-generation",
+    ),
+    "audioGeneration": (
+        "/api/tasks/audio-generation/freeze-credit",
+        "/api/tasks/audio-generation",
+    ),
+}
 LATEST_INITIALIZE_PROTOCOL = "2025-11-25"
 SUPPORTED_INITIALIZE_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 SENSITIVE_OUTPUT_KEYS = {
@@ -66,7 +81,7 @@ SENSITIVE_URL_QUERY_KEYS = {
     "xgoogcredential",
 }
 URL_IN_TEXT_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
-PUBLIC_ACCOUNT_FIELDS = ("username", "email", "nickname", "credit", "inviteCode")
+PUBLIC_ACCOUNT_FIELDS = ("username", "nickname", "credit")
 PUBLIC_TASK_FIELDS = (
     "uniqId",
     "taskId",
@@ -206,20 +221,11 @@ def credential(explicit: str | None = None) -> tuple[str, str]:
 
 
 def base_url() -> str:
-    configured = os.environ.get("HOLYCRAB_BASE_URL") or load_config().get("baseUrl") or DEFAULT_BASE_URL
-    value = str(configured).strip()
-    parsed = urllib.parse.urlsplit(value)
-    try:
-        port = parsed.port
-    except ValueError as error:
-        raise SystemExit(f"HOLYCRAB_BASE_URL must be a credential-free HTTPS origin: {error}") from error
-    if (
-        parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username is not None
-        or parsed.password is not None or parsed.path not in ("", "/") or parsed.query or parsed.fragment
-    ):
-        raise SystemExit("HOLYCRAB_BASE_URL must be a credential-free HTTPS origin")
-    host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
-    return f"https://{host}{f':{port}' if port is not None else ''}"
+    if "HOLYCRAB_BASE_URL" in os.environ:
+        raise SystemExit(
+            "Custom API origins are not supported. Run `unset HOLYCRAB_BASE_URL` and try again."
+        )
+    return DEFAULT_BASE_URL
 
 
 def url_origin(url: str) -> tuple[str, str, int]:
@@ -443,9 +449,11 @@ def print_response(status: int, response: Any) -> int:
 
 
 def capabilities_path() -> Path:
-    override = os.environ.get("HOLYCRAB_CAPABILITIES_PATH")
+    if "HOLYCRAB_CAPABILITIES_PATH" in os.environ:
+        raise SystemExit(
+            "Capability overrides are not supported. Run `unset HOLYCRAB_CAPABILITIES_PATH` and try again."
+        )
     candidates = [
-        Path(override).expanduser() if override else None,
         Path(__file__).resolve().parents[1] / "references" / "capabilities.json",
         Path(__file__).resolve().parent / "references" / "capabilities.json",
     ]
@@ -464,11 +472,42 @@ def load_capabilities() -> dict[str, Any]:
 
 def all_models() -> list[dict[str, Any]]:
     manifest = load_capabilities()
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        raise SystemExit("HolyCrab capability snapshot metadata is missing")
+    snapshot_version = source.get("version")
+    published_at = source.get("publishedAt")
+    if not isinstance(snapshot_version, str) or not isinstance(published_at, str):
+        raise SystemExit("HolyCrab capability snapshot version is missing")
+    schemas = manifest.get("requestSchemas")
+    if not isinstance(schemas, dict):
+        raise SystemExit("HolyCrab capability request schemas are missing")
     output = []
     for kind, group in (("video", "videoModels"), ("image", "imageModels"), ("audio", "audioModels")):
         for model in manifest.get(group, []):
-            output.append({"kind": kind, **model})
+            resolved = {
+                "kind": kind,
+                "capabilitySnapshotVersion": snapshot_version,
+                "capabilitySnapshotPublishedAt": published_at,
+                **model,
+            }
+            schema_ref = resolved.pop("requestSchemaRef", None)
+            schema = schemas.get(schema_ref)
+            if not isinstance(schema, dict):
+                raise SystemExit(f"HolyCrab capability schema is missing: {schema_ref}")
+            resolved["requestSchema"] = schema
+            output.append(resolved)
     return output
+
+
+def capability_snapshot() -> dict[str, Any]:
+    models = all_models()
+    first = models[0] if models else {}
+    return {
+        "snapshotVersion": first.get("capabilitySnapshotVersion"),
+        "publishedAt": first.get("capabilitySnapshotPublishedAt"),
+        "models": models,
+    }
 
 
 def find_model(model_id: str) -> dict[str, Any]:
@@ -482,15 +521,15 @@ def generation_endpoints(kind: str, payload: dict[str, Any]) -> tuple[str, str]:
     if kind not in {"video", "image", "audio"}:
         raise SystemExit("Generation kind must be video, image, or audio")
     if kind == "audio":
-        return "/api/tasks/audio-generation/freeze-credit", "/api/tasks/audio-generation"
+        return GENERATION_ROUTES["audioGeneration"]
     model_id = payload.get("model")
     if not isinstance(model_id, str):
         raise SystemExit("Generation request must include model")
     model = find_model(model_id)
     if model["kind"] != kind:
         raise SystemExit(f"Model {model_id} is a {model['kind']} model, not {kind}")
-    endpoints = model["endpoints"]
-    return endpoints["freezeCredit"], endpoints["create"]
+    route = "minimaxVideo" if model_id == "MiniMax-H3" else "seedanceVideo" if kind == "video" else "imageGeneration"
+    return GENERATION_ROUTES[route]
 
 
 def normalize_generation_request(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -556,7 +595,7 @@ def estimate_generation(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
     normalized = normalize_generation_request(kind, payload)
     freeze_endpoint, _ = generation_endpoints(kind, normalized)
     status, response = send("POST", freeze_endpoint, payload=None if kind == "audio" else normalized)
-    return {"kind": kind, "endpoint": freeze_endpoint, "estimate": response_data(status, response)}
+    return {"kind": kind, "estimate": response_data(status, response)}
 
 
 def create_generation(
@@ -643,7 +682,7 @@ def command_set_key(args: argparse.Namespace) -> int:
         print("Warning: HOLYCRAB_API_KEY is still set and overrides the saved login.")
         print("Run: unset HOLYCRAB_API_KEY")
     if isinstance(account, dict):
-        visible = {key: account.get(key) for key in ("email", "nickname", "credit") if key in account}
+        visible = public_account_data(account)
         if visible:
             print_json(visible)
     return 0
@@ -676,7 +715,7 @@ def command_clear_key(args: argparse.Namespace) -> int:
 def command_models_list(args: argparse.Namespace) -> int:
     models = all_models()
     brief = [{"id": item["id"], "label": item.get("label"), "kind": item["kind"]} for item in models]
-    print_json(models if args.json else brief)
+    print_json(capability_snapshot() if args.json else brief)
     return 0
 
 
@@ -887,7 +926,7 @@ def command_doctor(args: argparse.Namespace) -> int:
 
 MCP_TOOLS = [
     {"name": "account_get", "description": "Check the current HolyCrab account and credit balance.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
-    {"name": "capabilities_list", "description": "List current public generation capabilities.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
+    {"name": "capabilities_list", "description": "List the public generation capability snapshot bundled with this release.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
     {"name": "capability_get", "description": "Get limits for one public model.", "inputSchema": {"type": "object", "properties": {"model": {"type": "string"}}, "required": ["model"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
     {"name": "generation_estimate", "description": "Estimate credit without creating a task.", "inputSchema": {"type": "object", "properties": {"kind": {"enum": ["video", "image", "audio"]}, "request": {"type": "object"}}, "required": ["kind", "request"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
     {"name": "generation_create", "description": "Create exactly one billable generation after explicit user confirmation. Supply one stable attemptId per confirmed draw and reuse it only when reconciling a retry.", "inputSchema": {"type": "object", "properties": {"kind": {"enum": ["video", "image", "audio"]}, "request": {"type": "object"}, "confirmed": {"type": "boolean"}, "attemptId": {"type": "string", "minLength": 1, "description": "Client-generated stable ID for this one confirmed draw."}}, "required": ["kind", "request", "confirmed", "attemptId"], "additionalProperties": False}, "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}},
@@ -901,7 +940,7 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
         status, response = send("GET", "/api/user/me")
         return public_account_data(response_data(status, response))
     if name == "capabilities_list":
-        return all_models()
+        return capability_snapshot()
     if name == "capability_get":
         return find_model(str(arguments.get("model", "")))
     if name == "generation_estimate":

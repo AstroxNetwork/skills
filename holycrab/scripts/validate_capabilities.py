@@ -46,6 +46,11 @@ def validate_repository(repo_root: Path) -> list[str]:
     if not isinstance(source_version, str) or not source_version:
         errors.append("capabilities.json source.version must be a non-empty public version")
 
+    request_schemas = manifest.get("requestSchemas")
+    if not isinstance(request_schemas, dict) or not request_schemas:
+        errors.append("capabilities.json requestSchemas must be a non-empty object")
+        request_schemas = {}
+
     all_models: list[dict[str, Any]] = []
     for group in ("videoModels", "imageModels", "audioModels"):
         models = manifest.get(group)
@@ -67,17 +72,31 @@ def validate_repository(repo_root: Path) -> list[str]:
         model_id = model.get("id")
         if isinstance(model_id, str) and model_id not in api_reference:
             errors.append(f"API reference is missing model id: {model_id}")
-        endpoints = model.get("endpoints")
-        if not isinstance(endpoints, dict):
-            errors.append(f"model {model_id} is missing endpoints")
+        if "endpoints" in model:
+            errors.append(f"public capability {model_id} must not expose API routes")
+        schema_ref = model.get("requestSchemaRef")
+        if not isinstance(schema_ref, str) or schema_ref not in request_schemas:
+            errors.append(f"model {model_id} has an invalid requestSchemaRef: {schema_ref}")
+
+    for schema_name, schema in request_schemas.items():
+        if not isinstance(schema, dict) or schema.get("type") != "object":
+            errors.append(f"request schema {schema_name} must be an object schema")
             continue
-        for endpoint in endpoints.values():
-            if not isinstance(endpoint, str) or endpoint not in api_reference:
-                errors.append(f"API reference is missing endpoint for {model_id}: {endpoint}")
+        if not isinstance(schema.get("properties"), dict) or not isinstance(schema.get("required"), list):
+            errors.append(f"request schema {schema_name} must define properties and required")
 
     for label in ("Seedance 2.5", "MiniMax H3"):
         if label not in api_reference:
             errors.append(f"API reference is missing {label}")
+    for contract_token in (
+        "1080p",
+        "1K",
+        "4,624,220",
+        "ogg_opus",
+        "120 秒",
+    ):
+        if contract_token not in api_reference:
+            errors.append(f"API reference is missing current capability detail: {contract_token}")
     if "references/capabilities.json" not in skill:
         errors.append("SKILL.md must link to references/capabilities.json")
     return errors
