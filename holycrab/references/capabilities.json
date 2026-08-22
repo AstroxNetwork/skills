@@ -2,17 +2,106 @@
   "schemaVersion": 1,
   "source": {
     "name": "HolyCrab Public Capability Registry",
-    "version": "2026-08-14",
-    "publishedAt": "2026-08-14"
+    "version": "2026-08-22",
+    "publishedAt": "2026-08-22"
+  },
+  "requestSchemas": {
+    "seedanceVideo": {
+      "type": "object",
+      "required": ["model", "prompt", "duration", "resolution"],
+      "additionalProperties": false,
+      "properties": {
+        "model": {"type": "string", "enum": ["seedance-2-0", "seedance-2-0-fast", "seedance-2-0-mini", "dreamina-seedance-2-5-260628"]},
+        "prompt": {"type": "string"},
+        "videoTaskType": {"type": "string", "enum": ["reference", "frames", "edit", "extend"]},
+        "sourceVideoAssetId": {"type": "string"},
+        "ratio": {"type": "string", "enum": ["source", "adaptive", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]},
+        "duration": {"type": "integer", "description": "Model and task-type limits are listed on the selected capability."},
+        "resolution": {"type": "string", "enum": ["480p", "720p", "1080p", "4k"]},
+        "generateAudio": {"type": "boolean", "default": true},
+        "imageAssetIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "videoAssetIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "audioAssetIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "firstFrameAssetId": {"type": "string"},
+        "lastFrameAssetId": {"type": "string"}
+      }
+    },
+    "minimaxVideo": {
+      "type": "object",
+      "required": ["model", "prompt", "duration", "resolution", "ratio"],
+      "additionalProperties": false,
+      "properties": {
+        "model": {"type": "string", "const": "MiniMax-H3"},
+        "prompt": {"type": "string", "minLength": 1},
+        "resolution": {"type": "string", "enum": ["768P", "2K"]},
+        "duration": {"type": "integer", "minimum": 4, "maximum": 15},
+        "ratio": {"type": "string", "enum": ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]},
+        "imageAssetIds": {"type": "array", "maxItems": 9, "items": {"type": "string"}, "uniqueItems": true},
+        "videoAssetIds": {"type": "array", "maxItems": 3, "items": {"type": "string"}, "uniqueItems": true},
+        "audioAssetIds": {"type": "array", "maxItems": 3, "items": {"type": "string"}, "uniqueItems": true},
+        "firstFrameAssetId": {"type": "string"},
+        "lastFrameAssetId": {"type": "string"}
+      }
+    },
+    "imageGeneration": {
+      "type": "object",
+      "required": ["model", "prompt"],
+      "additionalProperties": false,
+      "properties": {
+        "model": {"type": "string", "enum": ["seedream-5-0-pro-260628", "seedream-5-0-lite-260128", "seedream-4-5-251128"]},
+        "prompt": {"type": "string", "minLength": 1},
+        "size": {"type": "string", "description": "Use a named size listed on the selected capability or WIDTHxHEIGHT."},
+        "imageUrls": {"type": "array", "maxItems": 14, "items": {"type": "string", "format": "uri"}},
+        "outputFormat": {"type": "string", "enum": ["jpeg", "png"], "default": "jpeg"}
+      }
+    },
+    "audioGeneration": {
+      "type": "object",
+      "required": ["textPrompt"],
+      "additionalProperties": false,
+      "properties": {
+        "textPrompt": {"type": "string", "minLength": 1, "maxLength": 3000},
+        "references": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "speaker": {"type": "string"},
+              "audio_data": {"type": "string", "description": "Raw Base64 without a data URL prefix."},
+              "audio_url": {"type": "string", "format": "uri"},
+              "image_data": {"type": "string", "description": "Raw Base64 without a data URL prefix."},
+              "image_url": {"type": "string", "format": "uri"}
+            },
+            "oneOf": [
+              {"required": ["speaker"]},
+              {"required": ["audio_data"]},
+              {"required": ["audio_url"]},
+              {"required": ["image_data"]},
+              {"required": ["image_url"]}
+            ]
+          }
+        },
+        "audioConfig": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "format": {"type": "string", "enum": ["wav", "mp3", "pcm", "ogg_opus"]},
+            "sample_rate": {"type": "integer", "enum": [8000, 16000, 24000, 32000, 44100, 48000]},
+            "speech_rate": {"type": "integer", "minimum": -50, "maximum": 100},
+            "loudness_rate": {"type": "integer", "minimum": -50, "maximum": 100},
+            "pitch_rate": {"type": "integer", "minimum": -12, "maximum": 12}
+          }
+        }
+      }
+    }
   },
   "videoModels": [
     {
       "id": "seedance-2-0",
       "label": "Seedance 2.0",
-      "endpoints": {
-        "create": "/api/tasks/generation",
-        "freezeCredit": "/api/tasks/generation/freeze-credit"
-      },
+      "requestSchemaRef": "seedanceVideo",
       "resolutions": ["480p", "720p", "1080p", "4k"],
       "durationSeconds": {"min": 4, "max": 15},
       "taskTypes": ["reference", "frames"],
@@ -22,10 +111,7 @@
     {
       "id": "seedance-2-0-fast",
       "label": "Seedance 2.0 Fast",
-      "endpoints": {
-        "create": "/api/tasks/generation",
-        "freezeCredit": "/api/tasks/generation/freeze-credit"
-      },
+      "requestSchemaRef": "seedanceVideo",
       "resolutions": ["480p", "720p"],
       "durationSeconds": {"min": 4, "max": 15},
       "taskTypes": ["reference", "frames"],
@@ -35,10 +121,7 @@
     {
       "id": "seedance-2-0-mini",
       "label": "Seedance 2.0 Mini",
-      "endpoints": {
-        "create": "/api/tasks/generation",
-        "freezeCredit": "/api/tasks/generation/freeze-credit"
-      },
+      "requestSchemaRef": "seedanceVideo",
       "resolutions": ["480p", "720p"],
       "durationSeconds": {"min": 4, "max": 15},
       "taskTypes": ["reference", "frames"],
@@ -48,25 +131,15 @@
     {
       "id": "dreamina-seedance-2-5-260628",
       "label": "Seedance 2.5",
-      "endpoints": {
-        "create": "/api/tasks/generation",
-        "freezeCredit": "/api/tasks/generation/freeze-credit"
-      },
-      "resolutions": ["480p", "720p"],
+      "requestSchemaRef": "seedanceVideo",
+      "resolutions": ["480p", "720p", "1080p"],
       "durationSeconds": {"min": 4, "max": 30},
       "taskTypes": ["reference", "frames", "edit", "extend"],
       "generateAudioSupported": true,
       "generateAudioDefault": true,
       "ratios": ["source", "adaptive", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"],
       "forcedAdaptiveTaskTypes": ["frames", "edit", "extend"],
-      "referenceLimits": {
-        "images": 30,
-        "videos": 10,
-        "audio": 10,
-        "total": 50,
-        "combinedVideoSeconds": 30,
-        "combinedAudioSeconds": 30
-      },
+      "referenceLimits": {"images": 30, "videos": 10, "audio": 10, "total": 50, "combinedVideoSeconds": 30, "combinedAudioSeconds": 30},
       "sourceVideoRules": {
         "edit": {"sourceMinSeconds": 4, "sourceMaxSeconds": 30, "requestDuration": -1},
         "extend": {"sourceMinSeconds": 2, "sourceMaxSeconds": 30, "requestDurationMin": 4, "requestDurationMax": 30}
@@ -75,20 +148,11 @@
     {
       "id": "MiniMax-H3",
       "label": "MiniMax H3",
-      "endpoints": {
-        "create": "/api/tasks/minimax-generation",
-        "freezeCredit": "/api/tasks/minimax-generation/freeze-credit"
-      },
+      "requestSchemaRef": "minimaxVideo",
       "resolutions": ["768P", "2K"],
       "durationSeconds": {"min": 4, "max": 15},
       "ratios": ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
-      "referenceLimits": {
-        "images": 9,
-        "videos": 3,
-        "audio": 3,
-        "combinedVideoSeconds": 15,
-        "combinedAudioSeconds": 15
-      },
+      "referenceLimits": {"images": 9, "videos": 3, "audio": 3, "combinedVideoSeconds": 15, "combinedAudioSeconds": 15},
       "rules": {
         "textOnlyRequiresConcreteRatio": true,
         "frameModeForcesAdaptive": true,
@@ -103,36 +167,54 @@
     {
       "id": "seedream-5-0-pro-260628",
       "label": "Seedream 5.0 Pro",
-      "endpoints": {
-        "create": "/api/tasks/image-generation",
-        "freezeCredit": "/api/tasks/image-generation/freeze-credit"
-      }
+      "requestSchemaRef": "imageGeneration",
+      "sizes": ["1K", "2K"],
+      "customSize": {"minPixels": 921600, "maxPixels": 4624220, "dimensionMultiple": 16, "minAspectRatio": "1:16", "maxAspectRatio": "16:1"},
+      "referenceLimits": {"images": 10, "maxBytesEach": 31457280, "minEdgePixelsExclusive": 14, "maxPixelsEach": 36000000},
+      "referenceFormats": ["jpeg", "png", "webp", "bmp", "tiff", "gif", "heic", "heif"],
+      "outputFormatSupported": true,
+      "outputFormats": ["jpeg", "png"],
+      "outputFormatDefault": "jpeg"
     },
     {
       "id": "seedream-5-0-lite-260128",
       "label": "Seedream 5.0 Lite",
-      "endpoints": {
-        "create": "/api/tasks/image-generation",
-        "freezeCredit": "/api/tasks/image-generation/freeze-credit"
-      }
+      "requestSchemaRef": "imageGeneration",
+      "sizes": ["2K", "3K", "4K"],
+      "customSize": {"minPixels": 3686400, "maxPixels": 16777216, "dimensionMultiple": 16, "minAspectRatio": "1:16", "maxAspectRatio": "16:1"},
+      "referenceLimits": {"images": 14, "maxBytesEach": 31457280, "minEdgePixelsExclusive": 14, "maxPixelsEach": 36000000},
+      "referenceFormats": ["jpeg", "png", "webp", "bmp", "tiff", "gif", "heic", "heif"],
+      "outputFormatSupported": true,
+      "outputFormats": ["jpeg", "png"],
+      "outputFormatDefault": "jpeg"
     },
     {
       "id": "seedream-4-5-251128",
       "label": "Seedream 4.5",
-      "endpoints": {
-        "create": "/api/tasks/image-generation",
-        "freezeCredit": "/api/tasks/image-generation/freeze-credit"
-      }
+      "requestSchemaRef": "imageGeneration",
+      "sizes": ["2K", "4K"],
+      "customSize": {"minPixels": 3686400, "maxPixels": 16777216, "dimensionMultiple": 16, "minAspectRatio": "1:16", "maxAspectRatio": "16:1"},
+      "referenceLimits": {"images": 14, "maxBytesEach": 31457280, "minEdgePixelsExclusive": 14, "maxPixelsEach": 36000000},
+      "referenceFormats": ["jpeg", "png", "webp", "bmp", "tiff", "gif", "heic", "heif"],
+      "outputFormatSupported": false
     }
   ],
   "audioModels": [
     {
       "id": "seed-audio-1.0",
       "label": "Seed Audio 1.0",
-      "endpoints": {
-        "create": "/api/tasks/audio-generation",
-        "freezeCredit": "/api/tasks/audio-generation/freeze-credit"
-      }
+      "requestSchemaRef": "audioGeneration",
+      "modelFieldInRequest": false,
+      "textPromptMaxCharacters": 3000,
+      "formats": ["wav", "mp3", "pcm", "ogg_opus"],
+      "sampleRates": [8000, 16000, 24000, 32000, 44100, 48000],
+      "speechRate": {"min": -50, "max": 100},
+      "loudnessRate": {"min": -50, "max": 100},
+      "pitchRate": {"min": -12, "max": 12},
+      "outputDurationSeconds": {"max": 120},
+      "referenceLimits": {"audio": 3, "images": 1, "audioSecondsEachMax": 30, "audioBytesEachMax": 10485760, "imageBytesEachMax": 10485760, "imagesAndAudioMutuallyExclusive": true},
+      "referenceAudioFormats": ["wav", "mp3", "pcm", "ogg"],
+      "referenceImageFormats": ["jpeg", "png", "webp"]
     }
   ]
 }

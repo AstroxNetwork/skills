@@ -6,11 +6,11 @@
 - 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
 - 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-它们共用同一份公开能力清单和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。
+它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.2.1` 内置的能力快照版本为 `2026-08-22`；这是随版本发布的静态合同，不冒充实时模型目录。
 
-## 一键安装
+## 系统要求与一键安装
 
-macOS / Linux：
+支持 macOS 和 Linux，需要 Python 3.10+ 与 `curl`。不需要 `sudo`。
 
 下面的固定版本命令只在 `v0.2.1` 正式发布后可用；GitHub Draft Release 不算公开发布。内部测试请先克隆仓库，再使用后面的本地源码安装方式。
 
@@ -25,6 +25,21 @@ curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.1/install
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+## 覆盖安装、升级和卸载
+
+覆盖安装或升级时，重新运行对应版本的安装命令即可。安装器会覆盖 CLI、Skill 和本地 MCP 所需文件，不会删除 `~/.config/holycrab` 中保存的 Key 与本地任务记录。
+
+卸载程序文件：
+
+```bash
+codex mcp remove holycrab 2>/dev/null || true
+claude mcp remove holycrab 2>/dev/null || true
+rm -f "$HOME/.local/bin/holycrab"
+rm -rf "$HOME/.local/lib/holycrab" "$HOME/.agents/skills/holycrab" "$HOME/.claude/skills/holycrab"
+```
+
+上面的命令保留本机配置。确定已经在网页撤销 Key、并且不再需要本地任务记录后，可另行删除 `$HOME/.config/holycrab`。
 
 ## 配置 Key 和自检
 
@@ -64,6 +79,14 @@ Seedance 视频在没有填写 `generateAudio` 时，CLI 和本地 MCP 会默认
 同一提示词可以主动生成多次。每次明确确认都会创建新的本地 attempt ID 和新的线上任务；同一个 attempt ID 不能重复提交，网络结果不明确时也不会自动重试付费请求。
 
 完整体验步骤见 [HolyCrab CLI 使用指南](HolyCrab%20CLI%20使用指南.md)。公开模型限制见 [capabilities.json](holycrab/references/capabilities.json)。
+
+## 隐私、条款与支持
+
+HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政策和服务条款。
+
+- [Privacy Policy](https://holycrab.ai/privacy/)
+- [Terms of Service](https://holycrab.ai/terms/)
+- 普通使用问题：`cs@holycrab.ai`
 
 ## 本地开发验证
 

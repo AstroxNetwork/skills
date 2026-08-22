@@ -1,4 +1,4 @@
 interface:
-  display_name: "Holycrab"
-  short_description: "安全调用 HolyCrab 生成、素材管理与任务查询 API"
-  default_prompt: "使用 $holycrab 调用 HolyCrab API 创建任务并查询结果。"
+  display_name: "HolyCrab Agent Tools"
+  short_description: "查询能力、估算积分并安全创建 HolyCrab 生成任务"
+  default_prompt: "使用 $holycrab 先查询本版本能力快照并构造合法请求；先估算积分，明确获得我的确认后只提交一次，然后查询任务结果。"

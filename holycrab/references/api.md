@@ -257,7 +257,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 
 通用规则：
 
-1. `seedance-2-0` 支持 `480p`、`720p`、`1080p`、`4k`；Fast、Mini 和 Seedance 2.5 只支持 `480p`、`720p`。
+1. `seedance-2-0` 支持 `480p`、`720p`、`1080p`、`4k`；Seedance 2.5 支持 `480p`、`720p`、`1080p`；Fast 和 Mini 支持 `480p`、`720p`。
 2. 有尾帧必须同时有首帧；首尾帧不能和图片、视频、音频参考列表同时使用。
 3. `frames` 必须提供首帧；`edit`、`extend` 必须且只能配合 `sourceVideoAssetId`，并且不能使用首尾帧。
 4. 素材 ID 必须属于当前 API Key 对应账户，并且素材类型与字段一致。
