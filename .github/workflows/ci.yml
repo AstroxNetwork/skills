@@ -81,3 +81,39 @@ jobs:
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("mcp.json").read_text()); assert data["result"]["serverInfo"]["name"] == "holycrab-local"'
+
+  release:
+    name: Publish release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [quality, official-skill-validation, install-and-mcp]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Prepare immutable release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="$GITHUB_REF_NAME"
+          grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$release_version"
+          grep -Fx "VERSION=$release_version" install.sh
+          test -f ".github/releases/$release_version.md"
+          sh -n install.sh
+          sha256sum install.sh > SHA256SUMS
+      - name: Create the immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="$GITHUB_REF_NAME"
+          if gh release view "$release_version" >/dev/null 2>&1; then
+            echo "Release $release_version already exists; refusing to overwrite published assets." >&2
+            exit 1
+          fi
+          gh release create "$release_version" install.sh SHA256SUMS \
+            --verify-tag \
+            --latest \
+            --title "HolyCrab Agent Tools $release_version" \
+            --notes-file ".github/releases/$release_version.md"

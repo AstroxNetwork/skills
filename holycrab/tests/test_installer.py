@@ -21,14 +21,16 @@ class InstallerTests(unittest.TestCase):
         "SHA256_OPENAI_YAML": REPO_ROOT / "holycrab" / "agents" / "openai.yaml",
     }
 
-    def test_public_install_is_pinned_to_release_v021(self) -> None:
+    def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         self.assertIn("VERSION=v0.2.1", installer)
 
-        release_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.1/install.sh"
+        stable_url = "https://holycrab.ai/cli/install.sh"
+        versioned_raw_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.1/install.sh"
         for document in (REPO_ROOT / "README.md", REPO_ROOT / "HolyCrab CLI 使用指南.md"):
             content = document.read_text(encoding="utf-8")
-            self.assertIn(release_url, content)
+            self.assertIn(stable_url, content)
+            self.assertNotIn(versioned_raw_url, content)
             self.assertNotIn(
                 "https://raw.githubusercontent.com/AstroxNetwork/skills/main/install.sh",
                 content,
@@ -161,6 +163,26 @@ fi
             "mcp serve",
         ):
             self.assertIn(token, workflow)
+
+    def test_tagged_release_uploads_the_installer_after_all_release_gates(self) -> None:
+        workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        for token in (
+            "needs: [quality, official-skill-validation, install-and-mcp]",
+            "if: startsWith(github.ref, 'refs/tags/v')",
+            "contents: write",
+            'release_version="$GITHUB_REF_NAME"',
+            'grep -Fx "VERSION=$release_version" install.sh',
+            'test -f ".github/releases/$release_version.md"',
+            "sha256sum install.sh > SHA256SUMS",
+            'gh release create "$release_version"',
+            "install.sh SHA256SUMS",
+            "--verify-tag",
+            "--latest",
+            '--notes-file ".github/releases/$release_version.md"',
+        ):
+            self.assertIn(token, workflow)
+        self.assertNotIn("--clobber", workflow)
+        self.assertNotIn('gh release upload "$release_version"', workflow)
 
     def test_release_notes_have_the_approved_english_title(self) -> None:
         notes = (REPO_ROOT / ".github" / "releases" / "v0.2.1.md").read_text(encoding="utf-8")

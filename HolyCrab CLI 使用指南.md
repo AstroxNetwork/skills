@@ -26,10 +26,10 @@ flowchart TD
 
 支持 macOS 和 Linux，需要 Python 3.10+ 与 `curl`。推荐安装固定版本：
 
-这条命令只在 `v0.2.1` 正式发布后可用；仅保存为 Draft Release 时，内部测试人员仍应使用下面的仓库源码安装方式。
+这条官方命令始终安装最新正式版。只有通过发布验证并上传安装器的稳定版本才会更新这个入口；Draft 和预发布版本不会进入普通用户的安装流程。内部测试人员仍应使用下面的仓库源码安装方式。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.1/install.sh | sh
+curl -fsSL https://holycrab.ai/cli/install.sh | sh
 ```
 
 当前仓库尚未发布时，可以在仓库目录里测试完全相同的安装过程：
