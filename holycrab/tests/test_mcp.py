@@ -65,7 +65,10 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("generation_create", names)
         self.assertIn("generation_get", names)
         self.assertNotIn("request", names)
-        self.assertLessEqual(len(names), 9)
+        self.assertEqual(names, {"account_get", "capabilities_list", "capability_get",
+                                "generation_estimate", "generation_create", "generation_get", "generation_list",
+                                "real_human_authorization_start", "real_human_authorization_get",
+                                "real_human_groups_list", "real_human_assets_list", "asset_upload", "asset_get"})
 
     def test_capability_get_returns_public_schema_without_api_routes(self) -> None:
         response = holycrab.mcp_dispatch(

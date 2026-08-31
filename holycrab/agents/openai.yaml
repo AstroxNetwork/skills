@@ -1,4 +1,4 @@
 interface:
   display_name: "HolyCrab Agent Tools"
-  short_description: "查询能力、估算积分并安全创建 HolyCrab 生成任务"
-  default_prompt: "使用 $holycrab 先查询本版本能力快照并构造合法请求；先估算积分，明确获得我的确认后只提交一次，然后查询任务结果。"
+  short_description: "查询能力、发起真人授权并安全使用素材创建 HolyCrab 生成任务"
+  default_prompt: "使用 $holycrab 查询能力；需要真人素材时提供授权链接和二维码，等待本人验证与素材就绪，再估算积分，经我确认后只提交一次生成任务。"

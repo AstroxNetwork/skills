@@ -4,7 +4,7 @@
 >
 > Base URL：`https://abgzfc.holycrab.ai`
 >
-> 更新日期：2026-08-14
+> 更新日期：2026-08-31（真人授权工具合同；模型快照仍为 2026-08-22）
 >
 > 机器可读快照：[capabilities.json](capabilities.json)
 
@@ -18,6 +18,7 @@
 - [6. 图片生成](#6-图片生成)
 - [7. 语音生成](#7-语音生成)
 - [8. 推荐调用流程](#8-推荐调用流程)
+- [9. 真人授权与真人素材](#9-真人授权与真人素材)
 
 ## 1. 通用约定
 
@@ -496,9 +497,61 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/audio-generation' \
 3. 保存返回的 `uniqId`。
 4. 轮询 `GET /api/tasks/{uniqId}`，直到 `step=2` 或 `step=3`。
 
-## 9. 变更说明
+## 9. 真人授权与真人素材
+
+本节对应 `v0.3.0` 工具能力，需要配套 API 和官方回调页已部署。工具不替本人完成验证；真人授权也不代替生成任务的积分确认。所有账户操作使用现有 API Key，公共 ID 为 1–64 位字母或数字。
+
+### 9.1 发起授权
+
+`POST /api/real-human-authorizations/sessions`
+
+请求：`name`（必填，去除首尾空白后 1–255 字符）、`callbackUrl`（工具固定为 `https://generate.holycrab.ai/real-human-authorization/callback`）。CLI/MCP 不接受自定义回调地址。
+
+公开工具输出：`authorizationId`、`h5Link`、`expiresAt`、`qrPath`。MCP 另附 PNG 图片内容；二维码保存失败时用 `warning` 替代 `qrPath`，仍可使用链接。上游原始响应可能包含验证凭据和内部字段，工具不会原样返回。
+
+会话有效期为 30 分钟，远端状态为准。当前 API 时间戳可能不带时区，客户端不能把它当作本机时区。本人完成 H5 验证后必须点击完成返回官方回调页，由网页提交结果；Agent 不调用结果提交接口，不收集独立的验证令牌。
+
+### 9.2 查询授权
+
+`GET /api/real-human-authorizations/{authorizationId}`
+
+公开输出：`authorizationId`、`status`、可选 `completedAt`，成功时含 `group: {uniqId, name}`。
+
+| 状态 | 处理 |
+| --- | --- |
+| `CREATED` | 等待本人操作，稍后查询同一 ID |
+| `SUCCEEDED` | 使用 `group.uniqId` 查询或上传人物素材 |
+| `FAILED` | 停止等待，解释验证失败，不自动重建 |
+| `EXPIRED` | 停止等待，需要用户再次发起授权 |
+
+CLI `real-human wait` 默认间隔 5 秒、超时 600 秒；间隔必须为有限正数，超时为有限非负数。成功退出码 0，失败/过期为 1，等待超时为 2。MCP 只提供短查询，不阻塞等待。查询终态时删除本机二维码，后续 CLI/MCP 调用清理过期文件；没有后台清理服务。
+
+### 9.3 人物及素材列表
+
+| 接口 | 参数 | 公开记录字段 |
+| --- | --- | --- |
+| `GET /api/real-human-groups` | `page` 默认 1，`pageSize` 默认 20、最大 100 | `uniqId`、`name`、`coverUrl`、`assetCount`、`processingCount`、`createdAt` |
+| `GET /api/real-human-groups/{groupUniqId}/assets` | `page` 默认 1，`pageSize` 默认 50、最大 100 | 公开素材字段及 `ready` |
+
+保留分页的 `records`、`total` 及存在时的 `current`、`size`、`pages`，不能只看第一页就判定人物不存在。分组名称可能重复，使用 ID 区分。
+
+### 9.4 上传及等待真人素材
+
+1. 检查指定人物分组可访问。
+2. 复用 `GET /api/user-assets/pre-signed-download-url`，PUT 图片或视频到返回的对象存储地址；不向对象存储转发 API Key。
+3. 使用 multipart 调用 `POST /api/real-human-groups/{groupUniqId}/assets/upload`；字段为 `name`、`object_key`、`content_type`，可选 `duration_seconds`。
+4. 返回 `assetUniqId`、`groupUniqId` 和 `ready: false`。登记完成不代表审核或同步完成。
+5. 调用 `GET /api/user-assets/{uniqId}`。工具仅在 `step: UPLOADED_TO_ARK` 时返回 `ready: true`，`FAILED` 时返回公开 `error`。CLI `assets wait` 使用相同的间隔、超时和退出码规则。
+
+公开素材字段：`uniqId`、`name`、`assetType`、`step`、`status`、`error`、`duration`、`url`、`createTime`、`updateTime`、`ready`；不返回上游素材 ID。就绪后把公开 `uniqId` 放入现有视频请求的 `imageAssetIds` 或 `videoAssetIds`，仍需先查模型能力和预估积分。
+
+创建授权或登记素材时，连接中断、网关 502/504、HTTP 200 无效响应都可能无法确认操作结果。保留已知 ID并查询，不自动重新创建、重新上传或回退到普通素材分组。普通 `assets upload` 不传人物分组时继续走原有上传流程。
+
+## 10. 变更说明
 
 本公开版本包含：
+
+- 真人授权链接、本地二维码、授权状态与真人分组查询、指定人物素材上传和就绪状态查询。
 
 - 新增 Seedance 2.5 模型、30 秒生成、智能编辑、视频续写和 50 个参考素材限制。
 - 新增 MiniMax H3 独立生成与冻结积分接口。
