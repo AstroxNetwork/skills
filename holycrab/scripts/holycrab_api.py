@@ -103,6 +103,15 @@ class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError("https://upload.invalid/", code, "upload redirect blocked", headers, fp)
+
+
+def open_presigned_upload(request):
+    return urllib.request.build_opener(RejectRedirectHandler()).open(request, timeout=300)
+
+
 def validate_presigned_upload_url(value: Any) -> str:
     if not isinstance(value, str):
         raise SystemExit("Presigned upload URL must be a credential-free HTTPS URL")
@@ -295,7 +304,7 @@ def command_upload_asset(args: argparse.Namespace) -> int:
         method="PUT",
     )
     try:
-        with urllib.request.urlopen(upload_request, timeout=300) as upload_response:
+        with open_presigned_upload(upload_request) as upload_response:
             if upload_response.status < 200 or upload_response.status >= 300:
                 print(f"Upload failed with HTTP {upload_response.status}", file=sys.stderr)
                 return 1

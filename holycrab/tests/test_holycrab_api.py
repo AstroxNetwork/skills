@@ -100,6 +100,15 @@ class PresignedUrlSecurityTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "HTTPS URL"):
                     holycrab_api.validate_presigned_upload_url(value)
 
+    def test_upload_redirect_handler_refuses_every_redirect(self) -> None:
+        handler_type = getattr(holycrab_api, "RejectRedirectHandler", None)
+        self.assertIsNotNone(handler_type, "uploads need an explicit no-redirect handler")
+        request = urllib.request.Request("https://storage.example/object", method="PUT")
+        with self.assertRaisesRegex(urllib.error.HTTPError, "redirect blocked") as caught:
+            handler_type().redirect_request(request, None, 308, "Permanent Redirect", {},
+                                            "https://other.example/object")
+        caught.exception.close()
+
 
 class OutputRedactionTests(unittest.TestCase):
     def test_recursively_redacts_presigned_urls(self) -> None:
@@ -218,7 +227,7 @@ class AssetUploadTests(unittest.TestCase):
             upload_response = unittest.mock.MagicMock()
             upload_response.__enter__.return_value.status = 200
             with patch.object(holycrab_api, "send", side_effect=replies) as send, patch.object(
-                holycrab_api.urllib.request, "urlopen", return_value=upload_response
+                holycrab_api, "open_presigned_upload", return_value=upload_response
             ), redirect_stdout(io.StringIO()):
                 self.assertEqual(holycrab_api.command_upload_asset(args), 0)
 
@@ -257,7 +266,7 @@ class AssetUploadTests(unittest.TestCase):
             upload_response.__enter__.return_value.status = 200
             output = io.StringIO()
             with patch.object(holycrab_api, "send", side_effect=replies), patch.object(
-                holycrab_api.urllib.request, "urlopen", return_value=upload_response
+                holycrab_api, "open_presigned_upload", return_value=upload_response
             ), redirect_stdout(output):
                 self.assertEqual(holycrab_api.command_upload_asset(args), 1)
 

@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Dependency-free HolyCrab CLI and local stdio MCP server."""
+"""HolyCrab CLI and local stdio MCP server with a bundled offline QR encoder."""
 
 from __future__ import annotations
 
 import argparse
+import base64
 import getpass
 import hashlib
 import html
+import http.client
 import importlib.util
+import io
 import json
+import math
 import mimetypes
 import os
 import re
@@ -36,9 +40,11 @@ except ImportError:  # pragma: no cover - POSIX runtime
     msvcrt = None
 
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
 PUBLIC_ACCOUNT_URL = "https://generate.holycrab.ai/user-tokens"
+REAL_HUMAN_CALLBACK_URL = "https://generate.holycrab.ai/real-human-authorization/callback"
+AUTHORIZATION_TERMINAL = {"SUCCEEDED", "FAILED", "EXPIRED"}
 GENERATION_ROUTES = {
     "seedanceVideo": ("/api/tasks/generation/freeze-credit", "/api/tasks/generation"),
     "minimaxVideo": (
@@ -57,10 +63,12 @@ GENERATION_ROUTES = {
 LATEST_INITIALIZE_PROTOCOL = "2025-11-25"
 SUPPORTED_INITIALIZE_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 SENSITIVE_OUTPUT_KEYS = {
-    "presignedurl", "authorization", "xusertoken", "apikey", "accesstoken", "refreshtoken"
+    "presignedurl", "authorization", "xusertoken", "apikey", "accesstoken", "refreshtoken",
+    "bytedtoken", "arkgroupid", "arkassetid", "arkaccountid", "objectkey", "ak", "sk",
 }
 SENSITIVE_OUTPUT_VALUES: set[str] = set()
 SENSITIVE_URL_QUERY_KEYS = {
+    "bytedtoken", "pl",
     "signature",
     "sig",
     "token",
@@ -81,6 +89,9 @@ SENSITIVE_URL_QUERY_KEYS = {
     "xgoogcredential",
 }
 URL_IN_TEXT_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+PRIVATE_FIELD_IN_TEXT = re.compile(
+    r'''(?i)((?:byted[_-]?token|ark[_-]?(?:group|asset|account)[_-]?id|api[_-]?key|object[_-]?key)\s*["']?\s*[:=]\s*["']?)([^\s,;"'&<>}]+)'''
+)
 PUBLIC_ACCOUNT_FIELDS = ("username", "nickname", "credit")
 PUBLIC_TASK_FIELDS = (
     "uniqId",
@@ -259,6 +270,19 @@ class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> None:
+        # A redirect could move a signed PUT to an attacker-controlled origin.
+        # Never include either signed URL in the error message.
+        raise urllib.error.HTTPError("https://upload.invalid/", code, "upload redirect blocked", headers, fp)
+
+
+def open_presigned_upload(request: urllib.request.Request) -> Any:
+    return urllib.request.build_opener(RejectRedirectHandler()).open(request, timeout=300)
+
+
 def validate_presigned_upload_url(value: Any) -> str:
     if not isinstance(value, str):
         raise SystemExit("Presigned upload URL must be a credential-free HTTPS URL")
@@ -269,6 +293,27 @@ def validate_presigned_upload_url(value: Any) -> str:
         raise SystemExit(f"Presigned upload URL must be a credential-free HTTPS URL: {error}") from error
     if parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username is not None or parsed.password is not None:
         raise SystemExit("Presigned upload URL must be a credential-free HTTPS URL")
+    return value
+
+
+def validate_verification_link(value: Any) -> str:
+    if not isinstance(value, str) or any(character.isspace() for character in value):
+        raise ValueError("invalid verification link")
+    parsed = urllib.parse.urlsplit(value)
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError("invalid verification link") from error
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != "www.byteplus.com"
+        or port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/en/liveness-face-manage/authorization"
+        or parsed.fragment
+    ):
+        raise ValueError("invalid verification link")
     return value
 
 
@@ -292,6 +337,7 @@ def sanitize_text_for_output(value: str) -> str:
         return "<redacted-signed-url>" if is_signed_url(candidate) else candidate
 
     sanitized = URL_IN_TEXT_PATTERN.sub(replace_url, value)
+    sanitized = PRIVATE_FIELD_IN_TEXT.sub(r"\1<redacted>", sanitized)
     for secret in sorted(SENSITIVE_OUTPUT_VALUES, key=len, reverse=True):
         sanitized = sanitized.replace(secret, "<redacted-secret>")
     return sanitized
@@ -302,7 +348,12 @@ def sanitize_for_output(value: Any) -> Any:
         output: dict[Any, Any] = {}
         for key, item in value.items():
             normalized = normalized_name(key)
-            output[key] = "<redacted>" if normalized in SENSITIVE_OUTPUT_KEYS else sanitize_for_output(item)
+            # Only the locally constructed start result may disclose its one-time
+            # verification link. An arbitrary API response cannot opt into this.
+            if isinstance(value, AuthorizationStartResult) and key == "h5Link":
+                output[key] = item
+            else:
+                output[key] = "<redacted>" if normalized in SENSITIVE_OUTPUT_KEYS else sanitize_for_output(item)
         return output
     if isinstance(value, list):
         return [sanitize_for_output(item) for item in value]
@@ -386,6 +437,7 @@ def response_ok(status: int, response: Any) -> bool:
 
 
 def response_data(status: int, response: Any) -> Any:
+    remember_private_fields(response)
     if not response_ok(status, response):
         message = response.get("message") if isinstance(response, dict) else None
         request_id = response.get("requestId") if isinstance(response, dict) else None
@@ -861,11 +913,432 @@ def command_download(args: argparse.Namespace) -> int:
     return 0
 
 
+class AuthorizationStartResult(dict):
+    """Explicit disclosure of a user-requested verification link, never a raw response."""
+
+    qr_bytes: bytes | None = None
+
+
+def remember_private_fields(value: Any) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if normalized_name(key) in SENSITIVE_OUTPUT_KEYS and isinstance(item, str) and item:
+                SENSITIVE_OUTPUT_VALUES.add(item)
+            else:
+                remember_private_fields(item)
+    elif isinstance(value, list):
+        for item in value:
+            remember_private_fields(item)
+
+
+def public_id(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", value):
+        raise ValueError(f"{label} must contain 1-64 letters or digits")
+    return value
+
+
+def public_fields(value: Any, fields: tuple[str, ...]) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("API response must be an object")
+    # A nested object in a normally scalar field must not escape the whitelist.
+    return {key: item for key in fields if key in value
+            for item in (value[key],) if item is None or type(item) in (str, int, float, bool)}
+
+
+def public_group(value: Any) -> dict[str, Any]:
+    return public_fields(value, ("uniqId", "name", "coverUrl", "assetCount", "processingCount", "createdAt"))
+
+
+def public_asset(value: Any) -> dict[str, Any]:
+    output = public_fields(value, ("uniqId", "name", "assetType", "error", "step", "status",
+                                  "duration", "url", "createTime", "updateTime"))
+    output["ready"] = output.get("step") == "UPLOADED_TO_ARK"
+    return output
+
+
+def public_page(value: Any, projector: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or not isinstance(value.get("records"), list):
+        raise ValueError("API response is missing its records array")
+    output = public_fields(value, ("total", "current", "size", "pages"))
+    output["records"] = [projector(item) for item in value["records"]]
+    return output
+
+
+def page_query(page: int = 1, page_size: int = 20) -> list[tuple[str, str]]:
+    if type(page) is not int or page < 1 or type(page_size) is not int or not 1 <= page_size <= 100:
+        raise ValueError("page must be a positive integer and pageSize must be an integer from 1 to 100")
+    return [("page", str(page)), ("pageSize", str(page_size))]
+
+
+def authorization_cache_dir(*, create: bool = True) -> Path:
+    root = config_dir().absolute() / "real-human"
+    if root.is_symlink():
+        raise ValueError("Authorization cache must not be a symbolic link")
+    if create:
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        root.chmod(0o700)
+    return root
+
+
+def remove_authorization_qr(authorization_id: str) -> None:
+    directory = authorization_cache_dir(create=False) / public_id(authorization_id, "authorizationId")
+    if directory.is_symlink() or not directory.is_dir():
+        return
+    for name in ("qr.png", "metadata.json"):
+        (directory / name).unlink(missing_ok=True)
+    try:
+        directory.rmdir()
+    except OSError:
+        pass  # Never delete unrelated files placed in this directory.
+
+
+def cleanup_authorization_qrs() -> str | None:
+    try:
+        _cleanup_authorization_qrs()
+    except (OSError, ValueError):
+        return "Could not clean the local QR cache; remote operations remain available. Remove abandoned QR files manually."
+    return None
+
+
+def _cleanup_authorization_qrs() -> None:
+    root = authorization_cache_dir(create=False)
+    if not root.exists():
+        return
+    for directory in root.iterdir():
+        if directory.is_symlink() or not directory.is_dir() or not re.fullmatch(r"[A-Za-z0-9]{1,64}", directory.name):
+            continue
+        metadata = directory / "metadata.json"
+        if metadata.is_symlink():
+            continue
+        try:
+            data = json.loads(metadata.read_text(encoding="utf-8"))
+            deadline = data.get("deleteAfter") if isinstance(data, dict) else None
+            if type(deadline) in (int, float) and deadline <= time.time():
+                remove_authorization_qr(directory.name)
+        except (OSError, ValueError):
+            continue
+
+
+def qr_png(link: str) -> bytes:
+    wheel = Path(__file__).resolve().parent / "vendor" / "segno-1.6.6-py3-none-any.whl"
+    if not wheel.is_file():
+        raise OSError("Bundled QR encoder is missing; reinstall HolyCrab")
+    wheel_path = str(wheel)
+    sys.path.insert(0, wheel_path)
+    try:
+        import segno
+        if segno.__version__ != "1.6.6":
+            raise ValueError("Unexpected QR encoder version")
+        stream = io.BytesIO()
+        segno.make_qr(link, error="m").save(stream, kind="png", scale=6, border=4)
+        return stream.getvalue()
+    finally:
+        sys.path.remove(wheel_path)
+
+
+def authorization_qr(authorization_id: str, link: str, expires_at: str) -> tuple[str, bytes]:
+    directory = authorization_cache_dir() / public_id(authorization_id, "authorizationId")
+    directory.mkdir(mode=0o700)
+    # The API currently returns a timezone-less timestamp. Do not interpret that
+    # as the client's timezone; use the documented 30-minute session lifetime.
+    deadline = time.time() + 30 * 60
+    try:
+        expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        if expiry.tzinfo is not None:
+            deadline = min(deadline, expiry.timestamp())
+    except ValueError:
+        pass
+    write_private_json(directory / "metadata.json", {"deleteAfter": deadline})
+    raw = qr_png(link)
+    path = directory / "qr.png"
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as stream:
+        stream.write(raw)
+    return str(path), raw
+
+
+def mutation_response_data(status: int, response: Any, context: str) -> Any:
+    remember_private_fields(response)
+    code = response.get("code") if isinstance(response, dict) else None
+    uncertain = status >= 500 or status == 408 or (type(code) is int and code >= 500)
+    malformed = 200 <= status < 300 and (not isinstance(response, dict) or code is None)
+    if uncertain or malformed:
+        raise ValueError(f"{context} outcome is uncertain (HTTP {status}); query existing records, do not retry automatically")
+    return response_data(status, response)
+
+
+def create_authorization(name: str) -> AuthorizationStartResult:
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 255:
+        raise ValueError("name must contain 1-255 characters")
+    cleanup_authorization_qrs()
+    try:
+        status, response = send("POST", "/api/real-human-authorizations/sessions",
+                                payload={"name": name.strip(), "callbackUrl": REAL_HUMAN_CALLBACK_URL})
+    except (OSError, http.client.HTTPException) as error:
+        raise ValueError("Authorization outcome is uncertain; do not retry automatically. Check the website.") from error
+    data = mutation_response_data(status, response, "Authorization")
+    if not isinstance(data, dict):
+        raise ValueError("Authorization response is incomplete; do not retry automatically. Check the website.")
+    try:
+        identifier = public_id(data.get("authorizationId"), "authorizationId")
+    except ValueError:
+        raise ValueError("Authorization response has no usable ID; do not retry automatically. Check the website.") from None
+    link = data.get("h5Link")
+    expiry = data.get("expiresAt")
+    try:
+        link = validate_verification_link(link)
+        if not isinstance(expiry, str) or not expiry:
+            raise ValueError()
+    except ValueError:
+        raise ValueError(f"Authorization {identifier} returned an invalid verification link or expiry; do not retry automatically") from None
+    SENSITIVE_OUTPUT_VALUES.add(link)
+    result = AuthorizationStartResult(authorizationId=identifier, h5Link=link, expiresAt=expiry)
+    try:
+        result["qrPath"], result.qr_bytes = authorization_qr(identifier, link, expiry)
+    except (OSError, ValueError, ImportError, SystemExit):
+        result["warning"] = "QR image could not be saved. Use the authorization link; do not create another session."
+    return result
+
+
+def get_authorization(authorization_id: str) -> dict[str, Any]:
+    identifier = public_id(authorization_id, "authorizationId")
+    warning = cleanup_authorization_qrs()
+    data = response_data(*send("GET", f"/api/real-human-authorizations/{identifier}"))
+    output = public_fields(data, ("authorizationId", "status", "completedAt"))
+    if warning:
+        output["warning"] = warning
+    if output.get("authorizationId") != identifier or output.get("status") not in AUTHORIZATION_TERMINAL | {"CREATED"}:
+        raise ValueError("API returned an invalid authorization status")
+    if isinstance(data.get("group"), dict):
+        output["group"] = public_fields(data["group"], ("uniqId", "name"))
+    if output["status"] == "SUCCEEDED" and not output.get("group", {}).get("uniqId"):
+        raise ValueError("Successful authorization is missing its group; query again, do not create another session")
+    if output["status"] in AUTHORIZATION_TERMINAL:
+        try:
+            remove_authorization_qr(identifier)
+        except (OSError, ValueError):
+            output["warning"] = "Could not remove the local QR image; delete it manually."
+    return output
+
+
+def list_real_human_groups(page: int = 1, page_size: int = 20) -> dict[str, Any]:
+    query = page_query(page, page_size)
+    cleanup_authorization_qrs()
+    return public_page(response_data(*send("GET", "/api/real-human-groups", query=query)), public_group)
+
+
+def list_real_human_assets(group_id: str, page: int = 1, page_size: int = 50) -> dict[str, Any]:
+    identifier = public_id(group_id, "groupUniqId")
+    query = page_query(page, page_size)
+    cleanup_authorization_qrs()
+    return public_page(response_data(*send("GET", f"/api/real-human-groups/{identifier}/assets", query=query)), public_asset)
+
+
+def find_real_human_group(group_id: str) -> dict[str, Any]:
+    identifier = public_id(group_id, "groupUniqId")
+    page = 1
+    while True:
+        result = list_real_human_groups(page, 100)
+        for group in result.get("records", []):
+            if isinstance(group, dict) and group.get("uniqId") == identifier:
+                return group
+        pages = result.get("pages")
+        if type(pages) is not int or page >= pages:
+            break
+        page += 1
+    raise ValueError("Real-human group not found")
+
+
+def reconcile_group(group_id: str) -> str:
+    try:
+        group = find_real_human_group(group_id)
+        return f"A follow-up list still contains group {group.get('uniqId')}."
+    except ValueError as error:
+        if str(error) == "Real-human group not found":
+            return "A follow-up list did not find the group."
+    except (SystemExit, OSError, http.client.HTTPException):
+        pass
+    return "The follow-up group query could not confirm its state."
+
+
+def reconcile_asset(asset_id: str) -> str:
+    try:
+        asset = get_asset(asset_id)
+        return f"A follow-up query still contains asset {asset.get('uniqId')}."
+    except (SystemExit, ValueError, OSError, http.client.HTTPException):
+        return "The follow-up asset query could not confirm its state."
+
+
+def rename_real_human_group(group_id: str, name: str) -> dict[str, Any]:
+    identifier = public_id(group_id, "groupUniqId")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 255:
+        raise ValueError("name must contain 1-255 characters")
+    try:
+        status, response = send("PATCH", f"/api/real-human-groups/{identifier}",
+                                payload={"name": name.strip()})
+    except (OSError, http.client.HTTPException) as error:
+        detail = reconcile_group(identifier)
+        raise ValueError(f"Rename outcome is uncertain. {detail} Do not retry automatically") from error
+    try:
+        data = mutation_response_data(status, response, "Rename")
+    except ValueError as error:
+        detail = reconcile_group(identifier)
+        raise ValueError(f"Rename outcome is uncertain. {detail} Do not retry automatically") from error
+    group = public_fields(data, ("uniqId", "name"))
+    if group.get("uniqId") != identifier or group.get("name") != name.strip():
+        raise ValueError("Rename outcome is uncertain; query the group, do not retry automatically")
+    return group
+
+
+def delete_real_human_group(group_id: str, confirmed: bool,
+                            target: dict[str, Any] | None = None) -> dict[str, Any]:
+    if confirmed is not True:
+        raise ValueError("confirmed must be true after the user explicitly approves permanent deletion")
+    identifier = public_id(group_id, "groupUniqId")
+    target = target or find_real_human_group(identifier)
+    if target.get("uniqId") != identifier:
+        raise ValueError("Real-human group not found")
+    try:
+        status, response = send("DELETE", f"/api/real-human-groups/{identifier}")
+    except (OSError, http.client.HTTPException) as error:
+        detail = reconcile_group(identifier)
+        raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
+    try:
+        mutation_response_data(status, response, "Delete")
+    except ValueError as error:
+        detail = reconcile_group(identifier)
+        raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
+    return {"deleted": True, "groupUniqId": identifier}
+
+
+def delete_real_human_asset(group_id: str, asset_id: str, confirmed: bool,
+                            group: dict[str, Any] | None = None,
+                            asset: dict[str, Any] | None = None) -> dict[str, Any]:
+    if confirmed is not True:
+        raise ValueError("confirmed must be true after the user explicitly approves permanent deletion")
+    group_identifier = public_id(group_id, "groupUniqId")
+    asset_identifier = public_id(asset_id, "assetId")
+    group = group or find_real_human_group(group_identifier)
+    asset = asset or get_asset(asset_identifier)
+    if group.get("uniqId") != group_identifier or asset.get("uniqId") != asset_identifier:
+        raise ValueError("Real-human asset not found")
+    endpoint = f"/api/real-human-groups/{group_identifier}/assets/{asset_identifier}"
+    try:
+        status, response = send("DELETE", endpoint)
+    except (OSError, http.client.HTTPException) as error:
+        detail = reconcile_asset(asset_identifier)
+        raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
+    try:
+        mutation_response_data(status, response, "Delete")
+    except ValueError as error:
+        detail = reconcile_asset(asset_identifier)
+        raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
+    return {"deleted": True, "groupUniqId": group_identifier, "assetUniqId": asset_identifier}
+
+
+def get_asset(asset_id: str) -> dict[str, Any]:
+    identifier = public_id(asset_id, "assetId")
+    data = public_asset(response_data(*send("GET", f"/api/user-assets/{identifier}")))
+    if data.get("uniqId") != identifier:
+        raise ValueError("API returned an unexpected asset ID")
+    return data
+
+
+def poll_resource(identifier: str, timeout: float, interval: float, *, authorization: bool) -> int:
+    if not math.isfinite(timeout) or timeout < 0 or not math.isfinite(interval) or interval <= 0:
+        raise ValueError("timeout must be finite and nonnegative; interval must be finite and positive")
+    deadline = time.monotonic() + timeout
+    while True:
+        data = get_authorization(identifier) if authorization else get_asset(identifier)
+        print_json(data)
+        state = data.get("status") if authorization else data.get("step")
+        if state == ("SUCCEEDED" if authorization else "UPLOADED_TO_ARK"):
+            return 0
+        if state in ({"FAILED", "EXPIRED"} if authorization else {"FAILED", "DELETING"}):
+            return 1
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            print("Polling timed out; keep the ID and query again. Nothing was resubmitted.", file=sys.stderr)
+            return 2
+        time.sleep(min(interval, remaining))
+
+
+def command_real_human_start(args: argparse.Namespace) -> int:
+    print_json(create_authorization(args.name))
+    return 0
+
+
+def command_real_human_get(args: argparse.Namespace) -> int:
+    print_json(get_authorization(args.authorization_id))
+    return 0
+
+
+def command_real_human_wait(args: argparse.Namespace) -> int:
+    return poll_resource(args.authorization_id, args.timeout, args.interval, authorization=True)
+
+
+def command_real_human_groups(args: argparse.Namespace) -> int:
+    print_json(list_real_human_groups(args.page, args.page_size))
+    return 0
+
+
+def command_real_human_group_rename(args: argparse.Namespace) -> int:
+    print_json(rename_real_human_group(args.group_id, args.name))
+    return 0
+
+
+def deletion_confirmed(prompt: str, yes: bool) -> bool:
+    if yes:
+        return True
+    if not sys.stdin.isatty():
+        print("Deletion was not confirmed; rerun interactively or use --yes after explicit approval.", file=sys.stderr)
+        return False
+    return input(prompt).strip().lower() in {"y", "yes"}
+
+
+def command_real_human_group_delete(args: argparse.Namespace) -> int:
+    target = find_real_human_group(args.group_id)
+    print_json({"warning": "Permanent deletion removes this person, all group assets, and upstream records.",
+                "target": public_fields(target, ("uniqId", "name", "assetCount"))})
+    if not deletion_confirmed("Permanently delete this person and every group asset? [y/N] ", args.yes):
+        return 2
+    print_json(delete_real_human_group(args.group_id, True, target))
+    return 0
+
+
+def command_real_human_assets(args: argparse.Namespace) -> int:
+    print_json(list_real_human_assets(args.group, args.page, args.page_size))
+    return 0
+
+
+def command_real_human_asset_delete(args: argparse.Namespace) -> int:
+    group = find_real_human_group(args.group)
+    asset = get_asset(args.asset_id)
+    print_json({"warning": "Permanent deletion removes this asset's storage, upstream record, and database record.",
+                "target": {"groupUniqId": group.get("uniqId"), "groupName": group.get("name"),
+                           "groupAssetCount": group.get("assetCount"),
+                           **public_fields(asset, ("uniqId", "name", "assetType"))}})
+    if not deletion_confirmed("Permanently delete this real-human asset? [y/N] ", args.yes):
+        return 2
+    print_json(delete_real_human_asset(args.group, args.asset_id, True, group, asset))
+    return 0
+
+
+def command_asset_get(args: argparse.Namespace) -> int:
+    print_json(get_asset(args.uniq_id))
+    return 0
+
+
+def command_asset_wait(args: argparse.Namespace) -> int:
+    return poll_resource(args.uniq_id, args.timeout, args.interval, authorization=False)
+
+
 def upload_asset(
     file: str,
     content_type: str | None = None,
     duration_seconds: int | None = None,
     name: str | None = None,
+    group_uniq_id: str | None = None,
 ) -> dict[str, Any]:
     path = Path(file).expanduser().resolve()
     if not path.is_file():
@@ -873,6 +1346,12 @@ def upload_asset(
     mime = content_type or mimetypes.guess_type(path.name)[0]
     if not mime:
         raise SystemExit("Could not infer MIME type; pass --content-type")
+    if group_uniq_id is not None:
+        public_id(group_uniq_id, "groupUniqId")
+        if not mime.startswith(("image/", "video/")):
+            raise ValueError("Real-human uploads support image or video files")
+        # Fail before uploading bytes when the selected group is inaccessible.
+        list_real_human_assets(group_uniq_id, 1, 1)
     query = [("file_extension", path.suffix.lstrip(".")), ("content_type", mime)]
     if duration_seconds is not None:
         query.append(("duration_seconds", str(duration_seconds)))
@@ -887,7 +1366,7 @@ def upload_asset(
     upload_request = urllib.request.Request(
         presigned_url, data=path.read_bytes(), headers={"Content-Type": mime}, method="PUT"
     )
-    with urllib.request.urlopen(upload_request, timeout=300) as upload_response:
+    with open_presigned_upload(upload_request) as upload_response:
         if not 200 <= upload_response.status < 300:
             raise SystemExit(f"Upload failed with HTTP {upload_response.status}")
     payload: dict[str, Any] = {
@@ -897,15 +1376,24 @@ def upload_asset(
     }
     if duration_seconds is not None:
         payload["duration_seconds"] = duration_seconds
-    register_status, register_response = send("POST", "/api/user-assets/upload", form=payload)
+    endpoint = f"/api/real-human-groups/{group_uniq_id}/assets/upload" if group_uniq_id else "/api/user-assets/upload"
+    context = f"Asset {data.get('uniqId')} registration" + (f" in group {group_uniq_id}" if group_uniq_id else "")
+    try:
+        register_status, register_response = send("POST", endpoint, form=payload)
+    except (OSError, http.client.HTTPException) as error:
+        raise ValueError(f"{context} outcome is uncertain; query the asset or group, do not retry automatically") from error
+    registration = mutation_response_data(register_status, register_response, context)
+    if group_uniq_id:
+        return {"assetUniqId": data.get("uniqId"), "groupUniqId": group_uniq_id, "ready": False}
     return {
         "assetUniqId": data.get("uniqId"),
-        "registration": response_data(register_status, register_response),
+        "registration": registration,
     }
 
 
 def command_upload_asset(args: argparse.Namespace) -> int:
-    print_json(upload_asset(args.file, args.content_type, args.duration_seconds, args.name))
+    print_json(upload_asset(args.file, args.content_type, args.duration_seconds, args.name,
+                            getattr(args, "real_human_group", None)))
     return 0
 
 
@@ -935,7 +1423,92 @@ MCP_TOOLS = [
 ]
 
 
+def real_human_tool(name: str, description: str, properties: dict[str, Any],
+                    required: tuple[str, ...] = (), *, read_only: bool = True,
+                    destructive: bool = False) -> dict[str, Any]:
+    return {"name": name, "description": description,
+            "inputSchema": {"type": "object", "properties": properties,
+                            "required": list(required), "additionalProperties": False},
+            "annotations": {"readOnlyHint": read_only, "destructiveHint": destructive,
+                            "idempotentHint": read_only and not destructive, "openWorldHint": True}}
+
+
+ID_SCHEMA = {"type": "string", "pattern": "^[A-Za-z0-9]{1,64}$"}
+PAGE_PROPERTIES = {"page": {"type": "integer", "minimum": 1},
+                   "pageSize": {"type": "integer", "minimum": 1, "maximum": 100}}
+REAL_HUMAN_TOOLS = [
+    real_human_tool("real_human_authorization_start",
+                    "Create one user-requested authorization. Show its private temporary link and QR image to the person for manual verification. Do not retry automatically or treat verification as consent to paid generation.",
+                    {"name": {"type": "string", "minLength": 1, "maxLength": 255}}, ("name",), read_only=False),
+    real_human_tool("real_human_authorization_get", "Query authorization status by ID. Poll this tool, do not recreate the session.",
+                    {"authorizationId": ID_SCHEMA}, ("authorizationId",)),
+    real_human_tool("real_human_groups_list", "List the current account's authorized people, with pagination.", PAGE_PROPERTIES),
+    real_human_tool("real_human_group_rename", "Rename one authorized person using the public group ID.",
+                    {"groupUniqId": ID_SCHEMA, "name": {"type": "string", "minLength": 1, "maxLength": 255}},
+                    ("groupUniqId", "name"), read_only=False),
+    real_human_tool("real_human_group_delete", "Permanently delete an authorized person, every asset in the group, and upstream records. Set confirmed=true only after the user explicitly approves this exact deletion.",
+                    {"groupUniqId": ID_SCHEMA, "confirmed": {"type": "boolean"}},
+                    ("groupUniqId", "confirmed"), read_only=False, destructive=True),
+    real_human_tool("real_human_assets_list", "List assets in one authorized person's group. Only ready assets can be used for generation.",
+                    {"groupUniqId": ID_SCHEMA, **PAGE_PROPERTIES}, ("groupUniqId",)),
+    real_human_tool("real_human_asset_delete", "Permanently delete one real-human asset from storage, upstream records, and the database. Set confirmed=true only after the user explicitly approves this exact deletion.",
+                    {"groupUniqId": ID_SCHEMA, "assetId": ID_SCHEMA, "confirmed": {"type": "boolean"}},
+                    ("groupUniqId", "assetId", "confirmed"), read_only=False, destructive=True),
+    real_human_tool("asset_get", "Query one public asset ID. Only UPLOADED_TO_ARK yields ready=true; report failures and do not reupload automatically.",
+                    {"assetId": ID_SCHEMA}, ("assetId",)),
+    real_human_tool("asset_upload", "Upload a user-selected local file once. For real people supply groupUniqId from authorization; omission uses ordinary assets. Query asset_get until ready before generation. Do not retry an uncertain registration.",
+                    {"file": {"type": "string", "minLength": 1}, "groupUniqId": ID_SCHEMA,
+                     "name": {"type": "string"}, "contentType": {"type": "string"},
+                     "durationSeconds": {"type": "integer", "minimum": 1}}, ("file",), read_only=False),
+]
+MCP_TOOLS.extend(REAL_HUMAN_TOOLS)
+
+
+def validate_tool_arguments(name: str, arguments: dict[str, Any]) -> None:
+    tool = next((tool for tool in REAL_HUMAN_TOOLS if tool["name"] == name), None)
+    if tool is None:
+        return
+    schema = tool["inputSchema"]
+    if set(arguments) - schema["properties"].keys():
+        raise ValueError("Unknown tool argument")
+    if not set(schema["required"]).issubset(arguments):
+        raise ValueError("Missing required tool argument")
+    for key, value in arguments.items():
+        field = schema["properties"][key]
+        expected = {"string": str, "integer": int, "boolean": bool}[field["type"]]
+        if type(value) is not expected:
+            raise ValueError(f"{key} must be a {field['type']}")
+        if expected is str:
+            if len(value) < field.get("minLength", 0) or len(value) > field.get("maxLength", math.inf):
+                raise ValueError(f"{key} has an invalid length")
+            if "pattern" in field and not re.fullmatch(field["pattern"], value):
+                raise ValueError(f"{key} has an invalid format")
+        elif expected is int and (value < field.get("minimum", -math.inf) or value > field.get("maximum", math.inf)):
+            raise ValueError(f"{key} is out of range")
+
+
 def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
+    validate_tool_arguments(name, arguments)
+    if name == "real_human_authorization_start":
+        return create_authorization(arguments["name"])
+    if name == "real_human_authorization_get":
+        return get_authorization(arguments["authorizationId"])
+    if name == "real_human_groups_list":
+        return list_real_human_groups(arguments.get("page", 1), arguments.get("pageSize", 20))
+    if name == "real_human_group_rename":
+        return rename_real_human_group(arguments["groupUniqId"], arguments["name"])
+    if name == "real_human_group_delete":
+        return delete_real_human_group(arguments["groupUniqId"], arguments["confirmed"])
+    if name == "real_human_assets_list":
+        return list_real_human_assets(arguments["groupUniqId"], arguments.get("page", 1), arguments.get("pageSize", 50))
+    if name == "real_human_asset_delete":
+        return delete_real_human_asset(arguments["groupUniqId"], arguments["assetId"], arguments["confirmed"])
+    if name == "asset_get":
+        return get_asset(arguments["assetId"])
+    if name == "asset_upload":
+        uploaded = upload_asset(arguments["file"], arguments.get("contentType"), arguments.get("durationSeconds"),
+                                arguments.get("name"), arguments.get("groupUniqId"))
+        return {**public_fields(uploaded, ("assetUniqId", "groupUniqId")), "ready": False}
     if name == "account_get":
         status, response = send("GET", "/api/user/me")
         return public_account_data(response_data(status, response))
@@ -969,11 +1542,15 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
 def mcp_result(identifier: Any, value: Any) -> dict[str, Any]:
     safe = sanitize_for_output(value)
     structured = safe if isinstance(safe, dict) else {"items": safe} if isinstance(safe, list) else {"value": safe}
+    content = [{"type": "text", "text": json.dumps(safe, ensure_ascii=False)}]
+    if isinstance(value, AuthorizationStartResult) and value.qr_bytes:
+        content.append({"type": "image", "mimeType": "image/png",
+                        "data": base64.b64encode(value.qr_bytes).decode("ascii")})
     return {
         "jsonrpc": "2.0",
         "id": identifier,
         "result": {
-            "content": [{"type": "text", "text": json.dumps(safe, ensure_ascii=False)}],
+            "content": content,
             "structuredContent": structured,
             "isError": False,
         },
@@ -1012,9 +1589,12 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
             arguments = params.get("arguments") or {}
             if not isinstance(arguments, dict):
                 raise ValueError("arguments must be an object")
+            warning = cleanup_authorization_qrs()
             value = mcp_tool_call(str(params.get("name", "")), arguments)
+            if warning and isinstance(value, dict):
+                value.setdefault("warning", warning)
             return mcp_result(identifier, value)
-        except (SystemExit, urllib.error.URLError, TimeoutError, ValueError, TypeError, AttributeError) as error:
+        except (SystemExit, OSError, http.client.HTTPException, ValueError, TypeError, AttributeError) as error:
             text = sanitize_text_for_output(str(error) or error.__class__.__name__)
             return {
                 "jsonrpc": "2.0",
@@ -1048,6 +1628,16 @@ def add_json_argument(parser: argparse.ArgumentParser) -> None:
 def add_key_input_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--stdin", action="store_true", help="Read the key from stdin; avoid shell history")
     parser.add_argument("--no-verify", action="store_true", help=argparse.SUPPRESS)
+
+
+def add_wait_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--interval", type=float, default=5.0)
+    parser.add_argument("--timeout", type=float, default=600.0)
+
+
+def add_page_arguments(parser: argparse.ArgumentParser, page_size: int = 20) -> None:
+    parser.add_argument("--page", type=int, default=1)
+    parser.add_argument("--page-size", type=int, default=page_size)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1118,14 +1708,57 @@ def build_parser() -> argparse.ArgumentParser:
     download.add_argument("--index", type=int, default=0)
     download.set_defaults(func=command_download)
 
-    assets = sub.add_parser("assets", help="Manage local media assets")
+    real_human = sub.add_parser("real-human", help="Authorize a real person and query their assets")
+    human_sub = real_human.add_subparsers(dest="real_human_command", required=True)
+    human_start = human_sub.add_parser("start", help="Create a private link and local QR image for manual verification")
+    human_start.add_argument("--name", required=True)
+    human_start.set_defaults(func=command_real_human_start)
+    human_get = human_sub.add_parser("get")
+    human_get.add_argument("authorization_id")
+    human_get.set_defaults(func=command_real_human_get)
+    human_wait = human_sub.add_parser("wait")
+    human_wait.add_argument("authorization_id")
+    add_wait_arguments(human_wait)
+    human_wait.set_defaults(func=command_real_human_wait)
+    groups = human_sub.add_parser("groups").add_subparsers(dest="groups_command", required=True)
+    group_list = groups.add_parser("list")
+    add_page_arguments(group_list)
+    group_list.set_defaults(func=command_real_human_groups)
+    group_rename = groups.add_parser("rename")
+    group_rename.add_argument("group_id")
+    group_rename.add_argument("--name", required=True)
+    group_rename.set_defaults(func=command_real_human_group_rename)
+    group_delete = groups.add_parser("delete")
+    group_delete.add_argument("group_id")
+    group_delete.add_argument("--yes", action="store_true", help="Use only after explicit approval of this permanent deletion")
+    group_delete.set_defaults(func=command_real_human_group_delete)
+    human_assets = human_sub.add_parser("assets").add_subparsers(dest="human_assets_command", required=True)
+    human_asset_list = human_assets.add_parser("list")
+    human_asset_list.add_argument("--group", required=True)
+    add_page_arguments(human_asset_list, 50)
+    human_asset_list.set_defaults(func=command_real_human_assets)
+    human_asset_delete = human_assets.add_parser("delete")
+    human_asset_delete.add_argument("asset_id")
+    human_asset_delete.add_argument("--group", required=True)
+    human_asset_delete.add_argument("--yes", action="store_true", help="Use only after explicit approval of this permanent deletion")
+    human_asset_delete.set_defaults(func=command_real_human_asset_delete)
+
+    assets = sub.add_parser("assets", help="Upload and query media assets")
     assets_sub = assets.add_subparsers(dest="assets_command", required=True)
     upload = assets_sub.add_parser("upload")
     upload.add_argument("file")
     upload.add_argument("--content-type")
     upload.add_argument("--duration-seconds", type=int)
     upload.add_argument("--name")
+    upload.add_argument("--real-human-group", help="Upload into this authorized person's public group ID")
     upload.set_defaults(func=command_upload_asset)
+    asset_get = assets_sub.add_parser("get")
+    asset_get.add_argument("uniq_id")
+    asset_get.set_defaults(func=command_asset_get)
+    asset_wait = assets_sub.add_parser("wait")
+    asset_wait.add_argument("uniq_id")
+    add_wait_arguments(asset_wait)
+    asset_wait.set_defaults(func=command_asset_wait)
 
     mcp = sub.add_parser("mcp", help="Run the local stdio MCP server")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
@@ -1137,6 +1770,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    warning = cleanup_authorization_qrs()
+    if warning:
+        print(warning, file=sys.stderr)
     args = build_parser().parse_args()
     try:
         return args.func(args)
@@ -1145,6 +1781,9 @@ def main() -> int:
         return 2
     except urllib.error.URLError as error:
         print(f"Network error: {sanitize_text_for_output(str(error.reason))}", file=sys.stderr)
+        return 1
+    except (ValueError, OSError, http.client.HTTPException) as error:
+        print(f"Error: {sanitize_text_for_output(str(error))}", file=sys.stderr)
         return 1
 
 

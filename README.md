@@ -2,11 +2,13 @@
 
 这个仓库提供一套运行在用户电脑上的 HolyCrab 工具：
 
-- `holycrab` CLI：配置 API Key、查模型、估积分、上传本地素材、创建和查询任务。
+- `holycrab` CLI：配置 API Key、查模型、估积分、发起真人授权、上传素材、创建和查询任务。
 - 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
 - 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.2.1` 内置的能力快照版本为 `2026-08-22`；这是随版本发布的静态合同，不冒充实时模型目录。
+它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.3.0` 内置的模型能力快照仍为 `2026-08-22`；这是随版本发布的静态合同，不冒充实时模型目录。
+
+`v0.3.0` 增加真人授权、人物及素材管理。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
 ## 系统要求与一键安装
 
@@ -78,6 +80,31 @@ Seedance 视频在没有填写 `generateAudio` 时，CLI 和本地 MCP 会默认
 
 同一提示词可以主动生成多次。每次明确确认都会创建新的本地 attempt ID 和新的线上任务；同一个 attempt ID 不能重复提交，网络结果不明确时也不会自动重试付费请求。
 
+## 真人授权和素材
+
+```bash
+holycrab real-human start --name "小林"
+holycrab real-human wait AUTHORIZATION_ID --timeout 600
+holycrab real-human groups list --page 1 --page-size 20
+holycrab real-human groups rename GROUP_ID --name "新名称"
+holycrab assets upload /absolute/path/reference.jpg --real-human-group GROUP_ID
+holycrab assets wait ASSET_ID --timeout 600
+holycrab real-human assets list --group GROUP_ID
+```
+
+发起后会返回临时授权链接和二维码 PNG 路径。二维码在本机生成，不需要额外安装 Python 包，也不会把链接交给第三方二维码服务。本人扫码或打开链接完成验证，并点击完成返回官方页面；Agent 查询到成功后，使用 `group.uniqId` 上传对应人物素材。
+
+素材只有在 `step: UPLOADED_TO_ARK`、`ready: true` 后才可用于生成。把公开素材 ID 放进现有 `imageAssetIds` / `videoAssetIds`，再估算积分、确认并提交一次。真人授权不代表同意付费生成。
+
+人物分组和真人素材也可以删除，但删除不可恢复。CLI 会先显示名称、素材数量等目标信息并询问；只有用户已经明确确认时才可使用 `--yes`。删除人物分组会连同组内素材和上游人物分组一起删除：
+
+```bash
+holycrab real-human assets delete ASSET_ID --group GROUP_ID
+holycrab real-human groups delete GROUP_ID
+```
+
+MCP 提供 `real_human_authorization_start|get`、人物及素材列表、`real_human_group_rename|delete`、`real_human_asset_delete`、`asset_upload`、`asset_get`。删除工具必须传 `confirmed: true`，且 Agent 只能在用户明确要求删除该对象后这样做。发起授权工具同时返回二维码图片。链接和二维码含临时验证凭据，请只展示给本次操作的用户。失败、过期、超时或删除结果不明时不自动重试。
+
 完整体验步骤见 [HolyCrab CLI 使用指南](HolyCrab%20CLI%20使用指南.md)。公开模型限制见 [capabilities.json](holycrab/references/capabilities.json)。
 
 ## 隐私、条款与支持
@@ -95,6 +122,14 @@ python3 -m unittest discover -s holycrab/tests -v
 python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py
 python3 holycrab/scripts/validate_capabilities.py
 sh -n install.sh bin/holycrab
+```
+
+独立二维码解码验证（开发环境专用，安装器不安装这些测试依赖）：
+
+```bash
+python3 -m venv /tmp/holycrab-qr-validator
+/tmp/holycrab-qr-validator/bin/python -m pip install --only-binary=:all: -r holycrab/tests/requirements-qr-test.txt
+/tmp/holycrab-qr-validator/bin/python holycrab/scripts/validate_qr.py
 ```
 
 仓库中的测试和开发验证不会调用正式生成接口或产生费用；实际使用 `holycrab generate create` 时，用户确认后会提交真实付费任务。安全问题请按 [SECURITY.md](SECURITY.md) 联系我们。

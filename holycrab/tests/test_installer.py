@@ -19,14 +19,16 @@ class InstallerTests(unittest.TestCase):
         "SHA256_LAUNCHER": REPO_ROOT / "bin" / "holycrab",
         "SHA256_SKILL": REPO_ROOT / "holycrab" / "SKILL.md",
         "SHA256_OPENAI_YAML": REPO_ROOT / "holycrab" / "agents" / "openai.yaml",
+        "SHA256_SEGNO": REPO_ROOT / "holycrab" / "scripts" / "vendor" / "segno-1.6.6-py3-none-any.whl",
+        "SHA256_SEGNO_LICENSE": REPO_ROOT / "holycrab" / "scripts" / "vendor" / "LICENSE.segno",
     }
 
     def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
-        self.assertIn("VERSION=v0.2.1", installer)
+        self.assertIn("VERSION=v0.3.0", installer)
 
         stable_url = "https://holycrab.ai/cli/install.sh"
-        versioned_raw_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.2.1/install.sh"
+        versioned_raw_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.3.0/install.sh"
         for document in (REPO_ROOT / "README.md", REPO_ROOT / "HolyCrab CLI 使用指南.md"):
             content = document.read_text(encoding="utf-8")
             self.assertIn(stable_url, content)
@@ -81,6 +83,42 @@ class InstallerTests(unittest.TestCase):
             self.assertIn('"name":"holycrab-local"', handshake.stdout)
             self.assertIn('"protocolVersion":"2025-11-25"', handshake.stdout)
 
+    def test_fresh_install_and_upgrade_can_generate_qr_without_pip(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            prefix = root / "prefix"
+            config = root / "config"
+            config.mkdir()
+            config_file = config / "config.json"
+            config_file.write_text('{"installMarker":"preserved"}')
+            env = {**os.environ, "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT),
+                   "HOLYCRAB_INSTALL_PREFIX": str(prefix), "HOLYCRAB_CONFIG_DIR": str(config),
+                   "HOLYCRAB_INSTALL_AGENTS": "none", "HOLYCRAB_INSTALL_MCP": "0"}
+            for install_number in range(2):
+                if install_number == 1:
+                    # Simulate the v0.2.1 layout before an in-place upgrade.
+                    (prefix / "lib" / "holycrab" / "holycrab_cli.py").write_text('VERSION = "0.2.1"\n')
+                installed = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
+                                           text=True, capture_output=True)
+                self.assertEqual(installed.returncode, 0, installed.stderr)
+                program = """
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('installed', sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+raw = module.qr_png('https://example.com/verification?pl=offline-test')
+assert raw.startswith(b'\\x89PNG\\r\\n\\x1a\\n')
+assert len(raw) > 100
+assert 'real_human_authorization_start' in {t['name'] for t in module.MCP_TOOLS}
+assert 'real_human_group_delete' in {t['name'] for t in module.MCP_TOOLS}
+"""
+                result = subprocess.run(["python3", "-S", "-c", program,
+                                         str(prefix / "lib" / "holycrab" / "holycrab_cli.py")],
+                                        env=env, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(config_file.read_text(), '{"installMarker":"preserved"}')
+                self.assertTrue((prefix / "lib" / "holycrab" / "vendor" / "LICENSE.segno").is_file())
+
     def test_remote_release_hashes_match_the_bundled_files(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         for variable, path in self.RELEASE_FILES.items():
@@ -107,7 +145,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-relative=${url#*/v0.2.1/}
+relative=${url#*/v0.3.0/}
 cp "$FAKE_RELEASE_ROOT/$relative" "$destination"
 if [ "$relative" = "holycrab/scripts/holycrab_cli.py" ]; then
   printf '\\n# tampered\\n' >> "$destination"
@@ -185,8 +223,8 @@ fi
         self.assertNotIn('gh release upload "$release_version"', workflow)
 
     def test_release_notes_have_the_approved_english_title(self) -> None:
-        notes = (REPO_ROOT / ".github" / "releases" / "v0.2.1.md").read_text(encoding="utf-8")
-        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.2.1\n"))
+        notes = (REPO_ROOT / ".github" / "releases" / "v0.3.0.md").read_text(encoding="utf-8")
+        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.3.0\n"))
         self.assertIn("SHA-256", notes)
         self.assertIn("Seedance 2.5", notes)
         self.assertIn("Seed Audio", notes)

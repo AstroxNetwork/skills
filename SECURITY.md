@@ -11,3 +11,17 @@ Do not include a real API Key, temporary upload URL, private media, or paid proo
 The CLI stores its API Key in the current user's local configuration with user-only file permissions. Environment variables can override that file. The CLI and local MCP redact credentials and temporary upload URLs from their output.
 
 Users should create a dedicated HolyCrab API Key, set a reasonable credit limit, and revoke it from the HolyCrab website if the computer or local configuration is compromised.
+
+## Real-person verification
+
+The user-requested authorization start result intentionally includes a temporary verification link and QR image. Treat both as private session credentials, including in Agent conversation history. They must not be posted publicly or passed to third-party QR services. The CLI generates QR codes locally with bundled Segno 1.6.6 (BSD-3-Clause); no runtime package installation is needed.
+
+Only the person completes verification in the official browser flow. The CLI does not collect biometric data or submit verification results. Independent provider tokens and upstream account/group/asset IDs are excluded from new public tool outputs.
+
+QR files use user-only permissions under the configured HolyCrab directory's `real-human` cache. Terminal authorization queries remove them; later tool use cleans expired entries. Cleanup is not a background service: remove an abandoned QR manually if the CLI will not run again. The link may remain in the user's conversation history even after the local file is removed. Authorization does not grant permission for billable generation.
+
+## Destructive real-person operations
+
+Renaming uses a public group ID. Deleting a real-person group or asset is permanent and requires explicit confirmation for the exact target. Group deletion also removes every asset in that group and upstream records. Agents must set MCP `confirmed: true` or CLI `--yes` only after that confirmation.
+
+PATCH and DELETE requests are submitted once. After a timeout, disconnect, 5xx response, or malformed success response, query the public group or asset state and do not retry automatically. The tools accept only public group and asset IDs; authorization revocation and automatic retention cleanup are not implemented.

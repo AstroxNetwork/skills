@@ -2,7 +2,7 @@
 set -eu
 
 REPOSITORY=AstroxNetwork/skills
-VERSION=v0.2.1
+VERSION=v0.3.0
 SOURCE_DIR=${HOLYCRAB_INSTALL_SOURCE_DIR:-}
 INSTALL_MCP=${HOLYCRAB_INSTALL_MCP:-1}
 INSTALL_AGENTS=${HOLYCRAB_INSTALL_AGENTS:-codex,claude}
@@ -10,11 +10,13 @@ PREFIX=${HOLYCRAB_INSTALL_PREFIX:-"$HOME/.local"}
 BIN_DIR="$PREFIX/bin"
 LIB_DIR="$PREFIX/lib/holycrab"
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/holycrab-install.XXXXXX")
-SHA256_HOLYCRAB_CLI=4ae4a12ce2919a7c84a8141b9698b9d9c06ccb367de1c335e137e0ae1ddbf571
+SHA256_HOLYCRAB_CLI=5d059d1f459e96e6aee383c1085608dba2d7f2300a9012ad9e7a90ec0c5bb111
 SHA256_CAPABILITIES=79e3f5b63cfbef2ff5518c2280592d303c155f0d262788f50f46a59873773fa5
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
-SHA256_SKILL=3788146e1be7d52e2eeba6780acfabe9408dbc72d360ee1a74bd3e91ff90a8be
-SHA256_OPENAI_YAML=b431adff963f5cf18dc96fb15c0190d2527156d61514da904fe180f5e6af7741
+SHA256_SKILL=aa83167e5fb3418be5361f61baf91f7ae969d21878d1dc51bf90be6170872a41
+SHA256_OPENAI_YAML=64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7
+SHA256_SEGNO=28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7
+SHA256_SEGNO_LICENSE=de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935
 
 command -v python3 >/dev/null 2>&1 || {
   echo "Python 3.10 or newer is required for HolyCrab." >&2
@@ -67,15 +69,19 @@ fetch() {
   fi
 }
 
-mkdir -p "$BIN_DIR" "$LIB_DIR/references"
+mkdir -p "$BIN_DIR" "$LIB_DIR/references" "$LIB_DIR/vendor"
 fetch "holycrab/scripts/holycrab_cli.py" "$TEMP_DIR/holycrab_cli.py" "$SHA256_HOLYCRAB_CLI"
 fetch "holycrab/references/capabilities.json" "$TEMP_DIR/capabilities.json" "$SHA256_CAPABILITIES"
 fetch "bin/holycrab" "$TEMP_DIR/holycrab" "$SHA256_LAUNCHER"
 fetch "holycrab/SKILL.md" "$TEMP_DIR/SKILL.md" "$SHA256_SKILL"
 fetch "holycrab/agents/openai.yaml" "$TEMP_DIR/openai.yaml" "$SHA256_OPENAI_YAML"
+fetch "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl" "$TEMP_DIR/segno.whl" "$SHA256_SEGNO"
+fetch "holycrab/scripts/vendor/LICENSE.segno" "$TEMP_DIR/LICENSE.segno" "$SHA256_SEGNO_LICENSE"
 install -m 755 "$TEMP_DIR/holycrab_cli.py" "$LIB_DIR/holycrab_cli.py"
 install -m 644 "$TEMP_DIR/capabilities.json" "$LIB_DIR/references/capabilities.json"
 install -m 755 "$TEMP_DIR/holycrab" "$BIN_DIR/holycrab"
+install -m 644 "$TEMP_DIR/segno.whl" "$LIB_DIR/vendor/segno-1.6.6-py3-none-any.whl"
+install -m 644 "$TEMP_DIR/LICENSE.segno" "$LIB_DIR/vendor/LICENSE.segno"
 
 install_skill() {
   skill_destination=$1

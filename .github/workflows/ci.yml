@@ -36,6 +36,12 @@ jobs:
         run: sh -n install.sh bin/holycrab
       - name: Check patch whitespace
         run: git diff --check
+      - name: Decode offline QR fixtures independently
+        if: matrix.python == '3.13'
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/qr-validator"
+          "${RUNNER_TEMP}/qr-validator/bin/python" -m pip install --only-binary=:all: -r holycrab/tests/requirements-qr-test.txt
+          "${RUNNER_TEMP}/qr-validator/bin/python" holycrab/scripts/validate_qr.py
 
   official-skill-validation:
     name: Official Skill validator
@@ -76,7 +82,7 @@ jobs:
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
           test -f "${HOME}/.claude/skills/holycrab/agents/openai.yaml"
-          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.2.1'
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.3.0'
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json > "${RUNNER_TEMP}/doctor.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"

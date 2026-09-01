@@ -518,7 +518,7 @@ class AssetUploadTests(unittest.TestCase):
             (200, {"code": 0, "data": None}),
         ]
         with patch.object(holycrab, "send", side_effect=replies) as send, patch.object(
-            holycrab.urllib.request, "urlopen", return_value=self.upload_response()
+            holycrab, "open_presigned_upload", return_value=self.upload_response()
         ):
             result = holycrab.upload_asset(str(image))
 
@@ -558,7 +558,7 @@ class AssetUploadTests(unittest.TestCase):
             )
 
         with patch.object(holycrab, "send", side_effect=replies) as send, patch.object(
-            holycrab.urllib.request, "urlopen", return_value=self.upload_response()
+            holycrab, "open_presigned_upload", return_value=self.upload_response()
         ):
             results = [holycrab.upload_asset(str(image)) for image in images]
 
@@ -587,7 +587,7 @@ class AssetUploadTests(unittest.TestCase):
             (400, {"code": 400, "message": "missing multipart field"}),
         ]
         with patch.object(holycrab, "send", side_effect=replies), patch.object(
-            holycrab.urllib.request, "urlopen", return_value=self.upload_response()
+            holycrab, "open_presigned_upload", return_value=self.upload_response()
         ):
             with self.assertRaisesRegex(SystemExit, "HTTP 400: missing multipart field"):
                 holycrab.upload_asset(str(image))

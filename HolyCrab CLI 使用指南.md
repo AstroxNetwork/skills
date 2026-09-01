@@ -1,6 +1,6 @@
 # HolyCrab CLI 使用指南
 
-这份指南只做一件事：让你从一台普通 Mac 或 Linux 电脑出发，装好 HolyCrab CLI、Skill 和本地 MCP，然后完成 API Key 配置、估价、生成、查任务和下载。
+这份指南让你从一台普通 Mac 或 Linux 电脑出发，装好 HolyCrab CLI、Skill 和本地 MCP，然后完成 API Key 配置、真人授权、素材上传、估价、生成和下载。
 
 整套工具直接使用 HolyCrab 现有正式服务，不需要等待新 OAuth 或新 MCP 后端上线。
 
@@ -102,7 +102,7 @@ holycrab models show dreamina-seedance-2-5-260628
 holycrab models show MiniMax-H3
 ```
 
-先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.2.1` 的快照版本是 `2026-08-22`。
+先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.3.0` 的模型快照版本仍是 `2026-08-22`。
 
 ## 4. 第一次生成图片
 
@@ -174,6 +174,67 @@ CLI 会自动完成预签名上传和 multipart 素材登记；不需要另外�
 
 上传成功后只保留返回的素材 ID。临时上传地址不会显示在终端或 Agent 回复里。
 
+### 真人素材：先扫码授权，再上传
+
+本节对应 `v0.3.0`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
+
+先创建一次授权，名称用于区分人物，不要求输入证件姓名：
+
+```bash
+holycrab real-human start --name "小林"
+```
+
+返回的 `authorizationId` 用来查状态，`h5Link` 是临时授权链接，`qrPath` 是本机二维码 PNG 的绝对路径。本人打开链接或扫码，按页面提示完成验证，最后点击完成返回官方回调页。不要把链接或二维码发到公开群、公开文档或第三方二维码网站。
+
+Agent 不能替本人刷脸。二维码保存失败时，继续使用已返回的链接，不要再创建一条授权。手机端不需要登录桌面上的 HolyCrab 网页账号来提交回调。
+
+```bash
+holycrab real-human get AUTHORIZATION_ID
+holycrab real-human wait AUTHORIZATION_ID --interval 5 --timeout 600
+```
+
+状态含义：`CREATED` 等待本人操作，`SUCCEEDED` 授权成功，`FAILED` 验证失败，`EXPIRED` 会话过期。成功返回的 `group.uniqId` 就是后续上传使用的 `GROUP_ID`。等待超时返回退出码 2，保留授权 ID 后可继续查；失败或过期返回退出码 1，不会自动重新授权。
+
+已经授权过的人可以直接查列表。列表支持分页，遇到同名人物先确认分组，不要猜：
+
+```bash
+holycrab real-human groups list --page 1 --page-size 20
+holycrab real-human assets list --group GROUP_ID --page 1 --page-size 50
+holycrab assets upload /absolute/path/reference.jpg --real-human-group GROUP_ID
+holycrab assets get ASSET_ID
+holycrab assets wait ASSET_ID --timeout 600
+```
+
+`ASSET_ID` 使用上传返回的 `assetUniqId`，或列表中的 `uniqId`。真人分组支持图片和视频；上传视频时可加 `--duration-seconds 8`。省略 `--real-human-group` 会走普通素材流程，不能用来绕过真人验证。
+
+人物名称可以修改：
+
+```bash
+holycrab real-human groups rename GROUP_ID --name "新名称"
+```
+
+删除不可恢复。删除人物会同时删除该组全部素材和上游人物分组；删除单个素材会清理存储、上游记录和数据库记录。命令会先显示目标并询问确认：
+
+```bash
+holycrab real-human assets delete ASSET_ID --group GROUP_ID
+holycrab real-human groups delete GROUP_ID
+```
+
+脚本或 Agent 只有在用户明确要求删除该具体对象后才能加 `--yes`。MCP 的 `real_human_group_delete` 和 `real_human_asset_delete` 同样要求 `confirmed: true`。授权成功、素材上传成功或确认生成都不能替代删除确认。删除结果遇到超时、断线、5xx 或异常响应时不要再次提交，先重新查询人物或素材列表确认实际状态。
+
+只有 `step: UPLOADED_TO_ARK`、`ready: true` 才能生成。素材返回 `FAILED` 时先看 `error`，不要自动重传。上传登记遇到连接中断、502/504 或无效响应时，保存提示里的素材 ID、分组 ID，先查单个素材或分组列表，不能把它当作“肯定没上传”。
+
+素材就绪后，将公开 ID 放入原有视频请求，不传人物分组 ID或上游素材 ID：
+
+```bash
+holycrab generate estimate --kind video \
+  --json '{"model":"dreamina-seedance-2-5-260628","prompt":"参考人物在咖啡店向镜头挥手，保持外观一致","duration":8,"resolution":"720p","ratio":"16:9","videoTaskType":"reference","imageAssetIds":["REPLACE_WITH_ASSET_ID"]}'
+```
+
+确认积分后才执行 `generate create`。真人授权成功不代表同意付费生成，重复抽卡仍需新的生成确认。
+
+本机二维码位于 HolyCrab 配置目录的 `real-human` 子目录，文件仅当前用户可读。查到终态时清理；后续 CLI/MCP 调用会清理过期文件。程序不在后台运行，不会自动清理聊天记录中的图片；不再使用 CLI 时可手动删除遗留二维码。
+
 ## 7. 查任务、等待和下载
 
 ```bash
@@ -213,6 +274,14 @@ claude mcp get holycrab
 ```
 
 Agent 应该按这个顺序工作：查能力 → 组参数 → 估积分 → 等你确认 → 为这次抽卡创建一个稳定 attempt ID → 提交一次 → 返回任务 ID → 查结果。网络重试必须沿用同一个 ID；你明确再抽一次时才换新 ID。
+
+真人场景可以这样说：
+
+```text
+用 HolyCrab 帮我发起“小林”的真人授权，给我链接和二维码。我完成后再把我指定的照片上传到该人物分组，等素材处理成功后估算一个 8 秒视频的积分，先不要生成。
+```
+
+MCP 发起工具会返回二维码图片和临时链接；Agent 用短查询检查授权与素材，不会长期阻塞整个 MCP 服务。若当前客户端不能展示图片，仍可使用链接或本机 `qrPath`。
 
 ## 10. 常见问题
 
