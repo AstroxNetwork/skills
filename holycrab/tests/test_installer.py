@@ -90,11 +90,14 @@ class InstallerTests(unittest.TestCase):
             config = root / "config"
             config.mkdir()
             config_file = config / "config.json"
-            config_file.write_text('{"apiKey":"unchanged-local-key"}')
+            config_file.write_text('{"installMarker":"preserved"}')
             env = {**os.environ, "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT),
                    "HOLYCRAB_INSTALL_PREFIX": str(prefix), "HOLYCRAB_CONFIG_DIR": str(config),
                    "HOLYCRAB_INSTALL_AGENTS": "none", "HOLYCRAB_INSTALL_MCP": "0"}
-            for _ in range(2):
+            for install_number in range(2):
+                if install_number == 1:
+                    # Simulate the v0.2.1 layout before an in-place upgrade.
+                    (prefix / "lib" / "holycrab" / "holycrab_cli.py").write_text('VERSION = "0.2.1"\n')
                 installed = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
                                            text=True, capture_output=True)
                 self.assertEqual(installed.returncode, 0, installed.stderr)
@@ -107,12 +110,13 @@ raw = module.qr_png('https://example.com/verification?pl=offline-test')
 assert raw.startswith(b'\\x89PNG\\r\\n\\x1a\\n')
 assert len(raw) > 100
 assert 'real_human_authorization_start' in {t['name'] for t in module.MCP_TOOLS}
+assert 'real_human_group_delete' in {t['name'] for t in module.MCP_TOOLS}
 """
                 result = subprocess.run(["python3", "-S", "-c", program,
                                          str(prefix / "lib" / "holycrab" / "holycrab_cli.py")],
                                         env=env, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(config_file.read_text(), '{"apiKey":"unchanged-local-key"}')
+                self.assertEqual(config_file.read_text(), '{"installMarker":"preserved"}')
                 self.assertTrue((prefix / "lib" / "holycrab" / "vendor" / "LICENSE.segno").is_file())
 
     def test_remote_release_hashes_match_the_bundled_files(self) -> None:

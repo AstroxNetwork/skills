@@ -176,7 +176,7 @@ CLI 会自动完成预签名上传和 multipart 素材登记；不需要另外�
 
 ### 真人素材：先扫码授权，再上传
 
-本节对应尚未发布的 `v0.3.0`，请使用上面的仓库源码安装方式测试。线上还需部署配套 API 和官方回调页。不要把单元测试通过当成真实授权通过。
+本节对应 `v0.3.0`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
 
 先创建一次授权，名称用于区分人物，不要求输入证件姓名：
 
@@ -206,6 +206,21 @@ holycrab assets wait ASSET_ID --timeout 600
 ```
 
 `ASSET_ID` 使用上传返回的 `assetUniqId`，或列表中的 `uniqId`。真人分组支持图片和视频；上传视频时可加 `--duration-seconds 8`。省略 `--real-human-group` 会走普通素材流程，不能用来绕过真人验证。
+
+人物名称可以修改：
+
+```bash
+holycrab real-human groups rename GROUP_ID --name "新名称"
+```
+
+删除不可恢复。删除人物会同时删除该组全部素材和上游人物分组；删除单个素材会清理存储、上游记录和数据库记录。命令会先显示目标并询问确认：
+
+```bash
+holycrab real-human assets delete ASSET_ID --group GROUP_ID
+holycrab real-human groups delete GROUP_ID
+```
+
+脚本或 Agent 只有在用户明确要求删除该具体对象后才能加 `--yes`。MCP 的 `real_human_group_delete` 和 `real_human_asset_delete` 同样要求 `confirmed: true`。授权成功、素材上传成功或确认生成都不能替代删除确认。删除结果遇到超时、断线、5xx 或异常响应时不要再次提交，先重新查询人物或素材列表确认实际状态。
 
 只有 `step: UPLOADED_TO_ARK`、`ready: true` 才能生成。素材返回 `FAILED` 时先看 `error`，不要自动重传。上传登记遇到连接中断、502/504 或无效响应时，保存提示里的素材 ID、分组 ID，先查单个素材或分组列表，不能把它当作“肯定没上传”。
 

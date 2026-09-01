@@ -19,3 +19,9 @@ The user-requested authorization start result intentionally includes a temporary
 Only the person completes verification in the official browser flow. The CLI does not collect biometric data or submit verification results. Independent provider tokens and upstream account/group/asset IDs are excluded from new public tool outputs.
 
 QR files use user-only permissions under the configured HolyCrab directory's `real-human` cache. Terminal authorization queries remove them; later tool use cleans expired entries. Cleanup is not a background service: remove an abandoned QR manually if the CLI will not run again. The link may remain in the user's conversation history even after the local file is removed. Authorization does not grant permission for billable generation.
+
+## Destructive real-person operations
+
+Renaming uses a public group ID. Deleting a real-person group or asset is permanent and requires explicit confirmation for the exact target. Group deletion also removes every asset in that group and upstream records. Agents must set MCP `confirmed: true` or CLI `--yes` only after that confirmation.
+
+PATCH and DELETE requests are submitted once. After a timeout, disconnect, 5xx response, or malformed success response, query the public group or asset state and do not retry automatically. The tools accept only public group and asset IDs; authorization revocation and automatic retention cleanup are not implemented.

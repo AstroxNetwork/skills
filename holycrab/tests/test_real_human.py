@@ -23,7 +23,7 @@ SPEC.loader.exec_module(cli)
 AUTH_ID = "a" * 32
 GROUP_ID = "b" * 32
 ASSET_ID = "c" * 32
-LINK = "https://ark.volcengine.com/authorization?pl=private-session&token=private-link"
+LINK = "https://www.byteplus.com/en/liveness-face-manage/authorization?pl=private-session&token=private-link"
 
 
 def ok(data):
@@ -93,8 +93,15 @@ class RealHumanTests(unittest.TestCase):
 
     def test_invalid_verification_urls_never_escape_or_trigger_another_session(self):
         self.send.side_effect = None
-        for link in ("http://ark.example/verification", "https://user:secret@ark.example/verification",
-                     "https://ark.example/verification\nunsafe", "file:///tmp/private"):
+        for link in ("http://www.byteplus.com/en/liveness-face-manage/authorization?pl=x",
+                     "https://user:secret@www.byteplus.com/en/liveness-face-manage/authorization?pl=x",
+                     "https://evil.example/en/liveness-face-manage/authorization?pl=x",
+                     "https://www.byteplus.com.evil.example/en/liveness-face-manage/authorization?pl=x",
+                     "https://www.byteplus.com:444/en/liveness-face-manage/authorization?pl=x",
+                     "https://www.byteplus.com/en/another-path?pl=x",
+                     "https://www.byteplus.com/en/liveness-face-manage/authorization?pl=x#fragment",
+                     "https://www.byteplus.com/en/liveness-face-manage/authorization\nunsafe",
+                     "file:///tmp/private"):
             self.send.reset_mock()
             response = session()
             response[1]["data"]["h5Link"] = link
@@ -256,6 +263,161 @@ class RealHumanTests(unittest.TestCase):
         self.send.assert_not_called()
 
 
+class RealHumanManagementTests(unittest.TestCase):
+    setUp = RealHumanTests.setUp
+    call = RealHumanTests.call
+
+    @staticmethod
+    def group(name="小林", asset_count=8):
+        return {"uniqId": GROUP_ID, "name": name, "assetCount": asset_count,
+                "arkGroupId": "internal-group", "userId": 7}
+
+    def test_group_rename_uses_patch_and_returns_only_public_fields(self):
+        self.send.side_effect = None
+        self.send.return_value = ok({**self.group(name="新名字"), "secret": "hidden"})
+
+        result = self.call("real_human_group_rename", groupUniqId=GROUP_ID, name=" 新名字 ")
+
+        self.assertFalse(result["isError"], result)
+        self.assertEqual(result["structuredContent"], {"uniqId": GROUP_ID, "name": "新名字"})
+        self.assertNotIn("internal-group", json.dumps(result))
+        self.assertNotIn("hidden", json.dumps(result))
+        self.send.assert_called_once_with("PATCH", "/api/real-human-groups/" + GROUP_ID,
+                                         payload={"name": "新名字"})
+
+    def test_group_rename_rejects_invalid_name_before_api(self):
+        for name in (" ", "x" * 256):
+            with self.subTest(name=name):
+                self.assertTrue(self.call("real_human_group_rename", groupUniqId=GROUP_ID,
+                                          name=name)["isError"])
+        self.send.assert_not_called()
+
+    def test_group_rename_reports_not_found_and_forbidden_without_retry(self):
+        for status in (403, 404):
+            with self.subTest(status=status):
+                self.send.reset_mock()
+                self.send.side_effect = None
+                self.send.return_value = (status, {"message": "Not available", "internalId": 42})
+                result = self.call("real_human_group_rename", groupUniqId=GROUP_ID, name="新名字")
+                self.assertTrue(result["isError"])
+                self.assertEqual(self.send.call_count, 1)
+                self.assertNotIn("internalId", json.dumps(result))
+
+    def test_group_rename_uncertainty_queries_state_without_retry(self):
+        self.send.side_effect = [(502, {"message": "gateway error"}),
+                                 ok({"records": [self.group(name="新名字")], "total": 1,
+                                     "current": 1, "pages": 1, "size": 100})]
+        result = self.call("real_human_group_rename", groupUniqId=GROUP_ID, name="新名字")
+        self.assertTrue(result["isError"])
+        self.assertIn("still contains", result["content"][0]["text"])
+        self.assertEqual(sum(call.args[0] == "PATCH" for call in self.send.call_args_list), 1)
+
+    def test_group_delete_requires_true_confirmation_before_any_api_call(self):
+        for arguments in ({"groupUniqId": GROUP_ID},
+                          {"groupUniqId": GROUP_ID, "confirmed": False}):
+            with self.subTest(arguments=arguments):
+                self.assertTrue(self.call("real_human_group_delete", **arguments)["isError"])
+        self.send.assert_not_called()
+
+    def test_group_delete_queries_target_once_then_deletes_once(self):
+        self.send.side_effect = [ok({"records": [self.group()], "total": 1,
+                                     "current": 1, "pages": 1, "size": 100}),
+                                 ok(None)]
+
+        result = self.call("real_human_group_delete", groupUniqId=GROUP_ID, confirmed=True)
+
+        self.assertFalse(result["isError"], result)
+        self.assertEqual(result["structuredContent"], {"deleted": True, "groupUniqId": GROUP_ID})
+        self.assertEqual(self.send.call_count, 2)
+        self.send.assert_any_call("DELETE", "/api/real-human-groups/" + GROUP_ID)
+
+    def test_cli_group_delete_decline_never_sends_delete(self):
+        self.send.side_effect = None
+        self.send.return_value = ok({"records": [self.group()], "total": 1,
+                                     "current": 1, "pages": 1, "size": 100})
+        args = cli.build_parser().parse_args(["real-human", "groups", "delete", GROUP_ID])
+        stdout = io.StringIO()
+        with patch.object(cli.sys.stdin, "isatty", return_value=True), patch("builtins.input", return_value="no"), \
+                redirect_stdout(stdout):
+            self.assertEqual(args.func(args), 2)
+        self.assertIn("8", stdout.getvalue())
+        self.assertFalse(any(call.args[0] == "DELETE" for call in self.send.call_args_list))
+
+    def test_cli_group_delete_yes_queries_and_deletes_once(self):
+        self.send.side_effect = [ok({"records": [self.group()], "total": 1,
+                                     "current": 1, "pages": 1, "size": 100}), ok(None)]
+        args = cli.build_parser().parse_args(["real-human", "groups", "delete", GROUP_ID, "--yes"])
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(args.func(args), 0)
+        self.assertEqual(self.send.call_count, 2)
+        self.send.assert_any_call("DELETE", "/api/real-human-groups/" + GROUP_ID)
+
+    def test_cli_asset_delete_decline_never_sends_delete(self):
+        self.send.side_effect = [ok({"records": [self.group()], "total": 1,
+                                     "current": 1, "pages": 1, "size": 100}),
+                                 ok({"uniqId": ASSET_ID, "name": "正面照", "step": "UPLOADED_TO_ARK"})]
+        args = cli.build_parser().parse_args(["real-human", "assets", "delete", ASSET_ID,
+                                              "--group", GROUP_ID])
+        with patch.object(cli.sys.stdin, "isatty", return_value=True), patch("builtins.input", return_value="no"), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(args.func(args), 2)
+        self.assertFalse(any(call.args[0] == "DELETE" for call in self.send.call_args_list))
+
+    def test_asset_delete_requires_confirmation_and_returns_public_ids(self):
+        self.send.side_effect = [ok({"records": [self.group()], "total": 1,
+                                     "current": 1, "pages": 1, "size": 100}),
+                                 ok({"uniqId": ASSET_ID, "name": "正面照", "step": "UPLOADED_TO_ARK",
+                                     "arkAssetId": "internal-asset"}),
+                                 ok(None)]
+        rejected = self.call("real_human_asset_delete", groupUniqId=GROUP_ID,
+                             assetId=ASSET_ID, confirmed=False)
+        self.assertTrue(rejected["isError"])
+        self.send.assert_not_called()
+
+        result = self.call("real_human_asset_delete", groupUniqId=GROUP_ID,
+                           assetId=ASSET_ID, confirmed=True)
+        self.assertFalse(result["isError"], result)
+        self.assertEqual(result["structuredContent"], {"deleted": True, "groupUniqId": GROUP_ID,
+                                                        "assetUniqId": ASSET_ID})
+        self.assertNotIn("internal-asset", json.dumps(result))
+        self.send.assert_any_call("DELETE", "/api/real-human-groups/" + GROUP_ID + "/assets/" + ASSET_ID)
+
+    def test_delete_uncertainty_is_not_retried(self):
+        for outcome in ((502, {"message": "gateway error"}),
+                        urllib.error.URLError("connection lost"), (200, "unexpected HTML")):
+            self.send.reset_mock()
+            self.send.side_effect = [ok({"records": [self.group()], "total": 1,
+                                         "current": 1, "pages": 1, "size": 100}), outcome,
+                                     ok({"records": [self.group()], "total": 1,
+                                         "current": 1, "pages": 1, "size": 100})]
+            result = self.call("real_human_group_delete", groupUniqId=GROUP_ID, confirmed=True)
+            self.assertTrue(result["isError"])
+            self.assertIn("not retry", result["content"][0]["text"])
+            self.assertIn("still contains", result["content"][0]["text"])
+            self.assertEqual(self.send.call_count, 3)
+            self.assertEqual(sum(call.args[0] == "DELETE" for call in self.send.call_args_list), 1)
+
+    def test_asset_delete_uncertainty_queries_once_and_never_retries(self):
+        self.send.side_effect = [ok({"records": [self.group()], "total": 1,
+                                     "current": 1, "pages": 1, "size": 100}),
+                                 ok({"uniqId": ASSET_ID, "name": "正面照"}),
+                                 (502, {"message": "gateway error"}),
+                                 ok({"uniqId": ASSET_ID, "name": "正面照"})]
+        result = self.call("real_human_asset_delete", groupUniqId=GROUP_ID,
+                           assetId=ASSET_ID, confirmed=True)
+        self.assertTrue(result["isError"])
+        self.assertIn("still contains", result["content"][0]["text"])
+        self.assertEqual(sum(call.args[0] == "DELETE" for call in self.send.call_args_list), 1)
+
+    def test_missing_group_stops_before_mutation(self):
+        self.send.side_effect = None
+        self.send.return_value = ok({"records": [], "total": 0, "current": 1,
+                                     "pages": 0, "size": 100})
+        result = self.call("real_human_group_delete", groupUniqId=GROUP_ID, confirmed=True)
+        self.assertTrue(result["isError"])
+        self.assertFalse(any(call.args[0] == "DELETE" for call in self.send.call_args_list))
+
+
 class AssetWorkflowTests(unittest.TestCase):
     setUp = RealHumanTests.setUp
     call = RealHumanTests.call
@@ -269,7 +431,7 @@ class AssetWorkflowTests(unittest.TestCase):
                                 ok({"arkAccountId": 77})]
         response = MagicMock()
         response.__enter__.return_value.status = 200
-        with patch.object(cli.urllib.request, "urlopen", return_value=response) as upload:
+        with patch.object(cli, "open_presigned_upload", return_value=response) as upload:
             result = self.call("asset_upload", file=str(path), groupUniqId=GROUP_ID)
         self.assertFalse(result["isError"], result)
         self.assertEqual(result["structuredContent"]["assetUniqId"], ASSET_ID)
@@ -285,10 +447,19 @@ class AssetWorkflowTests(unittest.TestCase):
         path = Path(self.temp.name) / "reference.jpg"
         path.write_bytes(b"image")
         self.send.side_effect = [ (404, {"message": "Group not found"}) ]
-        with patch.object(cli.urllib.request, "urlopen") as upload:
+        with patch.object(cli, "open_presigned_upload") as upload:
             self.assertTrue(self.call("asset_upload", file=str(path), groupUniqId=GROUP_ID)["isError"])
         upload.assert_not_called()
         self.send.assert_called_once()
+
+    def test_upload_redirect_handler_refuses_every_redirect(self):
+        handler_type = getattr(cli, "RejectRedirectHandler", None)
+        self.assertIsNotNone(handler_type, "uploads need an explicit no-redirect handler")
+        request = urllib.request.Request("https://storage.example/object", method="PUT")
+        with self.assertRaisesRegex(urllib.error.HTTPError, "redirect blocked") as caught:
+            handler_type().redirect_request(request, None, 307, "Temporary Redirect", {},
+                                            "https://other.example/object")
+        caught.exception.close()
 
     def test_registration_uncertainty_keeps_asset_id_and_never_retries(self):
         path = Path(self.temp.name) / "reference.jpg"
@@ -301,7 +472,7 @@ class AssetWorkflowTests(unittest.TestCase):
                                         "objectKey": "7/" + ASSET_ID + ".jpg", "uniqId": ASSET_ID}), outcome]
             response = MagicMock()
             response.__enter__.return_value.status = 200
-            with patch.object(cli.urllib.request, "urlopen", return_value=response) as upload:
+            with patch.object(cli, "open_presigned_upload", return_value=response) as upload:
                 result = self.call("asset_upload", file=str(path), groupUniqId=GROUP_ID)
             self.assertTrue(result["isError"])
             text = result["content"][0]["text"]
@@ -390,7 +561,7 @@ class AssetWorkflowTests(unittest.TestCase):
         path.write_bytes(b"offline-fixture")
         upload_response = MagicMock()
         upload_response.__enter__.return_value.status = 200
-        with patch.object(cli.urllib.request, "urlopen", return_value=upload_response):
+        with patch.object(cli, "open_presigned_upload", return_value=upload_response):
             uploaded = self.call("asset_upload", file=str(path), groupUniqId=GROUP_ID)
         self.assertFalse(uploaded["isError"])
         self.assertTrue(state["registered"])

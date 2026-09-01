@@ -8,7 +8,7 @@
 
 它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.3.0` 内置的模型能力快照仍为 `2026-08-22`；这是随版本发布的静态合同，不冒充实时模型目录。
 
-本分支为尚未发布的 `v0.3.0` 开发代码。下方官网安装命令只安装已发布版本；测试本分支请使用 `HOLYCRAB_INSTALL_SOURCE_DIR="$PWD" sh install.sh`。真人功能需要对应正式 API 和官方回调页已部署，真实扫码与生成需另行验收。
+`v0.3.0` 增加真人授权、人物及素材管理。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
 ## 系统要求与一键安装
 
@@ -86,6 +86,7 @@ Seedance 视频在没有填写 `generateAudio` 时，CLI 和本地 MCP 会默认
 holycrab real-human start --name "小林"
 holycrab real-human wait AUTHORIZATION_ID --timeout 600
 holycrab real-human groups list --page 1 --page-size 20
+holycrab real-human groups rename GROUP_ID --name "新名称"
 holycrab assets upload /absolute/path/reference.jpg --real-human-group GROUP_ID
 holycrab assets wait ASSET_ID --timeout 600
 holycrab real-human assets list --group GROUP_ID
@@ -95,7 +96,14 @@ holycrab real-human assets list --group GROUP_ID
 
 素材只有在 `step: UPLOADED_TO_ARK`、`ready: true` 后才可用于生成。把公开素材 ID 放进现有 `imageAssetIds` / `videoAssetIds`，再估算积分、确认并提交一次。真人授权不代表同意付费生成。
 
-MCP 提供 `real_human_authorization_start|get`、`real_human_groups_list`、`real_human_assets_list`、`asset_upload`、`asset_get`；发起工具同时返回二维码图片。链接和二维码含临时验证凭据，请只展示给本次操作的用户。失败、过期或超时不自动重新授权、重传素材或创建生成任务。
+人物分组和真人素材也可以删除，但删除不可恢复。CLI 会先显示名称、素材数量等目标信息并询问；只有用户已经明确确认时才可使用 `--yes`。删除人物分组会连同组内素材和上游人物分组一起删除：
+
+```bash
+holycrab real-human assets delete ASSET_ID --group GROUP_ID
+holycrab real-human groups delete GROUP_ID
+```
+
+MCP 提供 `real_human_authorization_start|get`、人物及素材列表、`real_human_group_rename|delete`、`real_human_asset_delete`、`asset_upload`、`asset_get`。删除工具必须传 `confirmed: true`，且 Agent 只能在用户明确要求删除该对象后这样做。发起授权工具同时返回二维码图片。链接和二维码含临时验证凭据，请只展示给本次操作的用户。失败、过期、超时或删除结果不明时不自动重试。
 
 完整体验步骤见 [HolyCrab CLI 使用指南](HolyCrab%20CLI%20使用指南.md)。公开模型限制见 [capabilities.json](holycrab/references/capabilities.json)。
 

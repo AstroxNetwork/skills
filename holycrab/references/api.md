@@ -545,6 +545,20 @@ CLI `real-human wait` 默认间隔 5 秒、超时 600 秒；间隔必须为有�
 
 公开素材字段：`uniqId`、`name`、`assetType`、`step`、`status`、`error`、`duration`、`url`、`createTime`、`updateTime`、`ready`；不返回上游素材 ID。就绪后把公开 `uniqId` 放入现有视频请求的 `imageAssetIds` 或 `videoAssetIds`，仍需先查模型能力和预估积分。
 
+### 9.5 重命名与永久删除
+
+| 操作 | 后端接口 | CLI | MCP |
+| --- | --- | --- | --- |
+| 重命名人物 | `PATCH /api/real-human-groups/{groupUniqId}`，JSON `{name}` | `real-human groups rename GROUP_ID --name NAME` | `real_human_group_rename` |
+| 删除人物 | `DELETE /api/real-human-groups/{groupUniqId}` | `real-human groups delete GROUP_ID` | `real_human_group_delete` |
+| 删除真人素材 | `DELETE /api/real-human-groups/{groupUniqId}/assets/{assetUniqId}` | `real-human assets delete ASSET_ID --group GROUP_ID` | `real_human_asset_delete` |
+
+重命名名称去除首尾空白后必须为 1–255 字符，成功只返回公开人物 ID 和名称。删除人物会同时删除组内素材和上游人物分组；删除单个素材会清理存储、上游记录和数据库记录，均不可恢复。
+
+CLI 删除前查询并显示目标。交互模式要求确认；`--yes` 只可用于用户已经明确授权的具体对象。MCP 删除工具要求 `confirmed: true`，缺失或为 `false` 时不会查询或删除。Agent 不能把真人授权成功、素材上传或生成确认当作删除确认。
+
+PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送一次，随后通过列表或详情查询实际状态，不自动重试。工具只接受公开 `groupUniqId` 和素材 `uniqId`；不支持授权撤销或自动留存清理。
+
 创建授权或登记素材时，连接中断、网关 502/504、HTTP 200 无效响应都可能无法确认操作结果。保留已知 ID并查询，不自动重新创建、重新上传或回退到普通素材分组。普通 `assets upload` 不传人物分组时继续走原有上传流程。
 
 ## 10. 变更说明
@@ -552,6 +566,7 @@ CLI `real-human wait` 默认间隔 5 秒、超时 600 秒；间隔必须为有�
 本公开版本包含：
 
 - 真人授权链接、本地二维码、授权状态与真人分组查询、指定人物素材上传和就绪状态查询。
+- 真人分组重命名、真人分组永久删除和单个真人素材永久删除，并要求明确确认。
 
 - 新增 Seedance 2.5 模型、30 秒生成、智能编辑、视频续写和 50 个参考素材限制。
 - 新增 MiniMax H3 独立生成与冻结积分接口。

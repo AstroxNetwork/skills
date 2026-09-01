@@ -20,10 +20,11 @@ def main() -> None:
     assert spec and spec.loader
     cli = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cli)
+    base = "https://www.byteplus.com/en/liveness-face-manage/authorization?"
     fixtures = (
-        "https://ark.volcengine.com/authorization?pl=offline-fixture&token=example",
-        "https://ark.volcengine.com/authorization?pl=" + "x" * 1200,
-        "https://ark.volcengine.com/authorization?pl=example%2B%2F%3D&locale=zh-CN&name=%E5%B0%8F%E6%9E%97",
+        base + "pl=offline-fixture&token=example",
+        base + "pl=" + "x" * 1200,
+        base + "pl=example%2B%2F%3D&locale=zh-CN&name=%E5%B0%8F%E6%9E%97",
     )
     for link in fixtures:
         with Image.open(io.BytesIO(cli.qr_png(link))) as image:

@@ -33,6 +33,14 @@ Do not retry the same submission after a timeout or broken connection. Keep its 
 5. Upload only the user-selected person's image/video to that group: `asset_upload` with `file` and `groupUniqId`, or `holycrab assets upload /absolute/path/reference.jpg --real-human-group GROUP_ID`. Omitting the group uses ordinary assets; never use that as a fallback for failed authorization. Use `real_human_assets_list` to select an existing asset or reconcile an uncertain upload.
 6. Wait for `asset_get` to return `ready: true`; report `FAILED` and its public error. Use the returned public asset ID in the existing `imageAssetIds` or `videoAssetIds` request fields, never an upstream asset/group ID. Check the selected model's capabilities, estimate credit, and obtain the normal generation confirmation. Real-person verification does not authorize a paid generation.
 
+### Manage authorized people and assets
+
+- Rename a selected public group with `real_human_group_rename` or `holycrab real-human groups rename GROUP_ID --name "Name"`. Return only the public group fields.
+- Deleting is permanent. `real_human_group_delete` removes the selected person, every asset in that group, and upstream records. `real_human_asset_delete` removes the selected asset from storage, upstream records, and the database.
+- Before any delete, identify the exact target using the list tools and show the person or asset name plus the group asset count when available. Obtain an explicit user request for that exact deletion. Only then set MCP `confirmed: true` or use CLI `--yes`; never infer confirmation from authorization, upload, or generation consent.
+- If the user declines or confirmation is absent, make no delete request. If PATCH or DELETE times out, disconnects, returns 5xx, or returns malformed success data, do not retry. Query the relevant lists/details to reconcile state and report that the result is uncertain.
+- Use only public `groupUniqId` and asset `uniqId`. Authorization revocation and automatic retention cleanup are unavailable; do not invent them.
+
 Creation/registration errors can have an uncertain outcome, including gateway errors. Do not automatically recreate the authorization or reupload; keep any returned authorization/asset ID, query it, and explain what remains unknown. These tools require the corresponding production API and official callback page to be deployed. A missing route is not a reason to switch origins or invent another callback.
 
 ## Public boundary

@@ -68,7 +68,21 @@ class McpProtocolTests(unittest.TestCase):
         self.assertEqual(names, {"account_get", "capabilities_list", "capability_get",
                                 "generation_estimate", "generation_create", "generation_get", "generation_list",
                                 "real_human_authorization_start", "real_human_authorization_get",
-                                "real_human_groups_list", "real_human_assets_list", "asset_upload", "asset_get"})
+                                "real_human_groups_list", "real_human_group_rename",
+                                "real_human_group_delete", "real_human_assets_list",
+                                "real_human_asset_delete", "asset_upload", "asset_get"})
+
+    def test_delete_tools_require_confirmation_and_are_destructive(self) -> None:
+        response = holycrab.mcp_dispatch(
+            {"jsonrpc": "2.0", "id": 20, "method": "tools/list", "params": {}}
+        )
+        tools = {item["name"]: item for item in response["result"]["tools"]}
+        for name in ("real_human_group_delete", "real_human_asset_delete"):
+            with self.subTest(name=name):
+                self.assertIn("confirmed", tools[name]["inputSchema"]["required"])
+                self.assertEqual(tools[name]["inputSchema"]["properties"]["confirmed"]["type"], "boolean")
+                self.assertTrue(tools[name]["annotations"]["destructiveHint"])
+                self.assertFalse(tools[name]["annotations"]["idempotentHint"])
 
     def test_capability_get_returns_public_schema_without_api_routes(self) -> None:
         response = holycrab.mcp_dispatch(

@@ -270,6 +270,19 @@ class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+class RejectRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> None:
+        # A redirect could move a signed PUT to an attacker-controlled origin.
+        # Never include either signed URL in the error message.
+        raise urllib.error.HTTPError("https://upload.invalid/", code, "upload redirect blocked", headers, fp)
+
+
+def open_presigned_upload(request: urllib.request.Request) -> Any:
+    return urllib.request.build_opener(RejectRedirectHandler()).open(request, timeout=300)
+
+
 def validate_presigned_upload_url(value: Any) -> str:
     if not isinstance(value, str):
         raise SystemExit("Presigned upload URL must be a credential-free HTTPS URL")
@@ -280,6 +293,27 @@ def validate_presigned_upload_url(value: Any) -> str:
         raise SystemExit(f"Presigned upload URL must be a credential-free HTTPS URL: {error}") from error
     if parsed.scheme.lower() != "https" or not parsed.hostname or parsed.username is not None or parsed.password is not None:
         raise SystemExit("Presigned upload URL must be a credential-free HTTPS URL")
+    return value
+
+
+def validate_verification_link(value: Any) -> str:
+    if not isinstance(value, str) or any(character.isspace() for character in value):
+        raise ValueError("invalid verification link")
+    parsed = urllib.parse.urlsplit(value)
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError("invalid verification link") from error
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != "www.byteplus.com"
+        or port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/en/liveness-face-manage/authorization"
+        or parsed.fragment
+    ):
+        raise ValueError("invalid verification link")
     return value
 
 
@@ -1052,10 +1086,8 @@ def create_authorization(name: str) -> AuthorizationStartResult:
     link = data.get("h5Link")
     expiry = data.get("expiresAt")
     try:
-        if not isinstance(link, str) or any(character.isspace() for character in link):
-            raise ValueError()
-        scheme, _, _ = url_origin(link)
-        if scheme != "https" or not isinstance(expiry, str) or not expiry:
+        link = validate_verification_link(link)
+        if not isinstance(expiry, str) or not expiry:
             raise ValueError()
     except ValueError:
         raise ValueError(f"Authorization {identifier} returned an invalid verification link or expiry; do not retry automatically") from None
@@ -1100,6 +1132,108 @@ def list_real_human_assets(group_id: str, page: int = 1, page_size: int = 50) ->
     query = page_query(page, page_size)
     cleanup_authorization_qrs()
     return public_page(response_data(*send("GET", f"/api/real-human-groups/{identifier}/assets", query=query)), public_asset)
+
+
+def find_real_human_group(group_id: str) -> dict[str, Any]:
+    identifier = public_id(group_id, "groupUniqId")
+    page = 1
+    while True:
+        result = list_real_human_groups(page, 100)
+        for group in result.get("records", []):
+            if isinstance(group, dict) and group.get("uniqId") == identifier:
+                return group
+        pages = result.get("pages")
+        if type(pages) is not int or page >= pages:
+            break
+        page += 1
+    raise ValueError("Real-human group not found")
+
+
+def reconcile_group(group_id: str) -> str:
+    try:
+        group = find_real_human_group(group_id)
+        return f"A follow-up list still contains group {group.get('uniqId')}."
+    except ValueError as error:
+        if str(error) == "Real-human group not found":
+            return "A follow-up list did not find the group."
+    except (SystemExit, OSError, http.client.HTTPException):
+        pass
+    return "The follow-up group query could not confirm its state."
+
+
+def reconcile_asset(asset_id: str) -> str:
+    try:
+        asset = get_asset(asset_id)
+        return f"A follow-up query still contains asset {asset.get('uniqId')}."
+    except (SystemExit, ValueError, OSError, http.client.HTTPException):
+        return "The follow-up asset query could not confirm its state."
+
+
+def rename_real_human_group(group_id: str, name: str) -> dict[str, Any]:
+    identifier = public_id(group_id, "groupUniqId")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 255:
+        raise ValueError("name must contain 1-255 characters")
+    try:
+        status, response = send("PATCH", f"/api/real-human-groups/{identifier}",
+                                payload={"name": name.strip()})
+    except (OSError, http.client.HTTPException) as error:
+        detail = reconcile_group(identifier)
+        raise ValueError(f"Rename outcome is uncertain. {detail} Do not retry automatically") from error
+    try:
+        data = mutation_response_data(status, response, "Rename")
+    except ValueError as error:
+        detail = reconcile_group(identifier)
+        raise ValueError(f"Rename outcome is uncertain. {detail} Do not retry automatically") from error
+    group = public_fields(data, ("uniqId", "name"))
+    if group.get("uniqId") != identifier or group.get("name") != name.strip():
+        raise ValueError("Rename outcome is uncertain; query the group, do not retry automatically")
+    return group
+
+
+def delete_real_human_group(group_id: str, confirmed: bool,
+                            target: dict[str, Any] | None = None) -> dict[str, Any]:
+    if confirmed is not True:
+        raise ValueError("confirmed must be true after the user explicitly approves permanent deletion")
+    identifier = public_id(group_id, "groupUniqId")
+    target = target or find_real_human_group(identifier)
+    if target.get("uniqId") != identifier:
+        raise ValueError("Real-human group not found")
+    try:
+        status, response = send("DELETE", f"/api/real-human-groups/{identifier}")
+    except (OSError, http.client.HTTPException) as error:
+        detail = reconcile_group(identifier)
+        raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
+    try:
+        mutation_response_data(status, response, "Delete")
+    except ValueError as error:
+        detail = reconcile_group(identifier)
+        raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
+    return {"deleted": True, "groupUniqId": identifier}
+
+
+def delete_real_human_asset(group_id: str, asset_id: str, confirmed: bool,
+                            group: dict[str, Any] | None = None,
+                            asset: dict[str, Any] | None = None) -> dict[str, Any]:
+    if confirmed is not True:
+        raise ValueError("confirmed must be true after the user explicitly approves permanent deletion")
+    group_identifier = public_id(group_id, "groupUniqId")
+    asset_identifier = public_id(asset_id, "assetId")
+    group = group or find_real_human_group(group_identifier)
+    asset = asset or get_asset(asset_identifier)
+    if group.get("uniqId") != group_identifier or asset.get("uniqId") != asset_identifier:
+        raise ValueError("Real-human asset not found")
+    endpoint = f"/api/real-human-groups/{group_identifier}/assets/{asset_identifier}"
+    try:
+        status, response = send("DELETE", endpoint)
+    except (OSError, http.client.HTTPException) as error:
+        detail = reconcile_asset(asset_identifier)
+        raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
+    try:
+        mutation_response_data(status, response, "Delete")
+    except ValueError as error:
+        detail = reconcile_asset(asset_identifier)
+        raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
+    return {"deleted": True, "groupUniqId": group_identifier, "assetUniqId": asset_identifier}
 
 
 def get_asset(asset_id: str) -> dict[str, Any]:
@@ -1148,8 +1282,45 @@ def command_real_human_groups(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_real_human_group_rename(args: argparse.Namespace) -> int:
+    print_json(rename_real_human_group(args.group_id, args.name))
+    return 0
+
+
+def deletion_confirmed(prompt: str, yes: bool) -> bool:
+    if yes:
+        return True
+    if not sys.stdin.isatty():
+        print("Deletion was not confirmed; rerun interactively or use --yes after explicit approval.", file=sys.stderr)
+        return False
+    return input(prompt).strip().lower() in {"y", "yes"}
+
+
+def command_real_human_group_delete(args: argparse.Namespace) -> int:
+    target = find_real_human_group(args.group_id)
+    print_json({"warning": "Permanent deletion removes this person, all group assets, and upstream records.",
+                "target": public_fields(target, ("uniqId", "name", "assetCount"))})
+    if not deletion_confirmed("Permanently delete this person and every group asset? [y/N] ", args.yes):
+        return 2
+    print_json(delete_real_human_group(args.group_id, True, target))
+    return 0
+
+
 def command_real_human_assets(args: argparse.Namespace) -> int:
     print_json(list_real_human_assets(args.group, args.page, args.page_size))
+    return 0
+
+
+def command_real_human_asset_delete(args: argparse.Namespace) -> int:
+    group = find_real_human_group(args.group)
+    asset = get_asset(args.asset_id)
+    print_json({"warning": "Permanent deletion removes this asset's storage, upstream record, and database record.",
+                "target": {"groupUniqId": group.get("uniqId"), "groupName": group.get("name"),
+                           "groupAssetCount": group.get("assetCount"),
+                           **public_fields(asset, ("uniqId", "name", "assetType"))}})
+    if not deletion_confirmed("Permanently delete this real-human asset? [y/N] ", args.yes):
+        return 2
+    print_json(delete_real_human_asset(args.group, args.asset_id, True, group, asset))
     return 0
 
 
@@ -1195,7 +1366,7 @@ def upload_asset(
     upload_request = urllib.request.Request(
         presigned_url, data=path.read_bytes(), headers={"Content-Type": mime}, method="PUT"
     )
-    with urllib.request.urlopen(upload_request, timeout=300) as upload_response:
+    with open_presigned_upload(upload_request) as upload_response:
         if not 200 <= upload_response.status < 300:
             raise SystemExit(f"Upload failed with HTTP {upload_response.status}")
     payload: dict[str, Any] = {
@@ -1253,12 +1424,13 @@ MCP_TOOLS = [
 
 
 def real_human_tool(name: str, description: str, properties: dict[str, Any],
-                    required: tuple[str, ...] = (), *, read_only: bool = True) -> dict[str, Any]:
+                    required: tuple[str, ...] = (), *, read_only: bool = True,
+                    destructive: bool = False) -> dict[str, Any]:
     return {"name": name, "description": description,
             "inputSchema": {"type": "object", "properties": properties,
                             "required": list(required), "additionalProperties": False},
-            "annotations": {"readOnlyHint": read_only, "destructiveHint": False,
-                            "idempotentHint": read_only, "openWorldHint": True}}
+            "annotations": {"readOnlyHint": read_only, "destructiveHint": destructive,
+                            "idempotentHint": read_only and not destructive, "openWorldHint": True}}
 
 
 ID_SCHEMA = {"type": "string", "pattern": "^[A-Za-z0-9]{1,64}$"}
@@ -1271,8 +1443,17 @@ REAL_HUMAN_TOOLS = [
     real_human_tool("real_human_authorization_get", "Query authorization status by ID. Poll this tool, do not recreate the session.",
                     {"authorizationId": ID_SCHEMA}, ("authorizationId",)),
     real_human_tool("real_human_groups_list", "List the current account's authorized people, with pagination.", PAGE_PROPERTIES),
+    real_human_tool("real_human_group_rename", "Rename one authorized person using the public group ID.",
+                    {"groupUniqId": ID_SCHEMA, "name": {"type": "string", "minLength": 1, "maxLength": 255}},
+                    ("groupUniqId", "name"), read_only=False),
+    real_human_tool("real_human_group_delete", "Permanently delete an authorized person, every asset in the group, and upstream records. Set confirmed=true only after the user explicitly approves this exact deletion.",
+                    {"groupUniqId": ID_SCHEMA, "confirmed": {"type": "boolean"}},
+                    ("groupUniqId", "confirmed"), read_only=False, destructive=True),
     real_human_tool("real_human_assets_list", "List assets in one authorized person's group. Only ready assets can be used for generation.",
                     {"groupUniqId": ID_SCHEMA, **PAGE_PROPERTIES}, ("groupUniqId",)),
+    real_human_tool("real_human_asset_delete", "Permanently delete one real-human asset from storage, upstream records, and the database. Set confirmed=true only after the user explicitly approves this exact deletion.",
+                    {"groupUniqId": ID_SCHEMA, "assetId": ID_SCHEMA, "confirmed": {"type": "boolean"}},
+                    ("groupUniqId", "assetId", "confirmed"), read_only=False, destructive=True),
     real_human_tool("asset_get", "Query one public asset ID. Only UPLOADED_TO_ARK yields ready=true; report failures and do not reupload automatically.",
                     {"assetId": ID_SCHEMA}, ("assetId",)),
     real_human_tool("asset_upload", "Upload a user-selected local file once. For real people supply groupUniqId from authorization; omission uses ordinary assets. Query asset_get until ready before generation. Do not retry an uncertain registration.",
@@ -1294,7 +1475,7 @@ def validate_tool_arguments(name: str, arguments: dict[str, Any]) -> None:
         raise ValueError("Missing required tool argument")
     for key, value in arguments.items():
         field = schema["properties"][key]
-        expected = str if field["type"] == "string" else int
+        expected = {"string": str, "integer": int, "boolean": bool}[field["type"]]
         if type(value) is not expected:
             raise ValueError(f"{key} must be a {field['type']}")
         if expected is str:
@@ -1302,7 +1483,7 @@ def validate_tool_arguments(name: str, arguments: dict[str, Any]) -> None:
                 raise ValueError(f"{key} has an invalid length")
             if "pattern" in field and not re.fullmatch(field["pattern"], value):
                 raise ValueError(f"{key} has an invalid format")
-        elif value < field.get("minimum", -math.inf) or value > field.get("maximum", math.inf):
+        elif expected is int and (value < field.get("minimum", -math.inf) or value > field.get("maximum", math.inf)):
             raise ValueError(f"{key} is out of range")
 
 
@@ -1314,8 +1495,14 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
         return get_authorization(arguments["authorizationId"])
     if name == "real_human_groups_list":
         return list_real_human_groups(arguments.get("page", 1), arguments.get("pageSize", 20))
+    if name == "real_human_group_rename":
+        return rename_real_human_group(arguments["groupUniqId"], arguments["name"])
+    if name == "real_human_group_delete":
+        return delete_real_human_group(arguments["groupUniqId"], arguments["confirmed"])
     if name == "real_human_assets_list":
         return list_real_human_assets(arguments["groupUniqId"], arguments.get("page", 1), arguments.get("pageSize", 50))
+    if name == "real_human_asset_delete":
+        return delete_real_human_asset(arguments["groupUniqId"], arguments["assetId"], arguments["confirmed"])
     if name == "asset_get":
         return get_asset(arguments["assetId"])
     if name == "asset_upload":
@@ -1537,11 +1724,24 @@ def build_parser() -> argparse.ArgumentParser:
     group_list = groups.add_parser("list")
     add_page_arguments(group_list)
     group_list.set_defaults(func=command_real_human_groups)
+    group_rename = groups.add_parser("rename")
+    group_rename.add_argument("group_id")
+    group_rename.add_argument("--name", required=True)
+    group_rename.set_defaults(func=command_real_human_group_rename)
+    group_delete = groups.add_parser("delete")
+    group_delete.add_argument("group_id")
+    group_delete.add_argument("--yes", action="store_true", help="Use only after explicit approval of this permanent deletion")
+    group_delete.set_defaults(func=command_real_human_group_delete)
     human_assets = human_sub.add_parser("assets").add_subparsers(dest="human_assets_command", required=True)
     human_asset_list = human_assets.add_parser("list")
     human_asset_list.add_argument("--group", required=True)
     add_page_arguments(human_asset_list, 50)
     human_asset_list.set_defaults(func=command_real_human_assets)
+    human_asset_delete = human_assets.add_parser("delete")
+    human_asset_delete.add_argument("asset_id")
+    human_asset_delete.add_argument("--group", required=True)
+    human_asset_delete.add_argument("--yes", action="store_true", help="Use only after explicit approval of this permanent deletion")
+    human_asset_delete.set_defaults(func=command_real_human_asset_delete)
 
     assets = sub.add_parser("assets", help="Upload and query media assets")
     assets_sub = assets.add_subparsers(dest="assets_command", required=True)
