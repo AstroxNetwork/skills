@@ -6,27 +6,29 @@
 - 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
 - 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.3.0` 内置的模型能力快照仍为 `2026-08-22`；这是随版本发布的静态合同，不冒充实时模型目录。
+它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.4.0` 内置的模型能力快照仍为 `2026-08-22`；这是随版本发布的静态合同，不冒充实时模型目录。
 
-`v0.3.0` 增加真人授权、人物及素材管理。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
+`v0.4.0` 增加原生 Windows PowerShell 安装，并自动保存 CLI 的 PATH。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
 ## 系统要求与一键安装
 
-支持 macOS 和 Linux，需要 Python 3.10+ 与 `curl`。不需要 `sudo`。
+支持 macOS、Linux 和 Windows，需要 Python 3.10+；macOS/Linux 还需要 `curl`。不需要 `sudo` 或管理员权限。
 
-下面的官方命令始终安装最新正式版。只有通过发布验证并上传安装器的稳定版本才会更新这个入口；Draft 和预发布版本不会进入普通用户的安装流程。内部测试请先克隆仓库，再使用后面的本地源码安装方式。
+下面的官方命令始终安装最新正式版。只有通过发布验证并上传安装器的稳定版本才会更新这些入口；Draft 和预发布版本不会进入普通用户的安装流程。内部测试请先克隆仓库，再使用后面的本地源码安装方式。
 
-```bash
-curl -fsSL https://holycrab.ai/cli/install.sh | sh
-```
-
-安装器会把命令放到 `~/.local/bin/holycrab`，安装 Codex 与 Claude Code 的 Skill，并在检测到对应客户端时登记本地 MCP。它不会写入 API Key。
-
-如果终端还找不到命令，把下面一行加入 shell 配置：
+macOS / Linux：
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
+curl -fsSL https://holycrab.ai/cli/install.sh | sh && export PATH="$HOME/.local/bin:$PATH"
 ```
+
+Windows PowerShell：
+
+```powershell
+irm https://holycrab.ai/cli/install.ps1 | iex
+```
+
+安装器会把命令放到用户目录的 `.local/bin`，安装 Codex 与 Claude Code 的 Skill，并在检测到对应客户端时登记本地 MCP。macOS/Linux 安装器会幂等写入当前 shell 的启动配置；PowerShell 安装器会更新当前会话和用户级 PATH。它不会写入 API Key。
 
 ## 覆盖安装、升级和卸载
 

@@ -25,13 +25,19 @@ class InstallerTests(unittest.TestCase):
 
     def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
-        self.assertIn("VERSION=v0.3.0", installer)
+        powershell_installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
+        self.assertIn("VERSION=v0.4.0", installer)
+        self.assertIn('$Version = "v0.4.0"', powershell_installer)
 
-        stable_url = "https://holycrab.ai/cli/install.sh"
-        versioned_raw_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.3.0/install.sh"
+        stable_urls = (
+            "https://holycrab.ai/cli/install.sh",
+            "https://holycrab.ai/cli/install.ps1",
+        )
+        versioned_raw_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.4.0/install.sh"
         for document in (REPO_ROOT / "README.md", REPO_ROOT / "HolyCrab CLI 使用指南.md"):
             content = document.read_text(encoding="utf-8")
-            self.assertIn(stable_url, content)
+            for stable_url in stable_urls:
+                self.assertIn(stable_url, content)
             self.assertNotIn(versioned_raw_url, content)
             self.assertNotIn(
                 "https://raw.githubusercontent.com/AstroxNetwork/skills/main/install.sh",
@@ -82,6 +88,34 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(handshake.returncode, 0, handshake.stderr)
             self.assertIn('"name":"holycrab-local"', handshake.stdout)
             self.assertIn('"protocolVersion":"2025-11-25"', handshake.stdout)
+
+    def test_installer_persists_zsh_path_once_without_replacing_user_content(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            profile = Path(home) / ".zshrc"
+            profile.write_text("export USER_SETTING=kept\n", encoding="utf-8")
+            env = {
+                **os.environ,
+                "HOME": home,
+                "SHELL": "/bin/zsh",
+                "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT),
+                "HOLYCRAB_INSTALL_MCP": "0",
+                "HOLYCRAB_INSTALL_AGENTS": "none",
+            }
+            for _ in range(2):
+                result = subprocess.run(
+                    ["sh", str(REPO_ROOT / "install.sh")],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+            content = profile.read_text(encoding="utf-8")
+            self.assertIn("export USER_SETTING=kept", content)
+            self.assertEqual(content.count("# HolyCrab CLI"), 1)
+            self.assertIn('export PATH="$HOME/.local/bin:$PATH"', content)
+            self.assertIn("Restart this terminal", result.stdout)
 
     def test_fresh_install_and_upgrade_can_generate_qr_without_pip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -145,7 +179,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-relative=${url#*/v0.3.0/}
+relative=${url#*/v0.4.0/}
 cp "$FAKE_RELEASE_ROOT/$relative" "$destination"
 if [ "$relative" = "holycrab/scripts/holycrab_cli.py" ]; then
   printf '\\n# tampered\\n' >> "$destination"
@@ -179,6 +213,12 @@ fi
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         self.assertIn("sys.version_info >= (3, 10)", installer)
 
+        powershell_installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
+        self.assertIn("Python 3.10 or newer", powershell_installer)
+        self.assertIn("winget install --id Python.Python.3.12", powershell_installer)
+        self.assertIn("SetEnvironmentVariable", powershell_installer)
+        self.assertIn("holycrab.cmd", powershell_installer)
+
     def test_docs_explain_supported_systems_update_and_uninstall(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Python 3.10+", readme)
@@ -187,17 +227,19 @@ fi
         self.assertIn("覆盖安装", readme)
         self.assertIn("卸载", readme)
 
-    def test_ci_runs_release_gates_on_linux_and_macos(self) -> None:
+    def test_ci_runs_release_gates_on_linux_macos_and_windows(self) -> None:
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         for token in (
             "ubuntu-latest",
             "macos-latest",
+            "windows-latest",
             "python3 -m unittest discover -s holycrab/tests -v",
             "python3 -m py_compile",
             "validate_capabilities.py",
             "quick_validate.py",
             "49f948faa9258a0c61caceaf225e179651397431",
             "HOLYCRAB_INSTALL_SOURCE_DIR",
+            "test_windows_installer.ps1",
             "mcp serve",
         ):
             self.assertIn(token, workflow)
@@ -205,15 +247,15 @@ fi
     def test_tagged_release_uploads_the_installer_after_all_release_gates(self) -> None:
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         for token in (
-            "needs: [quality, official-skill-validation, install-and-mcp]",
+            "needs: [quality, official-skill-validation, install-and-mcp, install-windows]",
             "if: startsWith(github.ref, 'refs/tags/v')",
             "contents: write",
             'release_version="$GITHUB_REF_NAME"',
             'grep -Fx "VERSION=$release_version" install.sh',
             'test -f ".github/releases/$release_version.md"',
-            "sha256sum install.sh > SHA256SUMS",
+            "sha256sum install.sh install.ps1 > SHA256SUMS",
             'gh release create "$release_version"',
-            "install.sh SHA256SUMS",
+            "install.sh install.ps1 SHA256SUMS",
             "--verify-tag",
             "--latest",
             '--notes-file ".github/releases/$release_version.md"',
@@ -223,11 +265,11 @@ fi
         self.assertNotIn('gh release upload "$release_version"', workflow)
 
     def test_release_notes_have_the_approved_english_title(self) -> None:
-        notes = (REPO_ROOT / ".github" / "releases" / "v0.3.0.md").read_text(encoding="utf-8")
-        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.3.0\n"))
+        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.0.md").read_text(encoding="utf-8")
+        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.0\n"))
         self.assertIn("SHA-256", notes)
-        self.assertIn("Seedance 2.5", notes)
-        self.assertIn("Seed Audio", notes)
+        self.assertIn("Windows", notes)
+        self.assertIn("PATH", notes)
 
 
 if __name__ == "__main__":

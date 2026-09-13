@@ -1,6 +1,6 @@
 # HolyCrab CLI 使用指南
 
-这份指南让你从一台普通 Mac 或 Linux 电脑出发，装好 HolyCrab CLI、Skill 和本地 MCP，然后完成 API Key 配置、真人授权、素材上传、估价、生成和下载。
+这份指南让你从一台普通 Mac、Linux 或 Windows 电脑出发，装好 HolyCrab CLI、Skill 和本地 MCP，然后完成 API Key 配置、真人授权、素材上传、估价、生成和下载。
 
 整套工具直接使用 HolyCrab 现有正式服务，不需要等待新 OAuth 或新 MCP 后端上线。
 
@@ -24,12 +24,20 @@ flowchart TD
 
 ## 1. 安装
 
-支持 macOS 和 Linux，需要 Python 3.10+ 与 `curl`。推荐安装固定版本：
+支持 macOS、Linux 和 Windows，需要 Python 3.10+；macOS/Linux 还需要 `curl`。使用对应系统的官方稳定入口。
 
-这条官方命令始终安装最新正式版。只有通过发布验证并上传安装器的稳定版本才会更新这个入口；Draft 和预发布版本不会进入普通用户的安装流程。内部测试人员仍应使用下面的仓库源码安装方式。
+这些官方命令始终安装最新正式版。只有通过发布验证并上传安装器的稳定版本才会更新入口；Draft 和预发布版本不会进入普通用户的安装流程。内部测试人员仍应使用下面的仓库源码安装方式。
+
+macOS / Linux：
 
 ```bash
-curl -fsSL https://holycrab.ai/cli/install.sh | sh
+curl -fsSL https://holycrab.ai/cli/install.sh | sh && export PATH="$HOME/.local/bin:$PATH"
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://holycrab.ai/cli/install.ps1 | iex
 ```
 
 当前仓库尚未发布时，可以在仓库目录里测试完全相同的安装过程：
@@ -46,11 +54,13 @@ HOLYCRAB_INSTALL_SOURCE_DIR="$PWD" sh install.sh
 
 它不会要求 sudo，也不会在安装阶段索要 API Key。
 
-如果提示找不到 `holycrab`，先运行：
+macOS/Linux 安装器会把 `~/.local/bin` 保存到 zsh、bash 或 POSIX shell 的启动配置。当前终端仍找不到 `holycrab` 时运行：
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+PowerShell 安装器会同时更新当前会话和用户级 PATH。如果看到 `sh is not recognized`，说明误用了 macOS/Linux 命令；请改用上面的 `irm ... install.ps1 | iex`。缺少 Python 时，按安装器提示运行 `winget install --id Python.Python.3.12 -e`，然后重新安装 HolyCrab。
 
 然后自检：
 
@@ -102,7 +112,7 @@ holycrab models show dreamina-seedance-2-5-260628
 holycrab models show MiniMax-H3
 ```
 
-先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.3.0` 的模型快照版本仍是 `2026-08-22`。
+先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.4.0` 的模型快照版本仍是 `2026-08-22`。
 
 ## 4. 第一次生成图片
 
@@ -176,7 +186,7 @@ CLI 会自动完成预签名上传和 multipart 素材登记；不需要另外�
 
 ### 真人素材：先扫码授权，再上传
 
-本节对应 `v0.3.0`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
+本节对应 `v0.4.0`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
 
 先创建一次授权，名称用于区分人物，不要求输入证件姓名：
 

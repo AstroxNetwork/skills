@@ -2,7 +2,7 @@
 set -eu
 
 REPOSITORY=AstroxNetwork/skills
-VERSION=v0.3.0
+VERSION=v0.4.0
 SOURCE_DIR=${HOLYCRAB_INSTALL_SOURCE_DIR:-}
 INSTALL_MCP=${HOLYCRAB_INSTALL_MCP:-1}
 INSTALL_AGENTS=${HOLYCRAB_INSTALL_AGENTS:-codex,claude}
@@ -10,7 +10,7 @@ PREFIX=${HOLYCRAB_INSTALL_PREFIX:-"$HOME/.local"}
 BIN_DIR="$PREFIX/bin"
 LIB_DIR="$PREFIX/lib/holycrab"
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/holycrab-install.XXXXXX")
-SHA256_HOLYCRAB_CLI=5d059d1f459e96e6aee383c1085608dba2d7f2300a9012ad9e7a90ec0c5bb111
+SHA256_HOLYCRAB_CLI=04de8a03024ea77fc565b162e9ca4009acf899cc86b25cc889075d70065d11a3
 SHA256_CAPABILITIES=79e3f5b63cfbef2ff5518c2280592d303c155f0d262788f50f46a59873773fa5
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
 SHA256_SKILL=aa83167e5fb3418be5361f61baf91f7ae969d21878d1dc51bf90be6170872a41
@@ -125,8 +125,44 @@ fi
 
 echo "HolyCrab CLI, local MCP, and Skill are installed."
 echo "Command: $BIN_DIR/holycrab"
+persist_path() {
+  if [ "$PREFIX" != "$HOME/.local" ]; then
+    echo "Custom install prefix detected; add this directory to your shell PATH: $BIN_DIR"
+    return
+  fi
+
+  shell_name=$(basename "${SHELL:-sh}")
+  case "$shell_name" in
+    zsh) profile="$HOME/.zshrc" ;;
+    bash)
+      if [ "$(uname -s)" = "Darwin" ]; then
+        profile="$HOME/.bash_profile"
+      else
+        profile="$HOME/.bashrc"
+      fi
+      ;;
+    sh|dash|ksh) profile="$HOME/.profile" ;;
+    *)
+      echo "Could not select a profile for $shell_name; add this directory to PATH: $BIN_DIR"
+      return
+      ;;
+  esac
+
+  path_line='export PATH="$HOME/.local/bin:$PATH"'
+  if [ -f "$profile" ] && grep -F "$path_line" "$profile" >/dev/null 2>&1; then
+    echo "PATH is already saved in $profile."
+    return
+  fi
+  if printf '\n# HolyCrab CLI\n%s\n' "$path_line" >> "$profile"; then
+    echo "PATH saved in $profile."
+  else
+    echo "Warning: could not update $profile; add this directory to PATH: $BIN_DIR" >&2
+  fi
+}
+
+persist_path
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
-  *) echo "Add this directory to PATH: $BIN_DIR" ;;
+  *) echo "Restart this terminal, or run: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
 esac
 echo "Next: holycrab setup"

@@ -20,24 +20,46 @@ jobs:
             python: "3.13"
           - os: macos-latest
             python: "3.12"
+          - os: windows-latest
+            python: "3.12"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: ${{ matrix.python }}
-      - name: Unit and public-boundary tests
+      - name: Unit and public-boundary tests (Unix)
+        if: runner.os != 'Windows'
         run: python3 -m unittest discover -s holycrab/tests -v
-      - name: Compile Python entry points
+      - name: Unit and public-boundary tests (Windows)
+        if: runner.os == 'Windows'
+        run: >-
+          python -m unittest -v
+          holycrab.tests.test_capabilities
+          holycrab.tests.test_cli
+          holycrab.tests.test_holycrab_api
+          holycrab.tests.test_mcp
+          holycrab.tests.test_public_boundary
+          holycrab.tests.test_real_human
+      - name: Compile Python entry points (Unix)
+        if: runner.os != 'Windows'
         run: python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py
-      - name: Validate the capability snapshot
+      - name: Compile Python entry points (Windows)
+        if: runner.os == 'Windows'
+        run: python -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py
+      - name: Validate the capability snapshot (Unix)
+        if: runner.os != 'Windows'
         run: python3 holycrab/scripts/validate_capabilities.py
+      - name: Validate the capability snapshot (Windows)
+        if: runner.os == 'Windows'
+        run: python holycrab/scripts/validate_capabilities.py
       - name: Check shell entry points
+        if: runner.os != 'Windows'
         run: sh -n install.sh bin/holycrab
       - name: Check patch whitespace
         run: git diff --check
       - name: Decode offline QR fixtures independently
-        if: matrix.python == '3.13'
+        if: matrix.python == '3.13' && runner.os != 'Windows'
         run: |
           python3 -m venv "${RUNNER_TEMP}/qr-validator"
           "${RUNNER_TEMP}/qr-validator/bin/python" -m pip install --only-binary=:all: -r holycrab/tests/requirements-qr-test.txt
@@ -82,16 +104,28 @@ jobs:
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
           test -f "${HOME}/.claude/skills/holycrab/agents/openai.yaml"
-          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.3.0'
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.0'
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json > "${RUNNER_TEMP}/doctor.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("mcp.json").read_text()); assert data["result"]["serverInfo"]["name"] == "holycrab-local"'
 
+  install-windows:
+    name: Install and MCP (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - name: Install twice, verify PATH, CLI, and MCP
+        shell: powershell
+        run: .\holycrab\tests\test_windows_installer.ps1
+
   release:
     name: Publish release assets
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [quality, official-skill-validation, install-and-mcp]
+    needs: [quality, official-skill-validation, install-and-mcp, install-windows]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -104,9 +138,10 @@ jobs:
           release_version="$GITHUB_REF_NAME"
           grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$release_version"
           grep -Fx "VERSION=$release_version" install.sh
+          grep -Fx '$Version = "'"$release_version"'"' install.ps1
           test -f ".github/releases/$release_version.md"
           sh -n install.sh
-          sha256sum install.sh > SHA256SUMS
+          sha256sum install.sh install.ps1 > SHA256SUMS
       - name: Create the immutable GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -118,7 +153,7 @@ jobs:
             echo "Release $release_version already exists; refusing to overwrite published assets." >&2
             exit 1
           fi
-          gh release create "$release_version" install.sh SHA256SUMS \
+          gh release create "$release_version" install.sh install.ps1 SHA256SUMS \
             --verify-tag \
             --latest \
             --title "HolyCrab Agent Tools $release_version" \

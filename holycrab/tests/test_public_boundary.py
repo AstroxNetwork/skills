@@ -11,6 +11,7 @@ PUBLIC_FILES = (
     REPO_ROOT / "SECURITY.md",
     REPO_ROOT / "HolyCrab CLI 使用指南.md",
     REPO_ROOT / "install.sh",
+    REPO_ROOT / "install.ps1",
     REPO_ROOT / "bin" / "holycrab",
     REPO_ROOT / "holycrab" / "SKILL.md",
     REPO_ROOT / "holycrab" / "agents" / "openai.yaml",
