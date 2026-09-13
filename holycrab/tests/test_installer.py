@@ -265,6 +265,11 @@ fi
         self.assertIn("chcp 65001", powershell_installer)
         self.assertIn("PYTHONUTF8=1", powershell_installer)
         self.assertIn('@("-X", "utf8", $CliPath, "mcp", "serve")', powershell_installer)
+
+        attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
+        for release_file in ("/holycrab/SKILL.md", "/holycrab/references/*.json",
+                             "/holycrab/scripts/*.py", "/holycrab/scripts/vendor/LICENSE.segno"):
+            self.assertIn(f"{release_file} text eol=lf", attributes)
         self.assertIn("& $Launcher doctor --json", powershell_installer)
 
     def test_docs_explain_supported_systems_update_and_uninstall(self) -> None:
