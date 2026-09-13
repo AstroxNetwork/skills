@@ -197,7 +197,10 @@ try {
         & $Launcher --version | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "holycrab --version failed after installation" }
         $Doctor = & $Launcher doctor --json | ConvertFrom-Json
-        if ($LASTEXITCODE -ne 0 -or -not $Doctor.ok) { throw "holycrab doctor failed after installation" }
+        if ($LASTEXITCODE -ne 0 -or -not $Doctor.ok) {
+            Write-Warning ("HolyCrab doctor report: " + ($Doctor | ConvertTo-Json -Depth 8 -Compress))
+            throw "holycrab doctor failed after installation"
+        }
     } finally {
         $env:HOLYCRAB_NO_UPDATE_CHECK = $PreviousNoUpdate
     }
