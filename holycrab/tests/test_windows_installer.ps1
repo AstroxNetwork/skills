@@ -27,6 +27,21 @@ if ($Doctor.ok -ne $true) { throw "HolyCrab doctor did not report ok" }
 $Initialize = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}'
 $CliPath = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\holycrab_cli.py"
 $Python = (Get-Command python).Source
-$RawHandshake = $Initialize | & $Python $CliPath mcp serve
+$ProcessInfo = [System.Diagnostics.ProcessStartInfo]::new()
+$ProcessInfo.FileName = $Python
+$ProcessInfo.ArgumentList.Add($CliPath)
+$ProcessInfo.ArgumentList.Add("mcp")
+$ProcessInfo.ArgumentList.Add("serve")
+$ProcessInfo.RedirectStandardInput = $true
+$ProcessInfo.RedirectStandardOutput = $true
+$ProcessInfo.RedirectStandardError = $true
+$ProcessInfo.UseShellExecute = $false
+$McpProcess = [System.Diagnostics.Process]::Start($ProcessInfo)
+$McpProcess.StandardInput.WriteLine($Initialize)
+$McpProcess.StandardInput.Close()
+$RawHandshake = $McpProcess.StandardOutput.ReadToEnd().Trim()
+$McpError = $McpProcess.StandardError.ReadToEnd().Trim()
+$McpProcess.WaitForExit()
+if ($McpProcess.ExitCode -ne 0) { throw "MCP process failed: $McpError" }
 $Handshake = $RawHandshake | ConvertFrom-Json
 if ($Handshake.result.serverInfo.name -ne "holycrab-local") { throw "Unexpected MCP handshake: $RawHandshake" }
