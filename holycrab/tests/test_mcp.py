@@ -67,10 +67,12 @@ class McpProtocolTests(unittest.TestCase):
         self.assertNotIn("request", names)
         self.assertEqual(names, {"account_get", "capabilities_list", "capability_get",
                                 "generation_estimate", "generation_create", "generation_get", "generation_list",
+                                "generation_attempt_list", "generation_attempt_get", "cli_status",
                                 "real_human_authorization_start", "real_human_authorization_get",
                                 "real_human_groups_list", "real_human_group_rename",
                                 "real_human_group_delete", "real_human_assets_list",
-                                "real_human_asset_delete", "asset_upload", "asset_get"})
+                                "real_human_asset_delete", "asset_upload_prepare", "asset_upload_execute",
+                                "asset_upload", "asset_get"})
 
     def test_delete_tools_require_confirmation_and_are_destructive(self) -> None:
         response = holycrab.mcp_dispatch(
@@ -101,13 +103,13 @@ class McpProtocolTests(unittest.TestCase):
         content = json.loads(result["content"][0]["text"])
         self.assertNotIn("endpoints", content)
         self.assertIn("requestSchema", content)
-        self.assertEqual(content["capabilitySnapshotVersion"], "2026-08-22")
+        self.assertEqual(content["capabilitySnapshotVersion"], "2026-09-14")
         self.assertIn("1K", content["sizes"])
 
     def test_capabilities_list_identifies_the_versioned_snapshot(self) -> None:
         result = holycrab.mcp_tool_call("capabilities_list", {})
-        self.assertEqual(result["snapshotVersion"], "2026-08-22")
-        self.assertEqual(result["publishedAt"], "2026-08-22")
+        self.assertEqual(result["snapshotVersion"], "2026-09-14")
+        self.assertEqual(result["publishedAt"], "2026-09-14")
         self.assertGreater(len(result["models"]), 0)
 
     def test_generation_create_without_confirmation_only_returns_estimate(self) -> None:
@@ -153,7 +155,7 @@ class McpProtocolTests(unittest.TestCase):
                 }
             )
         self.assertTrue(response["result"]["isError"])
-        self.assertIn("attemptId is required", response["result"]["content"][0]["text"])
+        self.assertIn("Missing required tool argument", response["result"]["content"][0]["text"])
         send.assert_not_called()
 
     def test_same_mcp_attempt_id_cannot_create_twice(self) -> None:

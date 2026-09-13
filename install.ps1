@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Repository = "AstroxNetwork/skills"
-$Version = "v0.4.0"
+$Version = "v0.4.1"
 $SourceDir = $env:HOLYCRAB_INSTALL_SOURCE_DIR
 $InstallMcp = if ($env:HOLYCRAB_INSTALL_MCP) { $env:HOLYCRAB_INSTALL_MCP } else { "1" }
 $InstallAgents = if ($env:HOLYCRAB_INSTALL_AGENTS) { $env:HOLYCRAB_INSTALL_AGENTS } else { "codex,claude" }
@@ -9,11 +9,14 @@ $Prefix = if ($env:HOLYCRAB_INSTALL_PREFIX) { $env:HOLYCRAB_INSTALL_PREFIX } els
 $BinDir = Join-Path $Prefix "bin"
 $LibDir = Join-Path $Prefix "lib\holycrab"
 $TempDir = Join-Path ([IO.Path]::GetTempPath()) ("holycrab-install." + [Guid]::NewGuid().ToString("N"))
+$BackupDir = Join-Path $TempDir "backup"
+$InstallStarted = $false
+$InstallComplete = $false
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "04de8a03024ea77fc565b162e9ca4009acf899cc86b25cc889075d70065d11a3" },
-    @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "79e3f5b63cfbef2ff5518c2280592d303c155f0d262788f50f46a59873773fa5" },
-    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "aa83167e5fb3418be5361f61baf91f7ae969d21878d1dc51bf90be6170872a41" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "92d398e99d3c3d090011120e5600559aa5f948dc1af53eedbc4e91aa6bed7a24" },
+    @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
+    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "508a610154f6937010a2c1d650106ba5305592ca72196e3fdcc50d1c2d04aaba" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
     @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" }
@@ -76,8 +79,20 @@ function Add-HolyCrabPath([string]$Directory) {
 function Register-HolyCrabMcp([string]$Agent, [hashtable]$Python, [string]$CliPath) {
     $Resolved = Get-Command $Agent -ErrorAction SilentlyContinue
     if (-not $Resolved) { return }
-    & $Resolved.Source mcp get holycrab *> $null
-    if ($LASTEXITCODE -eq 0) { return }
+    $Existing = (& $Resolved.Source mcp get holycrab 2>&1 | Out-String)
+    if ($LASTEXITCODE -eq 0) {
+        if ($Existing.Contains($CliPath) -and $Existing -match "mcp" -and $Existing -match "serve") { return }
+        if ($Existing -match "holycrab_cli\.py|[\\/]holycrab") {
+            & $Resolved.Source mcp remove holycrab *> $null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Could not remove the stale HolyCrab MCP entry for $Agent."
+                return
+            }
+        } else {
+            Write-Warning "An unmanaged MCP entry named holycrab already exists for $Agent; it was not changed."
+            return
+        }
+    }
 
     $ServerCommand = @($Python.Executable) + @($Python.Arguments) + @($CliPath, "mcp", "serve")
     if ($Agent -eq "codex") {
@@ -99,6 +114,17 @@ try {
         $Downloaded[$File.Name] = Copy-ReleaseFile $File
     }
 
+    New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+    if (Test-Path -LiteralPath $LibDir) { Copy-Item -LiteralPath $LibDir -Destination (Join-Path $BackupDir "lib") -Recurse }
+    $ExistingLauncher = Join-Path $BinDir "holycrab.cmd"
+    if (Test-Path -LiteralPath $ExistingLauncher) { Copy-Item -LiteralPath $ExistingLauncher -Destination (Join-Path $BackupDir "holycrab.cmd") }
+    if (Test-Path -LiteralPath (Join-Path $HOME ".agents\skills\holycrab")) {
+        Copy-Item -LiteralPath (Join-Path $HOME ".agents\skills\holycrab") -Destination (Join-Path $BackupDir "codex-skill") -Recurse
+    }
+    if (Test-Path -LiteralPath (Join-Path $HOME ".claude\skills\holycrab")) {
+        Copy-Item -LiteralPath (Join-Path $HOME ".claude\skills\holycrab") -Destination (Join-Path $BackupDir "claude-skill") -Recurse
+    }
+    $InstallStarted = $true
     New-Item -ItemType Directory -Force -Path $BinDir, (Join-Path $LibDir "references"), (Join-Path $LibDir "vendor") | Out-Null
     $CliPath = Join-Path $LibDir "holycrab_cli.py"
     Copy-Item -LiteralPath $Downloaded["holycrab_cli.py"] -Destination $CliPath -Force
@@ -110,7 +136,36 @@ try {
     if ($Python.Arguments.Count -gt 0) { $PythonInvocation += " " + ($Python.Arguments -join " ") }
     $Launcher = Join-Path $BinDir "holycrab.cmd"
     $LauncherContent = "@echo off`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`n"
-    [IO.File]::WriteAllText($Launcher, $LauncherContent, [Text.Encoding]::ASCII)
+    [IO.File]::WriteAllText($Launcher, $LauncherContent, [Text.UTF8Encoding]::new($false))
+
+    $Manifest = @{
+        version = "0.4.1"
+        prefix = $Prefix
+        agents = @($InstallAgents -split "," | Where-Object { $_ -and $_ -ne "none" })
+        mcp = $InstallMcp -eq "1"
+        coreFiles = @(
+            @{ path = "holycrab_cli.py"; sha256 = $ReleaseFiles[0].Sha256 }
+            @{ path = "references/capabilities.json"; sha256 = $ReleaseFiles[1].Sha256 }
+            @{ path = "vendor/segno-1.6.6-py3-none-any.whl"; sha256 = $ReleaseFiles[4].Sha256 }
+            @{ path = "vendor/LICENSE.segno"; sha256 = $ReleaseFiles[5].Sha256 }
+            @{ path = "../../bin/holycrab.cmd"; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Launcher).Hash.ToLowerInvariant() }
+        )
+    }
+    $SkillRoots = @{
+        codex = (Join-Path $HOME ".agents\skills\holycrab")
+        claude = (Join-Path $HOME ".claude\skills\holycrab")
+    }
+    foreach ($Agent in $Manifest.agents) {
+        if ($SkillRoots.ContainsKey($Agent)) {
+            $Root = $SkillRoots[$Agent]
+            $Manifest.coreFiles += @(
+                @{ path = (Join-Path $Root "SKILL.md"); sha256 = $ReleaseFiles[2].Sha256 }
+                @{ path = (Join-Path $Root "references\capabilities.json"); sha256 = $ReleaseFiles[1].Sha256 }
+                @{ path = (Join-Path $Root "agents\openai.yaml"); sha256 = $ReleaseFiles[3].Sha256 }
+            )
+        }
+    }
+    [IO.File]::WriteAllText((Join-Path $LibDir "installation.json"), ($Manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
 
     if (",$InstallAgents," -like "*,codex,*") {
         Install-HolyCrabSkill (Join-Path $HOME ".agents\skills\holycrab") @{
@@ -132,7 +187,30 @@ try {
     Write-Host "HolyCrab CLI, local MCP, and Skill are installed."
     Write-Host "Command: $Launcher"
     Write-Host "PATH is active in this PowerShell session and saved for future sessions."
+    $PreviousNoUpdate = $env:HOLYCRAB_NO_UPDATE_CHECK
+    $env:HOLYCRAB_NO_UPDATE_CHECK = "1"
+    try {
+        & $Python.Executable @($Python.Arguments) $CliPath --version | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "holycrab --version failed after installation" }
+        $Doctor = & $Python.Executable @($Python.Arguments) $CliPath doctor --json | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0 -or -not $Doctor.ok) { throw "holycrab doctor failed after installation" }
+    } finally {
+        $env:HOLYCRAB_NO_UPDATE_CHECK = $PreviousNoUpdate
+    }
+    $InstallComplete = $true
     Write-Host "Next: holycrab setup"
 } finally {
+    if ($InstallStarted -and -not $InstallComplete) {
+        Remove-Item -LiteralPath $LibDir -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath (Join-Path $BackupDir "lib")) { Copy-Item -LiteralPath (Join-Path $BackupDir "lib") -Destination $LibDir -Recurse }
+        Remove-Item -LiteralPath (Join-Path $BinDir "holycrab.cmd") -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath (Join-Path $BackupDir "holycrab.cmd")) { Copy-Item -LiteralPath (Join-Path $BackupDir "holycrab.cmd") -Destination (Join-Path $BinDir "holycrab.cmd") }
+        foreach ($Skill in @(@{ Backup = "codex-skill"; Target = (Join-Path $HOME ".agents\skills\holycrab") },
+                              @{ Backup = "claude-skill"; Target = (Join-Path $HOME ".claude\skills\holycrab") })) {
+            Remove-Item -LiteralPath $Skill.Target -Recurse -Force -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath (Join-Path $BackupDir $Skill.Backup)) { Copy-Item -LiteralPath (Join-Path $BackupDir $Skill.Backup) -Destination $Skill.Target -Recurse }
+        }
+        Write-Warning "HolyCrab installation failed; previous managed files were restored."
+    }
     Remove-Item -LiteralPath $TempDir -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -11,12 +11,16 @@ import html
 import http.client
 import importlib.util
 import io
+import ipaddress
 import json
 import math
-import mimetypes
 import os
+import platform
 import re
+import shutil
+import socket
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -40,11 +44,26 @@ except ImportError:  # pragma: no cover - POSIX runtime
     msvcrt = None
 
 
-VERSION = "0.4.0"
+VERSION = "0.4.1"
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
 PUBLIC_ACCOUNT_URL = "https://generate.holycrab.ai/user-tokens"
 REAL_HUMAN_CALLBACK_URL = "https://generate.holycrab.ai/real-human-authorization/callback"
 AUTHORIZATION_TERMINAL = {"SUCCEEDED", "FAILED", "EXPIRED"}
+ATTEMPT_STATES = {"prepared", "submitting", "created", "unknown", "failed"}
+UPDATE_CHECK_SECONDS = 24 * 60 * 60
+UPDATE_CHECK_TIMEOUT = 2.0
+UPDATE_API_URL = "https://api.github.com/repos/AstroxNetwork/skills/releases/latest"
+RELEASE_PAGE_PREFIX = "https://github.com/AstroxNetwork/skills/releases/tag/"
+MAX_DOWNLOAD_REDIRECTS = 5
+MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024
+MAX_DOWNLOAD_RESPONSE_BYTES = 2 * 1024 * 1024 * 1024
+MAX_INSTALLER_BYTES = 10 * 1024 * 1024
+MAX_UPLOAD_FILES = 10
+UPLOAD_PLAN_SECONDS = 30 * 60
+MAX_IMAGE_UPLOAD_BYTES = 30 * 1024 * 1024
+MAX_VIDEO_UPLOAD_BYTES = 200 * 1024 * 1024
+MAX_REAL_HUMAN_VIDEO_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024
 GENERATION_ROUTES = {
     "seedanceVideo": ("/api/tasks/generation/freeze-credit", "/api/tasks/generation"),
     "minimaxVideo": (
@@ -110,6 +129,7 @@ PUBLIC_TASK_FIELDS = (
     "videoUrl",
     "imageUrls",
     "audioIds",
+    "audioUrls",
     "videoIds",
     "imageIds",
     "cdnUrl",
@@ -137,6 +157,69 @@ def attempts_path() -> Path:
 
 def attempts_lock_path() -> Path:
     return config_dir() / "attempts.lock"
+
+
+def update_state_path() -> Path:
+    return config_dir() / "update-state.json"
+
+
+def health_state_path() -> Path:
+    return config_dir() / "health-state.json"
+
+
+def upload_plans_dir() -> Path:
+    return config_dir() / "upload-plans"
+
+
+def installation_path() -> Path:
+    return Path(__file__).resolve().parent / "installation.json"
+
+
+def _dpapi_protect(value: str) -> str:  # pragma: no cover - exercised on Windows CI
+    if os.name != "nt":
+        raise OSError("DPAPI is only available on Windows")
+    import ctypes
+    from ctypes import wintypes
+
+    class DataBlob(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+
+    raw = value.encode("utf-8")
+    buffer = ctypes.create_string_buffer(raw)
+    source = DataBlob(len(raw), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_byte)))
+    destination = DataBlob()
+    if not ctypes.windll.crypt32.CryptProtectData(
+        ctypes.byref(source), "HolyCrab API Key", None, None, None, 0, ctypes.byref(destination)
+    ):
+        raise ctypes.WinError()
+    try:
+        encrypted = ctypes.string_at(destination.pbData, destination.cbData)
+        return base64.b64encode(encrypted).decode("ascii")
+    finally:
+        ctypes.windll.kernel32.LocalFree(destination.pbData)
+
+
+def _dpapi_unprotect(value: str) -> str:  # pragma: no cover - exercised on Windows CI
+    if os.name != "nt":
+        raise OSError("DPAPI is only available on Windows")
+    import ctypes
+    from ctypes import wintypes
+
+    class DataBlob(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_byte))]
+
+    raw = base64.b64decode(value, validate=True)
+    buffer = ctypes.create_string_buffer(raw)
+    source = DataBlob(len(raw), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_byte)))
+    destination = DataBlob()
+    if not ctypes.windll.crypt32.CryptUnprotectData(
+        ctypes.byref(source), None, None, None, None, 0, ctypes.byref(destination)
+    ):
+        raise ctypes.WinError()
+    try:
+        return ctypes.string_at(destination.pbData, destination.cbData).decode("utf-8")
+    finally:
+        ctypes.windll.kernel32.LocalFree(destination.pbData)
 
 
 def read_json_file(path: Path, default: Any) -> Any:
@@ -176,18 +259,52 @@ def load_config() -> dict[str, Any]:
     path = config_path()
     if path.exists() and os.name != "nt" and stat.S_IMODE(path.stat().st_mode) & 0o077:
         raise SystemExit(f"Unsafe permissions on {path}; run chmod 600 {path}")
+    if os.name == "nt":  # pragma: no cover - exercised on Windows CI
+        encrypted = value.get("apiKeyDpapi")
+        if isinstance(encrypted, str) and encrypted:
+            try:
+                value["apiKey"] = _dpapi_unprotect(encrypted)
+            except (OSError, ValueError, UnicodeError) as error:
+                raise SystemExit("Could not decrypt the HolyCrab API Key for this Windows user") from error
+        elif isinstance(value.get("apiKey"), str) and value["apiKey"].strip():
+            plaintext = value["apiKey"].strip()
+            migrated = {key: item for key, item in value.items() if key != "apiKey"}
+            migrated["apiKeyDpapi"] = _dpapi_protect(plaintext)
+            write_private_json(path, migrated)
+            value = {**migrated, "apiKey": plaintext}
     return value
 
 
 def save_config(value: dict[str, Any]) -> None:
-    write_private_json(config_path(), value)
+    stored = dict(value)
+    if os.name == "nt":  # pragma: no cover - exercised on Windows CI
+        plaintext = stored.pop("apiKey", None)
+        if isinstance(plaintext, str) and plaintext.strip():
+            stored["apiKeyDpapi"] = _dpapi_protect(plaintext.strip())
+        elif plaintext is not None:
+            stored.pop("apiKeyDpapi", None)
+    write_private_json(config_path(), stored)
 
 
 def load_attempts() -> dict[str, Any]:
-    value = read_json_file(attempts_path(), {})
+    path = attempts_path()
+    if path.exists() and os.name != "nt" and stat.S_IMODE(path.stat().st_mode) & 0o077:
+        raise SystemExit(f"Unsafe permissions on {path}; run chmod 600 {path}")
+    value = read_json_file(path, {})
     if not isinstance(value, dict):
         raise SystemExit("HolyCrab attempts ledger must contain a JSON object")
-    return value
+    clean: dict[str, Any] = {}
+    for attempt_id, record in value.items():
+        if not isinstance(attempt_id, str) or not isinstance(record, dict):
+            continue
+        record = {**record, "attemptId": attempt_id}
+        state = record.get("state")
+        if state not in ATTEMPT_STATES:
+            record = {**record, "state": "unknown", "note": "Recovered an invalid local state; do not resubmit."}
+        clean[attempt_id] = record
+    if clean != value:
+        save_attempts(clean)
+    return clean
 
 
 def save_attempts(value: dict[str, Any]) -> None:
@@ -484,7 +601,23 @@ def public_task_data(value: Any) -> Any:
         }
         output["records"] = [public_task_data(item) for item in value["records"]]
         return output
-    return {key: value[key] for key in PUBLIC_TASK_FIELDS if key in value}
+    output = {key: value[key] for key in PUBLIC_TASK_FIELDS if key in value}
+    output["audioUrls"] = parse_audio_urls(value.get("audioIds"))
+    return output
+
+
+def parse_audio_urls(value: Any) -> list[str]:
+    parsed = value
+    if isinstance(value, str):
+        if not value.strip():
+            return []
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(parsed, list):
+        return []
+    return [item.strip() for item in parsed if isinstance(item, str) and item.strip().startswith("https://")]
 
 
 def public_task_response(response: Any) -> Any:
@@ -569,6 +702,201 @@ def find_model(model_id: str) -> dict[str, Any]:
     raise SystemExit(f"Unknown public model: {model_id}. Run `holycrab models list`.")
 
 
+def _validate_schema_value(name: str, value: Any, rule: dict[str, Any]) -> None:
+    expected = rule.get("type")
+    matches = {
+        "string": isinstance(value, str),
+        "integer": type(value) is int,
+        "boolean": type(value) is bool,
+        "array": isinstance(value, list),
+        "object": isinstance(value, dict),
+    }.get(expected, True)
+    if not matches:
+        raise SystemExit(f"Generation field {name} must be {expected}")
+    if "enum" in rule and value not in rule["enum"]:
+        raise SystemExit(f"Generation field {name} has an unsupported value")
+    if "const" in rule and value != rule["const"]:
+        raise SystemExit(f"Generation field {name} must be {rule['const']}")
+    if isinstance(value, str):
+        if len(value) < rule.get("minLength", 0) or len(value) > rule.get("maxLength", math.inf):
+            raise SystemExit(f"Generation field {name} has an invalid length")
+    if type(value) is int and (value < rule.get("minimum", -math.inf) or value > rule.get("maximum", math.inf)):
+        raise SystemExit(f"Generation field {name} is out of range")
+    if isinstance(value, list):
+        if len(value) > rule.get("maxItems", math.inf):
+            raise SystemExit(f"Generation field {name} contains too many items")
+        if rule.get("uniqueItems") and len({json.dumps(item, sort_keys=True) for item in value}) != len(value):
+            raise SystemExit(f"Generation field {name} must not contain duplicates")
+        item_rule = rule.get("items")
+        if isinstance(item_rule, dict):
+            for index, item in enumerate(value):
+                _validate_schema_value(f"{name}[{index}]", item, item_rule)
+    if isinstance(value, dict):
+        properties = rule.get("properties", {})
+        if rule.get("additionalProperties") is False and set(value) - set(properties):
+            raise SystemExit(f"Generation field {name} contains an unsupported property")
+        for required in rule.get("required", []):
+            if required not in value:
+                raise SystemExit(f"Generation field {name} is missing {required}")
+        for key, item in value.items():
+            if isinstance(properties.get(key), dict):
+                _validate_schema_value(f"{name}.{key}", item, properties[key])
+        one_of = rule.get("oneOf")
+        if isinstance(one_of, list) and not any(
+            set(option.get("required", [])).issubset(value)
+            for option in one_of if isinstance(option, dict)
+        ):
+            raise SystemExit(f"Generation field {name} does not match a supported form")
+
+
+def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
+    if kind == "audio":
+        model = next((item for item in all_models() if item.get("kind") == "audio"), None)
+    else:
+        model_id = payload.get("model")
+        model = find_model(model_id) if isinstance(model_id, str) else None
+    if not isinstance(model, dict) or model.get("kind") != kind:
+        raise SystemExit(f"Generation request does not select a {kind} model")
+    schema = model.get("requestSchema")
+    if not isinstance(schema, dict):
+        raise SystemExit("Generation capability schema is missing")
+    allowed = schema.get("properties", {})
+    unknown = set(payload) - set(allowed)
+    if schema.get("additionalProperties") is False and unknown:
+        raise SystemExit(f"Unsupported generation field: {sorted(unknown)[0]}")
+    missing = [name for name in schema.get("required", []) if name not in payload]
+    if missing:
+        raise SystemExit(f"Missing required generation field: {missing[0]}")
+    for name, value in payload.items():
+        rule = allowed.get(name)
+        if isinstance(rule, dict):
+            _validate_schema_value(name, value, rule)
+
+    if kind == "audio":
+        audio_fields = {"speaker", "audio_data", "audio_url"}
+        image_fields = {"image_data", "image_url"}
+        audio_count = 0
+        image_count = 0
+        for reference in payload.get("references", []) or []:
+            active = {
+                key for key, value in reference.items()
+                if key in audio_fields | image_fields and isinstance(value, str) and value.strip()
+            }
+            if len(active) != 1:
+                raise SystemExit("Each audio generation reference must contain exactly one supported source")
+            if active & audio_fields:
+                audio_count += 1
+            else:
+                image_count += 1
+        limits = model.get("referenceLimits", {})
+        if audio_count and image_count:
+            raise SystemExit("Audio generation cannot mix image and audio references")
+        if audio_count > limits.get("audio", 0) or image_count > limits.get("images", 0):
+            raise SystemExit("Too many references for audio generation")
+        prompt = payload.get("textPrompt", "")
+        if re.search(r"(?:@图片[1-9]\d*|@Image[1-9]\d*(?![A-Za-z0-9_]))", prompt):
+            raise SystemExit("Image mentions are not supported in audio generation prompts")
+        mentions = [
+            int(match.group(1) or match.group(2))
+            for match in re.finditer(r"(?:@音频([1-9]\d*)|@Audio([1-9]\d*)(?![A-Za-z0-9_]))", prompt)
+        ]
+        if not audio_count and mentions:
+            raise SystemExit("Audio generation prompts cannot mention audio without audio references")
+        if audio_count and set(mentions) != set(range(1, audio_count + 1)):
+            raise SystemExit("Audio generation prompts must mention every audio reference and no out-of-range reference")
+
+    if kind == "image":
+        image_urls = payload.get("imageUrls", [])
+        if isinstance(image_urls, list) and len(image_urls) > model.get("referenceLimits", {}).get("images", 0):
+            raise SystemExit("Too many reference images for the selected model")
+        size = payload.get("size")
+        if isinstance(size, str) and size:
+            named = {str(item).lower() for item in model.get("sizes", [])}
+            if size.lower() not in named:
+                match = re.fullmatch(r"(\d+)\s*[xX×]\s*(\d+)", size)
+                if not match:
+                    raise SystemExit("Image size must be a supported named size or WIDTHxHEIGHT")
+                width, height = int(match.group(1)), int(match.group(2))
+                custom = model.get("customSize", {})
+                pixels = width * height
+                if pixels < custom.get("minPixels", 1) or pixels > custom.get("maxPixels", 0):
+                    raise SystemExit("Image custom size pixel count is outside the selected model limit")
+                if width <= 0 or height <= 0 or not 1 / 16 <= width / height <= 16:
+                    raise SystemExit("Image custom size aspect ratio must be between 1:16 and 16:1")
+                multiple = custom.get("dimensionMultiple")
+                if type(multiple) is int and multiple > 1 and (width % multiple or height % multiple):
+                    raise SystemExit(f"Image width and height must be multiples of {multiple}")
+        if payload.get("outputFormat") is not None and not model.get("outputFormatSupported"):
+            raise SystemExit(f"Model {model['id']} does not support outputFormat")
+        resolution = payload.get("resolution")
+        if resolution is not None and resolution.upper() not in model.get("sizes", []):
+            raise SystemExit(f"Image resolution {resolution} is not supported by {model['id']}")
+
+    if kind == "video":
+        resolution = payload.get("resolution")
+        if resolution not in model.get("resolutions", []):
+            raise SystemExit(f"Resolution {resolution} is not supported by {model['id']}")
+        duration = payload.get("duration")
+        explicit_task_type = payload.get("videoTaskType")
+        task_type = explicit_task_type or ("frames" if payload.get("firstFrameAssetId") else "reference")
+        if task_type not in model.get("taskTypes", ["reference", "frames"]):
+            raise SystemExit(f"Video task type {task_type} is not supported by {model['id']}")
+        if task_type == "edit":
+            if duration != -1:
+                raise SystemExit("Seedance edit requests require duration -1")
+        else:
+            limits = model.get("durationSeconds", {})
+            if type(duration) is not int or duration < limits.get("min", 0) or duration > limits.get("max", 0):
+                raise SystemExit("Video duration is outside the selected model limit")
+        images = payload.get("imageAssetIds", []) or []
+        videos = payload.get("videoAssetIds", []) or []
+        audios = payload.get("audioAssetIds", []) or []
+        first_frame = bool(payload.get("firstFrameAssetId"))
+        last_frame = bool(payload.get("lastFrameAssetId"))
+        frame_mode = first_frame or last_frame
+        references = bool(images or videos or audios)
+        if last_frame and not first_frame and model["id"] != "MiniMax-H3":
+            raise SystemExit("lastFrameAssetId requires firstFrameAssetId")
+        if frame_mode and references:
+            raise SystemExit("Frame assets and reference assets cannot be combined")
+        if task_type == "frames" and not first_frame and model["id"] != "MiniMax-H3":
+            raise SystemExit("Video frame requests require firstFrameAssetId")
+        limits = model.get("referenceLimits", {})
+        for label, values, key in (("image", images, "images"), ("video", videos, "videos"), ("audio", audios, "audio")):
+            maximum = limits.get(key)
+            if type(maximum) is int and len(set(values)) > maximum:
+                raise SystemExit(f"Too many {label} references for {model['id']}")
+        if model["id"] == "MiniMax-H3":
+            ratio = payload.get("ratio")
+            if frame_mode:
+                payload["ratio"] = "adaptive"
+            if not frame_mode and not references and (ratio is None or ratio == "adaptive"):
+                raise SystemExit("MiniMax H3 text-only requests require a concrete ratio")
+            if references and ratio is None:
+                payload["ratio"] = "adaptive"
+            if audios and not images and not videos:
+                raise SystemExit("MiniMax H3 cannot use audio-only references")
+        elif audios and not images and not videos and model["id"] != "dreamina-seedance-2-5-260628":
+            raise SystemExit("Audio references require at least one visual reference")
+        source = bool(payload.get("sourceVideoAssetId"))
+        if (task_type in {"edit", "extend"}) != source:
+            raise SystemExit("Seedance edit/extend requests require sourceVideoAssetId")
+        if source and (first_frame or last_frame):
+            raise SystemExit("Seedance edit/extend requests cannot include frame assets")
+        if model["id"] == "dreamina-seedance-2-5-260628":
+            if videos and explicit_task_type is None:
+                raise SystemExit("Seedance 2.5 video references require videoTaskType")
+            video_ids = set(videos)
+            if source:
+                video_ids.add(payload["sourceVideoAssetId"])
+            if len(video_ids) > limits.get("videos", math.inf):
+                raise SystemExit("Too many video references for Seedance 2.5")
+            if len(set(images)) + len(video_ids) + len(set(audios)) > limits.get("total", math.inf):
+                raise SystemExit("Too many total references for Seedance 2.5")
+            if task_type in {"frames", "edit", "extend"}:
+                payload["ratio"] = "adaptive"
+
+
 def generation_endpoints(kind: str, payload: dict[str, Any]) -> tuple[str, str]:
     if kind not in {"video", "image", "audio"}:
         raise SystemExit("Generation kind must be video, image, or audio")
@@ -595,6 +923,7 @@ def normalize_generation_request(kind: str, payload: dict[str, Any]) -> dict[str
         model = find_model(model_id)
         if model.get("generateAudioSupported") is True and model.get("generateAudioDefault") is True:
             normalized.setdefault("generateAudio", True)
+    validate_generation_request(kind, normalized)
     return normalized
 
 
@@ -610,6 +939,7 @@ def utc_now() -> str:
 
 
 def update_attempt(attempt_id: str, **changes: Any) -> None:
+    attempt_id = local_attempt_id(attempt_id)
     with attempts_lock():
         attempts = load_attempts()
         record = attempts.get(attempt_id, {})
@@ -619,12 +949,35 @@ def update_attempt(attempt_id: str, **changes: Any) -> None:
         save_attempts(attempts)
 
 
+def local_attempt_id(value: Any) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value):
+        raise ValueError("attemptId must contain 1-128 letters, digits, underscores, or hyphens")
+    return value
+
+
+def attempt_record(attempt_id: str) -> dict[str, Any]:
+    identifier = local_attempt_id(attempt_id)
+    with attempts_lock():
+        record = load_attempts().get(identifier)
+    if not isinstance(record, dict):
+        raise SystemExit(f"Generation attempt not found: {identifier}")
+    return dict(record)
+
+
+def attempt_records() -> list[dict[str, Any]]:
+    with attempts_lock():
+        records = [dict(value) for value in load_attempts().values() if isinstance(value, dict)]
+    return sorted(records, key=lambda item: str(item.get("createdAt", "")), reverse=True)
+
+
 def attempt_exists(attempt_id: str) -> bool:
+    attempt_id = local_attempt_id(attempt_id)
     with attempts_lock():
         return attempt_id in load_attempts()
 
 
 def reserve_attempt(attempt_id: str, record: dict[str, Any]) -> None:
+    attempt_id = local_attempt_id(attempt_id)
     with attempts_lock():
         attempts = load_attempts()
         if attempt_id in attempts:
@@ -639,8 +992,25 @@ def extract_task_id(response: Any) -> str | None:
     data = response.get("data") if isinstance(response, dict) else None
     if isinstance(data, dict):
         value = data.get("uniqId") or data.get("taskId")
-        return value if isinstance(value, str) else None
+        return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9]{1,64}", value) else None
     return None
+
+
+def generation_unknown(attempt_id: str, *, http_status: int | None = None, note: str) -> dict[str, Any]:
+    changes: dict[str, Any] = {"state": "unknown", "note": note}
+    if http_status is not None:
+        changes["httpStatus"] = http_status
+    update_attempt(attempt_id, **changes)
+    return {
+        "attemptId": attempt_id,
+        "state": "unknown",
+        "message": "The result is uncertain. Do not submit this attempt again.",
+        "nextAction": {
+            "code": "QUERY_RECENT_TASKS",
+            "instruction": "Query recent tasks. Finding no result cannot prove that the online task was not created.",
+            "command": "holycrab tasks list --page 1 --page-size 20",
+        },
+    }
 
 
 def estimate_generation(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -678,24 +1048,51 @@ def create_generation(
             "attemptId": selected_attempt,
             "kind": kind,
             "requestHash": canonical_request_hash(kind, payload),
-            "state": "submitting",
+            "state": "prepared",
             "createdAt": utc_now(),
             "endpoint": create_endpoint,
         },
     )
+    update_attempt(selected_attempt, state="submitting")
     try:
         status, response = send("POST", create_endpoint, payload=payload)
-    except (urllib.error.URLError, TimeoutError):
-        update_attempt(
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
+        return generation_unknown(
             selected_attempt,
-            state="unknown",
-            note="Network outcome was ambiguous; do not resubmit this attempt.",
+            note=f"Network outcome was ambiguous ({error.__class__.__name__}); do not resubmit.",
         )
-        raise
     if not response_ok(status, response):
+        code = response.get("code") if isinstance(response, dict) else None
+        explicit_rejection = (400 <= status < 500 and status != 408) or (
+            200 <= status < 300 and type(code) is int and 400 <= code < 500 and code != 408
+        )
+        if not explicit_rejection:
+            return generation_unknown(
+                selected_attempt,
+                http_status=status,
+                note="The service response was ambiguous; do not resubmit.",
+            )
         update_attempt(selected_attempt, state="failed", httpStatus=status)
-        response_data(status, response)
+        try:
+            response_data(status, response)
+        except SystemExit as error:
+            return {
+                "attemptId": selected_attempt,
+                "state": "failed",
+                "message": str(error),
+                "nextAction": {
+                    "code": "FIX_REQUEST",
+                    "instruction": "Correct the rejected request and create a new attempt only after confirmation.",
+                    "command": "holycrab generate estimate --kind KIND --json @request.json",
+                },
+            }
     task_id = extract_task_id(response)
+    if task_id is None:
+        return generation_unknown(
+            selected_attempt,
+            http_status=status,
+            note="The success response did not contain a valid task ID; do not resubmit.",
+        )
     update_attempt(selected_attempt, state="created", taskId=task_id, httpStatus=status)
     return {
         "attemptId": selected_attempt,
@@ -759,6 +1156,7 @@ def command_auth_status(args: argparse.Namespace) -> int:
 def command_clear_key(args: argparse.Namespace) -> int:
     config = load_config()
     config.pop("apiKey", None)
+    config.pop("apiKeyDpapi", None)
     save_config(config)
     print("Saved HolyCrab API Key cleared. Environment variables were not changed.")
     return 0
@@ -799,15 +1197,24 @@ def command_generation_create(args: argparse.Namespace) -> int:
         if answer not in {"y", "yes"}:
             print("Cancelled; no generation task was created.")
             return 2
-    print_json(
-        create_generation(
-            args.kind,
-            payload,
-            confirmed=True,
-            attempt_id=args.attempt_id,
-            approved_estimate=approved_estimate,
-        )
+    result = create_generation(
+        args.kind,
+        payload,
+        confirmed=True,
+        attempt_id=args.attempt_id,
+        approved_estimate=approved_estimate,
     )
+    print_json(result)
+    return 0 if result.get("state") == "created" else 1
+
+
+def command_attempts_list(args: argparse.Namespace) -> int:
+    print_json({"attempts": attempt_records()})
+    return 0
+
+
+def command_attempts_get(args: argparse.Namespace) -> int:
+    print_json(attempt_record(args.attempt_id))
     return 0
 
 
@@ -817,8 +1224,21 @@ def command_task_get(args: argparse.Namespace) -> int:
 
 
 def command_task_list(args: argparse.Namespace) -> int:
+    if bool(args.start_date) != bool(args.end_date):
+        raise SystemExit("--start-date and --end-date must be supplied together")
+    for label, value in (("start-date", args.start_date), ("end-date", args.end_date)):
+        if value:
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError as error:
+                raise SystemExit(f"--{label} must use YYYY-MM-DD") from error
+    query = [("page", str(args.page)), ("pageSize", str(args.page_size))]
+    if args.start_date and args.end_date:
+        query.extend((("startDate", args.start_date), ("endDate", args.end_date)))
+    if args.type:
+        query.append(("taskType", args.type))
     status, response = send(
-        "GET", "/api/tasks", query=[("page", str(args.page)), ("pageSize", str(args.page_size))]
+        "GET", "/api/tasks", query=query
     )
     return print_response(status, public_task_response(response))
 
@@ -861,6 +1281,7 @@ def task_output_urls(data: Any) -> list[str]:
     image_urls = data.get("imageUrls")
     if isinstance(image_urls, list):
         values.extend(value for value in image_urls if isinstance(value, str) and value)
+    values.extend(parse_audio_urls(data.get("audioIds")))
     return values
 
 
@@ -871,9 +1292,47 @@ def validate_download_url(value: str) -> str:
         or not parsed.hostname
         or parsed.username is not None
         or parsed.password is not None
+        or bool(parsed.fragment)
     ):
         raise SystemExit("Task output must be a credential-free HTTPS URL")
+    hostname = parsed.hostname.lower().rstrip(".")
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise SystemExit("Task output URL cannot use a local or private address")
+    addresses: list[str] = []
+    try:
+        addresses = [item[4][0] for item in socket.getaddrinfo(hostname, parsed.port or 443)]
+    except socket.gaierror:
+        try:
+            addresses = [str(ipaddress.ip_address(hostname))]
+        except ValueError:
+            pass
+    for address in addresses:
+        try:
+            resolved = ipaddress.ip_address(address)
+        except ValueError:
+            continue
+        if not resolved.is_global:
+            raise SystemExit("Task output URL cannot use a local or private address")
     return value
+
+
+class SecureDownloadRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self, req: urllib.request.Request, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> urllib.request.Request | None:
+        count = int(getattr(req, "holycrab_redirects", 0)) + 1
+        if count > MAX_DOWNLOAD_REDIRECTS:
+            raise urllib.error.HTTPError(newurl, code, "too many download redirects", headers, fp)
+        validated = validate_download_url(urllib.parse.urljoin(req.full_url, newurl))
+        redirected = super().redirect_request(req, fp, code, msg, headers, validated)
+        if redirected is not None:
+            setattr(redirected, "holycrab_redirects", count)
+        return redirected
+
+
+def open_download(url: str) -> Any:
+    request = urllib.request.Request(validate_download_url(url), headers={"User-Agent": f"holycrab-cli/{VERSION}"})
+    return urllib.request.build_opener(SecureDownloadRedirectHandler()).open(request, timeout=300)
 
 
 def command_download(args: argparse.Namespace) -> int:
@@ -886,6 +1345,9 @@ def command_download(args: argparse.Namespace) -> int:
         raise SystemExit(f"Output index must be between 0 and {len(urls) - 1}")
     url = validate_download_url(urls[args.index])
     destination = Path(args.output).expanduser().resolve()
+    force = bool(getattr(args, "force", False))
+    if destination.exists() and not force:
+        raise SystemExit(f"Output already exists: {destination}. Use --force to replace it")
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, partial_name = tempfile.mkstemp(
         prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
@@ -893,15 +1355,27 @@ def command_download(args: argparse.Namespace) -> int:
     partial = Path(partial_name)
     total = 0
     try:
-        with urllib.request.urlopen(url, timeout=300) as remote, os.fdopen(descriptor, "wb") as local:
+        with open_download(url) as remote, os.fdopen(descriptor, "wb") as local:
             descriptor = -1
+            content_length = remote.headers.get("Content-Length") if getattr(remote, "headers", None) else None
+            if isinstance(content_length, str) and content_length.isdigit() and int(content_length) > MAX_DOWNLOAD_RESPONSE_BYTES:
+                raise SystemExit("Download response is larger than the allowed limit")
             while True:
                 chunk = remote.read(1024 * 1024)
                 if not chunk:
                     break
                 local.write(chunk)
                 total += len(chunk)
-        os.replace(partial, destination)
+                if total > MAX_DOWNLOAD_BYTES:
+                    raise SystemExit("Download exceeded the allowed size limit")
+        if force:
+            os.replace(partial, destination)
+        else:
+            try:
+                os.link(partial, destination)
+            except FileExistsError as error:
+                raise SystemExit(f"Output already exists: {destination}. Use --force to replace it") from error
+            partial.unlink()
     finally:
         if descriptor >= 0:
             os.close(descriptor)
@@ -1067,6 +1541,63 @@ def mutation_response_data(status: int, response: Any, context: str) -> Any:
     return response_data(status, response)
 
 
+def next_action(code: str, instruction: str, command: str | None) -> dict[str, Any]:
+    return {"code": code, "instruction": instruction, "command": command}
+
+
+def authorization_next_action(status: str, authorization_id: str, group_id: str | None = None) -> dict[str, Any]:
+    if status == "CREATED":
+        return next_action(
+            "WAIT_FOR_AUTHORIZATION",
+            "The person must open the private link or scan the QR code on their phone, complete verification, and confirm it themselves. Query this same authorization ID; do not create another one.",
+            f"holycrab real-human wait {authorization_id} --timeout 600",
+        )
+    if status == "SUCCEEDED" and group_id:
+        return next_action(
+            "UPLOAD_ASSETS",
+            "Authorization succeeded. This permits uploads to the person group; it does not approve any file upload or paid generation.",
+            f"holycrab assets upload FILE [FILE ...] --real-human-group {group_id}",
+        )
+    if status == "EXPIRED":
+        return next_action(
+            "ASK_BEFORE_NEW_AUTHORIZATION",
+            "The private link expired. Ask the user before creating a new authorization.",
+            "holycrab real-human start --name PERSON_NAME",
+        )
+    return next_action(
+        "ASK_BEFORE_NEW_AUTHORIZATION",
+        "This authorization did not complete. Explain the failure and ask the user before creating a new authorization.",
+        "holycrab real-human start --name PERSON_NAME",
+    )
+
+
+def asset_next_action(asset_id: str, step: str | None, error: str | None = None) -> dict[str, Any]:
+    if step == "UPLOADED_TO_ARK":
+        return next_action(
+            "ESTIMATE_GENERATION",
+            "The asset is ready. Put its asset ID into the generation request and estimate credits before asking for paid-generation confirmation.",
+            "holycrab generate estimate --kind video --json @request.json",
+        )
+    if step == "FAILED":
+        detail = f" Public error: {error}" if error else ""
+        return next_action(
+            "DO_NOT_REUPLOAD_AUTOMATICALLY",
+            "Asset processing failed." + detail + " Explain it and ask the user before choosing another file.",
+            f"holycrab assets get {asset_id}",
+        )
+    if step in {"UPLOADED", "UPLOADING_TO_ARK", "GETTING_UPLOADED_RESULT", "PROCESSING", "CREATED"}:
+        return next_action(
+            "WAIT_FOR_ASSET",
+            "Upload finished, but online processing is still running. Keep this asset ID and wait; do not upload it again.",
+            f"holycrab assets wait {asset_id} --timeout 600",
+        )
+    return next_action(
+        "QUERY_ASSET",
+        "The asset result is not clear. Keep the asset ID and query it; do not upload the file again.",
+        f"holycrab assets get {asset_id}",
+    )
+
+
 def create_authorization(name: str) -> AuthorizationStartResult:
     if not isinstance(name, str) or not name.strip() or len(name.strip()) > 255:
         raise ValueError("name must contain 1-255 characters")
@@ -1092,7 +1623,14 @@ def create_authorization(name: str) -> AuthorizationStartResult:
     except ValueError:
         raise ValueError(f"Authorization {identifier} returned an invalid verification link or expiry; do not retry automatically") from None
     SENSITIVE_OUTPUT_VALUES.add(link)
-    result = AuthorizationStartResult(authorizationId=identifier, h5Link=link, expiresAt=expiry)
+    result = AuthorizationStartResult(
+        authorizationId=identifier,
+        name=name.strip(),
+        status="CREATED",
+        h5Link=link,
+        expiresAt=expiry,
+        nextAction=authorization_next_action("CREATED", identifier),
+    )
     try:
         result["qrPath"], result.qr_bytes = authorization_qr(identifier, link, expiry)
     except (OSError, ValueError, ImportError, SystemExit):
@@ -1113,6 +1651,9 @@ def get_authorization(authorization_id: str) -> dict[str, Any]:
         output["group"] = public_fields(data["group"], ("uniqId", "name"))
     if output["status"] == "SUCCEEDED" and not output.get("group", {}).get("uniqId"):
         raise ValueError("Successful authorization is missing its group; query again, do not create another session")
+    output["nextAction"] = authorization_next_action(
+        str(output["status"]), identifier, output.get("group", {}).get("uniqId")
+    )
     if output["status"] in AUTHORIZATION_TERMINAL:
         try:
             remove_authorization_qr(identifier)
@@ -1241,6 +1782,7 @@ def get_asset(asset_id: str) -> dict[str, Any]:
     data = public_asset(response_data(*send("GET", f"/api/user-assets/{identifier}")))
     if data.get("uniqId") != identifier:
         raise ValueError("API returned an unexpected asset ID")
+    data["nextAction"] = asset_next_action(identifier, data.get("step"), data.get("error"))
     return data
 
 
@@ -1248,16 +1790,26 @@ def poll_resource(identifier: str, timeout: float, interval: float, *, authoriza
     if not math.isfinite(timeout) or timeout < 0 or not math.isfinite(interval) or interval <= 0:
         raise ValueError("timeout must be finite and nonnegative; interval must be finite and positive")
     deadline = time.monotonic() + timeout
+    previous_state: Any = object()
+    data: dict[str, Any] = {}
     while True:
         data = get_authorization(identifier) if authorization else get_asset(identifier)
-        print_json(data)
         state = data.get("status") if authorization else data.get("step")
+        if state != previous_state:
+            print_json(data)
+            previous_state = state
         if state == ("SUCCEEDED" if authorization else "UPLOADED_TO_ARK"):
             return 0
         if state in ({"FAILED", "EXPIRED"} if authorization else {"FAILED", "DELETING"}):
             return 1
         remaining = deadline - time.monotonic()
         if remaining <= 0:
+            timeout_action = next_action(
+                "CONTINUE_QUERYING",
+                "The wait timed out; this does not mean failure. Keep the same ID and query again. Nothing was resubmitted.",
+                (f"holycrab real-human get {identifier}" if authorization else f"holycrab assets get {identifier}"),
+            )
+            print_json({"timedOut": True, "id": identifier, "lastStatus": state, "nextAction": timeout_action})
             print("Polling timed out; keep the ID and query again. Nothing was resubmitted.", file=sys.stderr)
             return 2
         time.sleep(min(interval, remaining))
@@ -1330,7 +1882,284 @@ def command_asset_get(args: argparse.Namespace) -> int:
 
 
 def command_asset_wait(args: argparse.Namespace) -> int:
-    return poll_resource(args.uniq_id, args.timeout, args.interval, authorization=False)
+    result = 0
+    identifiers = args.uniq_id if isinstance(args.uniq_id, list) else [args.uniq_id]
+    for identifier in identifiers:
+        result = max(result, poll_resource(identifier, args.timeout, args.interval, authorization=False))
+    return result
+
+
+UPLOAD_FORMATS: dict[str, tuple[str, str]] = {
+    "jpg": ("image", "image/jpeg"), "jpeg": ("image", "image/jpeg"),
+    "png": ("image", "image/png"), "webp": ("image", "image/webp"),
+    "bmp": ("image", "image/bmp"), "tiff": ("image", "image/tiff"), "tif": ("image", "image/tiff"),
+    "gif": ("image", "image/gif"), "heic": ("image", "image/heic"), "heif": ("image", "image/heif"),
+    "mp4": ("video", "video/mp4"), "mov": ("video", "video/quicktime"),
+    "wav": ("audio", "audio/wav"), "mp3": ("audio", "audio/mpeg"),
+}
+REAL_HUMAN_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif", "heic", "mp4", "mov"}
+
+
+def file_signature_type(path: Path) -> str | None:
+    with path.open("rb") as stream:
+        head = stream.read(32)
+    if head.startswith(b"\xff\xd8\xff"): return "jpg"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"): return "png"
+    if head.startswith((b"GIF87a", b"GIF89a")): return "gif"
+    if len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP": return "webp"
+    if head.startswith(b"BM"): return "bmp"
+    if head.startswith((b"II*\x00", b"MM\x00*")): return "tiff"
+    if head.startswith(b"RIFF") and head[8:12] == b"WAVE": return "wav"
+    if head.startswith(b"ID3") or (len(head) >= 2 and head[0] == 0xFF and head[1] & 0xE0 == 0xE0): return "mp3"
+    if len(head) >= 12 and head[4:8] == b"ftyp":
+        brand = head[8:12].lower()
+        if brand in {b"heic", b"heix", b"hevc", b"hevx"}: return "heic"
+        if brand in {b"mif1", b"msf1", b"heif"}: return "heif"
+        if brand == b"qt  ": return "mov"
+        return "mp4"
+    return None
+
+
+def sha256_stream(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def inspect_upload_file(value: str, *, real_human: bool, duration_seconds: int | None = None) -> dict[str, Any]:
+    requested = Path(value).expanduser()
+    try:
+        path = requested.resolve(strict=True)
+    except FileNotFoundError as error:
+        raise SystemExit(f"file not found: {requested}") from error
+    info = path.stat()
+    if not stat.S_ISREG(info.st_mode):
+        raise SystemExit(f"Upload source must be a regular file: {path}")
+    extension = path.suffix.lstrip(".").lower()
+    declared = UPLOAD_FORMATS.get(extension)
+    signature = file_signature_type(path)
+    if declared is None or signature is None:
+        raise SystemExit(f"Unsupported or unrecognized upload format: {path.name}")
+    compatible = (
+        signature == extension
+        or {signature, extension} <= {"jpg", "jpeg"}
+        or {signature, extension} <= {"tif", "tiff"}
+        or {signature, extension} <= {"mp4", "mov"}
+    )
+    if not compatible:
+        raise SystemExit(f"File signature does not match its extension: {path.name}")
+    media_type, mime = declared
+    if duration_seconds is not None and (type(duration_seconds) is not int or duration_seconds <= 0):
+        raise SystemExit("Known media duration must be a positive whole number of seconds")
+    resolved_duration = duration_seconds if media_type in {"video", "audio"} else None
+    if real_human and extension not in REAL_HUMAN_EXTENSIONS:
+        raise SystemExit(f"Real-human uploads do not support {extension or 'this format'}")
+    maximum = MAX_IMAGE_UPLOAD_BYTES if media_type == "image" else (
+        MAX_REAL_HUMAN_VIDEO_UPLOAD_BYTES if real_human and media_type == "video" else
+        MAX_VIDEO_UPLOAD_BYTES if media_type == "video" else MAX_AUDIO_UPLOAD_BYTES
+    )
+    exceeds = info.st_size > maximum if real_human and media_type == "video" else info.st_size >= maximum
+    if exceeds:
+        raise SystemExit(f"Upload file is too large: {path.name}")
+    return {
+        "path": str(path), "name": path.name, "extension": extension, "mediaType": media_type,
+        "contentType": mime, "size": info.st_size, "durationSeconds": resolved_duration,
+        "mtimeNs": info.st_mtime_ns, "device": info.st_dev, "inode": info.st_ino,
+        "sha256": sha256_stream(path),
+    }
+
+
+def upload_plan_path(plan_id: str) -> Path:
+    return upload_plans_dir() / f"{public_id(plan_id, 'uploadPlanId')}.json"
+
+
+def cleanup_upload_plans() -> None:
+    directory = upload_plans_dir()
+    try:
+        if not directory.is_dir() or directory.is_symlink():
+            return
+        now = time.time()
+        for path in directory.iterdir():
+            if path.is_symlink() or not path.is_file() or not re.fullmatch(r"[A-Za-z0-9]{1,64}\.json", path.name):
+                continue
+            plan = read_json_file(path, None)
+            if not isinstance(plan, dict) or now > float(plan.get("expiresAtEpoch", 0)):
+                path.unlink()
+    except (SystemExit, OSError, TypeError, ValueError):
+        return
+
+
+def prepare_upload_plan(files: list[str], *, group_uniq_id: str | None = None,
+                        duration_seconds: int | None = None) -> dict[str, Any]:
+    if not files or len(files) > MAX_UPLOAD_FILES:
+        raise SystemExit(f"Choose between 1 and {MAX_UPLOAD_FILES} files")
+    group = find_real_human_group(public_id(group_uniq_id, "groupUniqId")) if group_uniq_id else None
+    inspected = [inspect_upload_file(value, real_human=group is not None,
+                                     duration_seconds=duration_seconds) for value in files]
+    plan_id = uuid.uuid4().hex
+    stored = {
+        "uploadPlanId": plan_id, "state": "prepared", "createdAt": utc_now(),
+        "expiresAtEpoch": time.time() + UPLOAD_PLAN_SECONDS,
+        "group": public_fields(group, ("uniqId", "name")) if group else None, "files": inspected,
+    }
+    write_private_json(upload_plan_path(plan_id), stored)
+    command = f"holycrab assets upload FILE [FILE ...]"
+    if group_uniq_id:
+        command += f" --real-human-group {group_uniq_id}"
+    command += " --yes"
+    return {
+        "uploadPlanId": plan_id, "expiresInSeconds": UPLOAD_PLAN_SECONDS,
+        "target": stored["group"] or {"type": "ordinary-assets"},
+        "files": [{key: item[key] for key in ("path", "name", "mediaType", "contentType", "size", "durationSeconds")} for item in inspected],
+        "onlineChecks": "Dimensions, aspect ratio, frame rate, duration, and codecs are still checked online; local preview does not guarantee acceptance.",
+        "confirmationRequired": True,
+        "nextAction": next_action("CONFIRM_UPLOAD_PLAN", "Confirm once only if every file and the target person are correct.", command),
+    }
+
+
+class FileChunks:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def __iter__(self):
+        with self.path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                yield chunk
+
+
+def upload_prepared_file(item: dict[str, Any], group_id: str | None) -> dict[str, Any]:
+    path = Path(item["path"])
+    query = [("file_extension", item["extension"]), ("content_type", item["contentType"])]
+    if item.get("durationSeconds") is not None:
+        query.append(("duration_seconds", str(item["durationSeconds"])))
+    try:
+        status, response = send("GET", "/api/user-assets/pre-signed-download-url", query=query)
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
+        return {"state": "unknown", "phase": "presign", "message": str(error)}
+    if not response_ok(status, response):
+        code = response.get("code") if isinstance(response, dict) else None
+        explicit = (400 <= status < 500 and status != 408) or (
+            200 <= status < 300 and type(code) is int and 400 <= code < 500 and code != 408
+        )
+        return {"state": "failed" if explicit else "unknown", "phase": "presign",
+                "httpStatus": status}
+    try:
+        data = response_data(status, response)
+    except SystemExit as error:
+        return {"state": "unknown", "phase": "presign", "message": str(error)}
+    if not isinstance(data, dict):
+        return {"state": "unknown", "phase": "presign",
+                "message": "Presign response is missing data"}
+    try:
+        asset_id = public_id(data.get("uniqId"), "assetId")
+        presigned_url = validate_presigned_upload_url(data.get("preSignedUrl"))
+    except (SystemExit, ValueError) as error:
+        return {"state": "unknown", "phase": "presign", "message": str(error)}
+    object_key = data.get("objectKey")
+    if not isinstance(object_key, str):
+        return {"assetUniqId": asset_id, "state": "unknown", "phase": "presign",
+                "message": "Presign response omitted objectKey"}
+    request = urllib.request.Request(
+        presigned_url, data=FileChunks(path),
+        headers={"Content-Type": item["contentType"], "Content-Length": str(item["size"])}, method="PUT",
+    )
+    try:
+        with open_presigned_upload(request) as upload_response:
+            if not 200 <= upload_response.status < 300:
+                raise OSError(f"Upload returned HTTP {upload_response.status}")
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
+        return {"assetUniqId": asset_id, "state": "unknown", "message": str(error)}
+    form: dict[str, Any] = {
+        "name": item["name"], "object_key": object_key, "content_type": item["contentType"]
+    }
+    if item.get("durationSeconds") is not None:
+        form["duration_seconds"] = item["durationSeconds"]
+    endpoint = f"/api/real-human-groups/{group_id}/assets/upload" if group_id else "/api/user-assets/upload"
+    try:
+        register_status, register_response = send("POST", endpoint, form=form)
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
+        return {"assetUniqId": asset_id, "state": "unknown", "message": str(error)}
+    code = register_response.get("code") if isinstance(register_response, dict) else None
+    if not response_ok(register_status, register_response):
+        explicit = (400 <= register_status < 500 and register_status != 408) or (
+            200 <= register_status < 300 and type(code) is int and 400 <= code < 500 and code != 408
+        )
+        return {"assetUniqId": asset_id, "state": "failed" if explicit else "unknown", "httpStatus": register_status}
+    if not isinstance(register_response, dict) or code is None:
+        return {"assetUniqId": asset_id, "state": "unknown", "httpStatus": register_status}
+    return {
+        "assetUniqId": asset_id, "groupUniqId": group_id, "state": "uploaded", "ready": False,
+        "nextAction": asset_next_action(asset_id, "UPLOADED"),
+    }
+
+
+def execute_upload_plan(plan_id: str, *, confirmed: bool) -> dict[str, Any]:
+    if confirmed is not True:
+        raise ValueError("confirmed must be true after the user approves the complete upload preview")
+    path = upload_plan_path(plan_id)
+    plan = read_json_file(path, None)
+    if not isinstance(plan, dict) or plan.get("state") != "prepared":
+        raise SystemExit("Upload plan is missing or has already been executed")
+    if time.time() > plan.get("expiresAtEpoch", 0):
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        raise SystemExit("Upload plan expired; prepare the files again")
+    for stored in plan.get("files", []):
+        current = inspect_upload_file(stored["path"], real_human=bool(plan.get("group")),
+                                      duration_seconds=stored.get("durationSeconds"))
+        for key in ("path", "size", "mtimeNs", "device", "inode", "sha256", "contentType"):
+            if current.get(key) != stored.get(key):
+                raise SystemExit(f"File changed after confirmation: {stored.get('path')}")
+    # Persist the one-shot boundary before the first network write. A crash cannot
+    # leave an executable plan that silently repeats an upload.
+    plan["state"] = "executing"
+    write_private_json(path, plan)
+    uploaded: list[dict[str, Any]] = []
+    failed: dict[str, Any] | None = None
+    not_attempted: list[dict[str, Any]] = []
+    group_id = plan.get("group", {}).get("uniqId") if isinstance(plan.get("group"), dict) else None
+    files = plan["files"]
+    for index, item in enumerate(files):
+        result = upload_prepared_file(item, group_id)
+        if result.get("state") != "uploaded":
+            failed = {"file": item["path"], **result}
+            if group_id:
+                failed["groupUniqId"] = group_id
+            not_attempted = [{"file": remaining["path"]} for remaining in files[index + 1:]]
+            break
+        uploaded.append({"file": item["path"], **result})
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+    output: dict[str, Any] = {"uploaded": uploaded, "failedOrUnknown": failed, "notAttempted": not_attempted}
+    if failed and failed.get("assetUniqId"):
+        output["nextAction"] = asset_next_action(
+            failed["assetUniqId"], "FAILED" if failed.get("state") == "failed" else None
+        )
+    elif failed and group_id:
+        output["nextAction"] = next_action(
+            "QUERY_GROUP_ASSETS",
+            "The upload result is not clear and no asset ID was returned. Keep the group ID, inspect its assets, and do not upload these files again automatically.",
+            f"holycrab real-human assets list --group {group_id}",
+        )
+    elif failed:
+        output["nextAction"] = next_action(
+            "REVIEW_ASSETS",
+            "The upload result is not clear and no asset ID was returned. Review the account's assets before deciding what to do; do not upload these files again automatically.",
+            None,
+        )
+    elif uploaded:
+        ids = " ".join(item["assetUniqId"] for item in uploaded)
+        output["nextAction"] = next_action(
+            "WAIT_FOR_ASSETS", "All uploads were registered. Wait until every asset is ready before generation.",
+            f"holycrab assets wait {ids} --timeout 600",
+        )
+    return output
 
 
 def upload_asset(
@@ -1340,86 +2169,427 @@ def upload_asset(
     name: str | None = None,
     group_uniq_id: str | None = None,
 ) -> dict[str, Any]:
-    path = Path(file).expanduser().resolve()
-    if not path.is_file():
-        raise SystemExit(f"file not found: {path}")
-    mime = content_type or mimetypes.guess_type(path.name)[0]
-    if not mime:
-        raise SystemExit("Could not infer MIME type; pass --content-type")
-    if group_uniq_id is not None:
-        public_id(group_uniq_id, "groupUniqId")
-        if not mime.startswith(("image/", "video/")):
-            raise ValueError("Real-human uploads support image or video files")
-        # Fail before uploading bytes when the selected group is inaccessible.
-        list_real_human_assets(group_uniq_id, 1, 1)
-    query = [("file_extension", path.suffix.lstrip(".")), ("content_type", mime)]
-    if duration_seconds is not None:
-        query.append(("duration_seconds", str(duration_seconds)))
-    status, response = send("GET", "/api/user-assets/pre-signed-download-url", query=query)
-    data = response_data(status, response)
-    if not isinstance(data, dict):
-        raise SystemExit("Presign response is missing data")
-    presigned_url = validate_presigned_upload_url(data.get("preSignedUrl"))
-    object_key = data.get("objectKey")
-    if not isinstance(object_key, str):
-        raise SystemExit("Presign response omitted objectKey")
-    upload_request = urllib.request.Request(
-        presigned_url, data=path.read_bytes(), headers={"Content-Type": mime}, method="PUT"
-    )
-    with open_presigned_upload(upload_request) as upload_response:
-        if not 200 <= upload_response.status < 300:
-            raise SystemExit(f"Upload failed with HTTP {upload_response.status}")
-    payload: dict[str, Any] = {
-        "name": name or path.name,
-        "object_key": object_key,
-        "content_type": mime,
-    }
-    if duration_seconds is not None:
-        payload["duration_seconds"] = duration_seconds
-    endpoint = f"/api/real-human-groups/{group_uniq_id}/assets/upload" if group_uniq_id else "/api/user-assets/upload"
-    context = f"Asset {data.get('uniqId')} registration" + (f" in group {group_uniq_id}" if group_uniq_id else "")
-    try:
-        register_status, register_response = send("POST", endpoint, form=payload)
-    except (OSError, http.client.HTTPException) as error:
-        raise ValueError(f"{context} outcome is uncertain; query the asset or group, do not retry automatically") from error
-    registration = mutation_response_data(register_status, register_response, context)
-    if group_uniq_id:
-        return {"assetUniqId": data.get("uniqId"), "groupUniqId": group_uniq_id, "ready": False}
     return {
-        "assetUniqId": data.get("uniqId"),
-        "registration": registration,
+        "deprecated": True,
+        "message": "Direct upload is disabled. Prepare a plan, show the complete preview, then execute it only after explicit confirmation.",
+        "nextAction": next_action("PREPARE_UPLOAD", "Use the two-stage upload flow.", None),
     }
 
 
 def command_upload_asset(args: argparse.Namespace) -> int:
-    print_json(upload_asset(args.file, args.content_type, args.duration_seconds, args.name,
-                            getattr(args, "real_human_group", None)))
+    preview = prepare_upload_plan(args.file, group_uniq_id=args.real_human_group,
+                                  duration_seconds=args.duration_seconds)
+    print_json(preview)
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("No files were uploaded. Re-run with --yes only after the user confirms the complete preview.", file=sys.stderr)
+            return 2
+        answer = input(f"Upload these {len(args.file)} files to the displayed target? [y/N] ").strip().lower()
+        if answer not in {"y", "yes"}:
+            try:
+                upload_plan_path(preview["uploadPlanId"]).unlink()
+            except FileNotFoundError:
+                pass
+            print("Cancelled; no files were uploaded.")
+            return 2
+    result = execute_upload_plan(preview["uploadPlanId"], confirmed=True)
+    print_json(result)
+    return 0 if result["failedOrUnknown"] is None else 1
+
+
+def strict_version(value: Any) -> tuple[int, int, int] | None:
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", value.strip())
+    return tuple(map(int, match.groups())) if match else None
+
+
+def read_update_state() -> dict[str, Any]:
+    try:
+        value = read_json_file(update_state_path(), {})
+    except SystemExit:
+        # The release cache is disposable. A truncated cache must never block a
+        # business command or prevent an explicit refresh from repairing it.
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def release_update_info(release: Any) -> dict[str, Any]:
+    current = strict_version(VERSION)
+    tag = release.get("tag_name") if isinstance(release, dict) else None
+    latest = strict_version(tag)
+    if (
+        current is None or latest is None or release.get("draft") is not False
+        or release.get("prerelease") is not False
+    ):
+        raise ValueError("Latest GitHub release is not an eligible stable semantic version")
+    page = release.get("html_url")
+    expected_page = RELEASE_PAGE_PREFIX + str(tag)
+    if not isinstance(page, str) or page != expected_page:
+        raise ValueError("Latest GitHub release has an invalid release page")
+    return {
+        "checkedAt": utc_now(), "latestVersion": ".".join(map(str, latest)),
+        "updateAvailable": latest > current, "releasePage": page,
+        "release": release,
+    }
+
+
+def fetch_latest_release(timeout: float = UPDATE_CHECK_TIMEOUT) -> dict[str, Any]:
+    request = urllib.request.Request(
+        UPDATE_API_URL,
+        headers={"Accept": "application/vnd.github+json", "User-Agent": f"holycrab-cli/{VERSION}",
+                 "X-GitHub-Api-Version": "2022-11-28"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        raw = response.read(1024 * 1024 + 1)
+    if len(raw) > 1024 * 1024:
+        raise ValueError("GitHub release response is too large")
+    release = json.loads(raw.decode("utf-8"))
+    return release_update_info(release)
+
+
+def check_for_update(*, force: bool = False, timeout: float = UPDATE_CHECK_TIMEOUT) -> dict[str, Any]:
+    cached = read_update_state()
+    if os.environ.get("HOLYCRAB_NO_UPDATE_CHECK") == "1" and not force:
+        return cached.get("update", {"checkedAt": None, "latestVersion": VERSION,
+                                      "updateAvailable": False, "disabled": True})
+    checked_epoch = cached.get("checkedAtEpoch", 0)
+    if not force and isinstance(checked_epoch, (int, float)) and time.time() - checked_epoch < UPDATE_CHECK_SECONDS:
+        update = cached.get("update")
+        if isinstance(update, dict):
+            return update
+    try:
+        update = fetch_latest_release(timeout)
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as error:
+        fallback = cached.get("update", {"checkedAt": None, "latestVersion": None,
+                                         "updateAvailable": False})
+        stored_failure: dict[str, Any] = {"checkedAtEpoch": time.time(), "update": fallback}
+        if isinstance(cached.get("release"), dict):
+            stored_failure["release"] = cached["release"]
+        try:
+            write_private_json(update_state_path(), stored_failure)
+        except OSError:
+            pass
+        if force:
+            return {"checkedAt": utc_now(), "latestVersion": None, "updateAvailable": False,
+                    "error": sanitize_text_for_output(str(error))}
+        return fallback
+    stored = {key: value for key, value in update.items() if key != "release"}
+    write_private_json(update_state_path(), {"checkedAtEpoch": time.time(), "update": stored,
+                                             "release": update["release"]})
+    return stored
+
+
+def cached_update_notice() -> str | None:
+    update = read_update_state().get("update")
+    if isinstance(update, dict) and update.get("updateAvailable"):
+        return (
+            f"HolyCrab CLI {VERSION} is installed; {update.get('latestVersion')} is available. "
+            f"Release: {update.get('releasePage')}. Run `holycrab update`."
+        )
+    return None
+
+
+def release_installer(release: dict[str, Any]) -> tuple[str, str, str]:
+    name = "install.ps1" if os.name == "nt" else "install.sh"
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        raise SystemExit("GitHub release does not contain installer assets")
+    asset = next((item for item in assets if isinstance(item, dict) and item.get("name") == name), None)
+    if not isinstance(asset, dict):
+        raise SystemExit(f"GitHub release does not contain {name}")
+    url = asset.get("browser_download_url")
+    digest = asset.get("digest")
+    tag = release.get("tag_name")
+    version = strict_version(tag)
+    expected_tag = f"v{'.'.join(map(str, version))}" if version else None
+    expected_prefix = f"https://github.com/AstroxNetwork/skills/releases/download/{expected_tag}/"
+    if not isinstance(url, str) or expected_tag is None or not url.startswith(expected_prefix):
+        raise SystemExit("Release installer has an invalid download URL")
+    if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest):
+        raise SystemExit("Release installer is missing its GitHub SHA-256 digest")
+    return name, url, digest.split(":", 1)[1].lower()
+
+
+def load_installation() -> dict[str, Any] | None:
+    path = installation_path()
+    value = read_json_file(path, None)
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise SystemExit("HolyCrab installation manifest must contain a JSON object")
+    if os.name != "nt" and stat.S_IMODE(path.stat().st_mode) & 0o077:
+        raise SystemExit(f"Unsafe permissions on {path}; reinstall HolyCrab")
+    return value
+
+
+def run_update(release: dict[str, Any]) -> None:
+    name, url, expected = release_installer(release)
+    manifest = load_installation() or {}
+    descriptor, temporary_name = tempfile.mkstemp(prefix="holycrab-update-", suffix=Path(name).suffix)
+    temporary = Path(temporary_name)
+    try:
+        digest = hashlib.sha256()
+        total = 0
+        with open_download(url) as remote, os.fdopen(descriptor, "wb") as local:
+            descriptor = -1
+            while chunk := remote.read(1024 * 1024):
+                total += len(chunk)
+                if total > MAX_INSTALLER_BYTES:
+                    raise SystemExit("Release installer is unexpectedly large; update stopped")
+                digest.update(chunk)
+                local.write(chunk)
+        if digest.hexdigest() != expected:
+            raise SystemExit("Release installer SHA-256 digest mismatch; update stopped")
+        release_version = release.get("tag_name")
+        installer_text = temporary.read_text(encoding="utf-8")
+        version_marker = (f'$Version = "{release_version}"' if name == "install.ps1"
+                          else f"VERSION={release_version}")
+        if version_marker not in installer_text.splitlines():
+            raise SystemExit("Release installer version does not match its release; update stopped")
+        environment = os.environ.copy()
+        environment.pop("HOLYCRAB_INSTALL_SOURCE_DIR", None)
+        if isinstance(manifest.get("prefix"), str):
+            environment["HOLYCRAB_INSTALL_PREFIX"] = manifest["prefix"]
+        agents = manifest.get("agents")
+        if isinstance(agents, list):
+            environment["HOLYCRAB_INSTALL_AGENTS"] = ",".join(str(item) for item in agents)
+        if isinstance(manifest.get("mcp"), bool):
+            environment["HOLYCRAB_INSTALL_MCP"] = "1" if manifest["mcp"] else "0"
+        command = (["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(temporary)]
+                   if os.name == "nt" else ["sh", str(temporary)])
+        completed = subprocess.run(command, env=environment, check=False)
+        if completed.returncode != 0:
+            raise SystemExit("HolyCrab installer failed; the previous installation was kept or restored")
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def command_update(args: argparse.Namespace) -> int:
+    update = check_for_update(force=True, timeout=30.0)
+    if update.get("error"):
+        print_json(update)
+        return 1
+    print_json({key: value for key, value in update.items() if key != "release"})
+    if not update.get("updateAvailable") or args.check:
+        return 0
+    state = read_update_state()
+    release = state.get("release")
+    if not isinstance(release, dict):
+        raise SystemExit("Release metadata cache is missing; run `holycrab update --check` again")
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("Update not installed. Re-run interactively or use --yes after reviewing the release.", file=sys.stderr)
+            return 2
+        if input("Install this verified HolyCrab update now? [y/N] ").strip().lower() not in {"y", "yes"}:
+            print("Update cancelled; the current installation was not changed.")
+            return 2
+    run_update(release)
     return 0
+
+
+def file_check(path: Path, expected: str | None = None,
+               hash_cache: dict[str, Any] | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {"path": str(path), "exists": path.is_file(), "readable": os.access(path, os.R_OK)}
+    if result["exists"] and result["readable"] and expected:
+        info = path.stat()
+        key = str(path)
+        cached = hash_cache.get(key) if isinstance(hash_cache, dict) else None
+        if (
+            isinstance(cached, dict)
+            and cached.get("size") == info.st_size
+            and cached.get("mtimeNs") == info.st_mtime_ns
+            and cached.get("expected") == expected.lower()
+            and isinstance(cached.get("sha256"), str)
+        ):
+            result["sha256"] = cached["sha256"]
+        else:
+            result["sha256"] = sha256_stream(path)
+            if isinstance(hash_cache, dict):
+                hash_cache[key] = {"size": info.st_size, "mtimeNs": info.st_mtime_ns,
+                                   "expected": expected.lower(), "sha256": result["sha256"]}
+        result["hashMatches"] = result["sha256"] == expected.lower()
+    return result
+
+
+def mcp_registration_check(agent: str, expected_command: str) -> dict[str, Any]:
+    executable = shutil.which(agent)
+    if executable is None:
+        return {"selected": True, "installed": False, "ok": False}
+    try:
+        completed = subprocess.run(
+            [executable, "mcp", "get", "holycrab"], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return {"selected": True, "installed": True, "ok": False,
+                "error": sanitize_text_for_output(str(error))}
+    output = f"{completed.stdout}\n{completed.stderr}"
+    matches = (
+        completed.returncode == 0
+        and expected_command in output
+        and re.search(r"\bmcp\b", output, re.IGNORECASE) is not None
+        and re.search(r"\bserve\b", output, re.IGNORECASE) is not None
+    )
+    return {"selected": True, "installed": True, "ok": matches,
+            "exitCode": completed.returncode}
+
+
+def local_health_report(*, online: bool = False) -> dict[str, Any]:
+    checks: dict[str, Any] = {}
+    repairs: list[str] = []
+    checks["python"] = {"version": platform.python_version(), "ok": sys.version_info >= (3, 10)}
+    try:
+        checks["capabilities"] = file_check(capabilities_path())
+        load_capabilities()
+        checks["capabilities"]["valid"] = True
+    except (SystemExit, OSError, ValueError) as error:
+        checks["capabilities"] = {"ok": False, "error": str(error)}
+    qr = Path(__file__).resolve().parent / "vendor" / "segno-1.6.6-py3-none-any.whl"
+    checks["qrDependency"] = file_check(qr)
+    try:
+        manifest = load_installation()
+        manifest_error = None
+    except SystemExit as error:
+        manifest = None
+        manifest_error = str(error)
+    try:
+        health_cache = read_json_file(health_state_path(), {})
+        if not isinstance(health_cache, dict):
+            health_cache = {}
+    except SystemExit:
+        health_cache = {}
+    original_health_cache = json.dumps(health_cache, sort_keys=True)
+    if manifest_error:
+        checks["installation"] = {"present": True, "readable": False, "error": manifest_error}
+        repairs.append(
+            "irm https://holycrab.ai/cli/install.ps1 | iex" if os.name == "nt"
+            else "curl -fsSL https://holycrab.ai/cli/install.sh | sh"
+        )
+    elif manifest is None:
+        source_checkout = any((parent / ".git").exists() for parent in Path(__file__).resolve().parents)
+        checks["installation"] = {"present": False, "sourceCheckout": source_checkout}
+        if not source_checkout:
+            repairs.append(
+                "irm https://holycrab.ai/cli/install.ps1 | iex"
+                if os.name == "nt" else
+                "curl -fsSL https://holycrab.ai/cli/install.sh | sh"
+            )
+    else:
+        core: dict[str, Any] = {}
+        core_files = manifest.get("coreFiles", [])
+        manifest_format_ok = (
+            isinstance(manifest.get("prefix"), str)
+            and isinstance(manifest.get("agents"), list)
+            and isinstance(manifest.get("mcp"), bool)
+            and isinstance(core_files, list)
+            and len(core_files) >= 5
+        )
+        for item in core_files if isinstance(core_files, list) else []:
+            if isinstance(item, dict) and isinstance(item.get("path"), str):
+                candidate = Path(item["path"])
+                if not candidate.is_absolute():
+                    candidate = installation_path().parent / candidate
+                expected = item.get("sha256")
+                if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected):
+                    manifest_format_ok = False
+                    expected = None
+                core[item["path"]] = file_check(candidate, expected, health_cache)
+        version_ok = manifest.get("version") == VERSION
+        checks["installation"] = {"present": True, "readable": True, "formatValid": manifest_format_ok,
+                                  "versionMatches": version_ok, "coreFiles": core}
+        damaged = any(not row.get("exists") or row.get("hashMatches") is False for row in core.values())
+        if not version_ok:
+            repairs.append("holycrab update --yes")
+        if damaged or not manifest_format_ok:
+            repairs.append(
+                "irm https://holycrab.ai/cli/install.ps1 | iex"
+                if os.name == "nt" else
+                "curl -fsSL https://holycrab.ai/cli/install.sh | sh"
+            )
+    if json.dumps(health_cache, sort_keys=True) != original_health_cache:
+        try:
+            write_private_json(health_state_path(), health_cache)
+        except OSError:
+            pass
+    try:
+        config = load_config()
+        checks["config"] = {"readable": True, "keyConfigured": bool(os.environ.get("HOLYCRAB_API_KEY") or config.get("apiKey"))}
+    except SystemExit as error:
+        checks["config"] = {"readable": False, "error": str(error)}
+        repairs.append("holycrab setup")
+        config = {}
+    try:
+        load_attempts()
+        checks["attempts"] = {"readable": True}
+    except SystemExit as error:
+        checks["attempts"] = {"readable": False, "error": str(error)}
+    if online:
+        checks["apiKey"] = {"ok": False, "configured": bool(os.environ.get("HOLYCRAB_API_KEY") or config.get("apiKey"))}
+        if checks["apiKey"]["configured"]:
+            try:
+                status, response = send("GET", "/api/user/me")
+                checks["apiKey"]["ok"] = response_ok(status, response)
+                checks["apiKey"]["httpStatus"] = status
+            except (SystemExit, OSError, urllib.error.URLError, http.client.HTTPException) as error:
+                checks["apiKey"]["error"] = sanitize_text_for_output(str(error))
+        if manifest is not None and manifest.get("mcp") is True:
+            prefix = manifest.get("prefix")
+            expected = str(
+                Path(prefix) / ("lib/holycrab/holycrab_cli.py" if os.name == "nt" else "bin/holycrab")
+            ) if isinstance(prefix, str) else ""
+            registrations: dict[str, Any] = {}
+            for agent in manifest.get("agents", []):
+                if agent in {"codex", "claude"}:
+                    registrations[agent] = mcp_registration_check(agent, expected)
+                    if not registrations[agent]["ok"]:
+                        repairs.append("holycrab update --yes")
+            checks["mcpRegistrations"] = registrations
+    update = (check_for_update(force=True, timeout=30.0) if online else
+              read_update_state().get("update", {"checkedAt": None, "latestVersion": VERSION,
+                                                   "updateAvailable": False}))
+    ok = checks["python"]["ok"] and checks.get("capabilities", {}).get("valid") is True
+    ok = ok and checks["qrDependency"].get("exists") is True and checks.get("config", {}).get("readable") is True
+    if manifest_error:
+        ok = False
+    elif manifest is None and not checks["installation"].get("sourceCheckout"):
+        ok = False
+    elif manifest is not None:
+        ok = ok and checks["installation"].get("formatValid") is True
+        ok = ok and checks["installation"].get("versionMatches") is True
+        ok = ok and all(row.get("exists") and row.get("hashMatches") is not False for row in checks["installation"]["coreFiles"].values())
+    if online:
+        ok = ok and checks.get("apiKey", {}).get("ok") is True and not update.get("error")
+        ok = ok and all(row.get("ok") is True for row in checks.get("mcpRegistrations", {}).values())
+    return {"ok": ok, "version": VERSION, "checks": checks, "update": update, "repairs": list(dict.fromkeys(repairs))}
 
 
 def command_doctor(args: argparse.Namespace) -> int:
-    report = {
-        "ok": True,
-        "version": VERSION,
-        "python": sys.version.split()[0],
-        "apiOrigin": base_url(),
-        "capabilities": str(capabilities_path()),
-        "config": str(config_path()),
-        "keyConfigured": bool(os.environ.get("HOLYCRAB_API_KEY") or load_config().get("apiKey")),
-        "mcpCommand": "holycrab mcp serve",
-    }
+    report = local_health_report(online=args.online)
     print_json(report)
-    return 0
+    return 0 if report["ok"] else 1
+
+
+ID_SCHEMA = {"type": "string", "pattern": "^[A-Za-z0-9]{1,64}$"}
+ATTEMPT_ID_SCHEMA = {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"}
 
 
 MCP_TOOLS = [
+    {"name": "cli_status", "description": "Read local CLI health and cached update status without contacting HolyCrab.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
     {"name": "account_get", "description": "Check the current HolyCrab account and credit balance.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
     {"name": "capabilities_list", "description": "List the public generation capability snapshot bundled with this release.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
     {"name": "capability_get", "description": "Get limits for one public model.", "inputSchema": {"type": "object", "properties": {"model": {"type": "string"}}, "required": ["model"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
     {"name": "generation_estimate", "description": "Estimate credit without creating a task.", "inputSchema": {"type": "object", "properties": {"kind": {"enum": ["video", "image", "audio"]}, "request": {"type": "object"}}, "required": ["kind", "request"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
-    {"name": "generation_create", "description": "Create exactly one billable generation after explicit user confirmation. Supply one stable attemptId per confirmed draw and reuse it only when reconciling a retry.", "inputSchema": {"type": "object", "properties": {"kind": {"enum": ["video", "image", "audio"]}, "request": {"type": "object"}, "confirmed": {"type": "boolean"}, "attemptId": {"type": "string", "minLength": 1, "description": "Client-generated stable ID for this one confirmed draw."}}, "required": ["kind", "request", "confirmed", "attemptId"], "additionalProperties": False}, "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}},
+    {"name": "generation_create", "description": "Create exactly one billable generation after explicit user confirmation. Supply one stable attemptId per confirmed draw and reuse it only when reconciling a retry.", "inputSchema": {"type": "object", "properties": {"kind": {"enum": ["video", "image", "audio"]}, "request": {"type": "object"}, "confirmed": {"type": "boolean"}, "attemptId": {**ATTEMPT_ID_SCHEMA, "description": "Client-generated stable ID for this one confirmed draw."}}, "required": ["kind", "request", "confirmed", "attemptId"], "additionalProperties": False}, "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}},
     {"name": "generation_get", "description": "Get one generation task by ID.", "inputSchema": {"type": "object", "properties": {"taskId": {"type": "string"}}, "required": ["taskId"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
-    {"name": "generation_list", "description": "List recent generation tasks.", "inputSchema": {"type": "object", "properties": {"page": {"type": "integer", "minimum": 1}, "pageSize": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
+    {"name": "generation_list", "description": "List tasks for the current HolyCrab user.", "inputSchema": {"type": "object", "properties": {"page": {"type": "integer", "minimum": 1}, "pageSize": {"type": "integer", "minimum": 1, "maximum": 100}, "startDate": {"type": "string"}, "endDate": {"type": "string"}, "taskType": {"type": "string", "enum": ["IMAGE", "VIDEO", "AUDIO", "TEXT"]}}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
+    {"name": "generation_attempt_list", "description": "List local one-shot generation submission attempts.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
+    {"name": "generation_attempt_get", "description": "Get one local generation submission attempt.", "inputSchema": {"type": "object", "properties": {"attemptId": ATTEMPT_ID_SCHEMA}, "required": ["attemptId"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
 ]
 
 
@@ -1433,7 +2603,6 @@ def real_human_tool(name: str, description: str, properties: dict[str, Any],
                             "idempotentHint": read_only and not destructive, "openWorldHint": True}}
 
 
-ID_SCHEMA = {"type": "string", "pattern": "^[A-Za-z0-9]{1,64}$"}
 PAGE_PROPERTIES = {"page": {"type": "integer", "minimum": 1},
                    "pageSize": {"type": "integer", "minimum": 1, "maximum": 100}}
 REAL_HUMAN_TOOLS = [
@@ -1456,28 +2625,39 @@ REAL_HUMAN_TOOLS = [
                     ("groupUniqId", "assetId", "confirmed"), read_only=False, destructive=True),
     real_human_tool("asset_get", "Query one public asset ID. Only UPLOADED_TO_ARK yields ready=true; report failures and do not reupload automatically.",
                     {"assetId": ID_SCHEMA}, ("assetId",)),
-    real_human_tool("asset_upload", "Upload a user-selected local file once. For real people supply groupUniqId from authorization; omission uses ordinary assets. Query asset_get until ready before generation. Do not retry an uncertain registration.",
-                    {"file": {"type": "string", "minLength": 1}, "groupUniqId": ID_SCHEMA,
-                     "name": {"type": "string"}, "contentType": {"type": "string"},
-                     "durationSeconds": {"type": "integer", "minimum": 1}}, ("file",), read_only=False),
+    real_human_tool("asset_upload_prepare", "Inspect 1-10 local files and return a short-lived complete preview. This does not upload bytes.",
+                    {"files": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string"}},
+                     "groupUniqId": ID_SCHEMA, "durationSeconds": {"type": "integer", "minimum": 1}},
+                    ("files",), read_only=True),
+    real_human_tool("asset_upload_execute", "Execute one prepared upload plan only after the user confirms the complete target and file list.",
+                    {"uploadPlanId": ID_SCHEMA, "confirmed": {"type": "boolean"}},
+                    ("uploadPlanId", "confirmed"), read_only=False),
+    real_human_tool("asset_upload", "Deprecated safety stub. It never uploads. Use asset_upload_prepare, show the preview, obtain confirmation, then asset_upload_execute.",
+                    {"file": {"type": "string", "minLength": 1}}, ("file",), read_only=True),
 ]
 MCP_TOOLS.extend(REAL_HUMAN_TOOLS)
 
 
 def validate_tool_arguments(name: str, arguments: dict[str, Any]) -> None:
-    tool = next((tool for tool in REAL_HUMAN_TOOLS if tool["name"] == name), None)
+    tool = next((tool for tool in MCP_TOOLS if tool["name"] == name), None)
     if tool is None:
         return
     schema = tool["inputSchema"]
     if set(arguments) - schema["properties"].keys():
         raise ValueError("Unknown tool argument")
-    if not set(schema["required"]).issubset(arguments):
+    if not set(schema.get("required", [])).issubset(arguments):
         raise ValueError("Missing required tool argument")
     for key, value in arguments.items():
         field = schema["properties"][key]
-        expected = {"string": str, "integer": int, "boolean": bool}[field["type"]]
+        expected = {"string": str, "integer": int, "boolean": bool,
+                    "array": list, "object": dict}.get(field.get("type"))
+        if expected is None and "enum" in field:
+            if value not in field["enum"]:
+                raise ValueError(f"{key} has an unsupported value")
+            continue
         if type(value) is not expected:
-            raise ValueError(f"{key} must be a {field['type']}")
+            article = "an" if field["type"] == "object" else "a"
+            raise ValueError(f"{key} must be {article} {field['type']}")
         if expected is str:
             if len(value) < field.get("minLength", 0) or len(value) > field.get("maxLength", math.inf):
                 raise ValueError(f"{key} has an invalid length")
@@ -1485,6 +2665,12 @@ def validate_tool_arguments(name: str, arguments: dict[str, Any]) -> None:
                 raise ValueError(f"{key} has an invalid format")
         elif expected is int and (value < field.get("minimum", -math.inf) or value > field.get("maximum", math.inf)):
             raise ValueError(f"{key} is out of range")
+        elif expected is list:
+            if len(value) < field.get("minItems", 0) or len(value) > field.get("maxItems", math.inf):
+                raise ValueError(f"{key} has an invalid item count")
+            item_type = field.get("items", {}).get("type")
+            if item_type == "string" and not all(isinstance(item, str) and item for item in value):
+                raise ValueError(f"{key} must contain non-empty strings")
 
 
 def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
@@ -1505,10 +2691,15 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
         return delete_real_human_asset(arguments["groupUniqId"], arguments["assetId"], arguments["confirmed"])
     if name == "asset_get":
         return get_asset(arguments["assetId"])
+    if name == "asset_upload_prepare":
+        return prepare_upload_plan(arguments["files"], group_uniq_id=arguments.get("groupUniqId"),
+                                   duration_seconds=arguments.get("durationSeconds"))
+    if name == "asset_upload_execute":
+        return execute_upload_plan(arguments["uploadPlanId"], confirmed=arguments["confirmed"])
     if name == "asset_upload":
-        uploaded = upload_asset(arguments["file"], arguments.get("contentType"), arguments.get("durationSeconds"),
-                                arguments.get("name"), arguments.get("groupUniqId"))
-        return {**public_fields(uploaded, ("assetUniqId", "groupUniqId")), "ready": False}
+        return upload_asset(arguments["file"])
+    if name == "cli_status":
+        return local_health_report(online=False)
     if name == "account_get":
         status, response = send("GET", "/api/user/me")
         return public_account_data(response_data(status, response))
@@ -1532,8 +2723,21 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
         task_id = urllib.parse.quote(str(arguments.get("taskId", "")), safe="")
         status, response = send("GET", f"/api/tasks/{task_id}")
         return public_task_data(response_data(status, response))
+    if name == "generation_attempt_list":
+        return {"attempts": attempt_records()}
+    if name == "generation_attempt_get":
+        return attempt_record(arguments["attemptId"])
     if name == "generation_list":
         query = [("page", str(arguments.get("page", 1))), ("pageSize", str(arguments.get("pageSize", 20)))]
+        start, end = arguments.get("startDate"), arguments.get("endDate")
+        if bool(start) != bool(end):
+            raise ValueError("startDate and endDate must be supplied together")
+        if start and end:
+            for value in (start, end):
+                datetime.strptime(value, "%Y-%m-%d")
+            query.extend((("startDate", start), ("endDate", end)))
+        if arguments.get("taskType"):
+            query.append(("taskType", arguments["taskType"]))
         status, response = send("GET", "/api/tasks", query=query)
         return public_task_data(response_data(status, response))
     raise SystemExit(f"Unknown MCP tool: {name}")
@@ -1568,6 +2772,13 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
             return {"jsonrpc": "2.0", "id": identifier, "error": {"code": -32602, "message": "Invalid params"}}
         requested = params.get("protocolVersion")
         negotiated = requested if requested in SUPPORTED_INITIALIZE_PROTOCOLS else LATEST_INITIALIZE_PROTOCOL
+        notice = cached_update_notice()
+        instructions = (
+            "Explain each HolyCrab result in the user's current language and always show the returned nextAction. "
+            "Never treat authorization as upload consent or generation consent. Never retry an unknown mutation."
+        )
+        if notice:
+            instructions += " " + notice
         return {
             "jsonrpc": "2.0",
             "id": identifier,
@@ -1575,6 +2786,7 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
                 "protocolVersion": negotiated,
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": {"name": "holycrab-local", "version": VERSION},
+                "instructions": instructions,
             },
         }
     if method == "ping":
@@ -1686,6 +2898,12 @@ def build_parser() -> argparse.ArgumentParser:
     gen_create.add_argument("--yes", action="store_true", help="Confirm exactly one billable task")
     gen_create.add_argument("--attempt-id", help="Local ID for this one submission attempt")
     gen_create.set_defaults(func=command_generation_create)
+    attempts = generate_sub.add_parser("attempts", help="Inspect one-shot local submission records")
+    attempts_sub = attempts.add_subparsers(dest="attempts_command", required=True)
+    attempts_sub.add_parser("list", help="List local submission attempts").set_defaults(func=command_attempts_list)
+    attempt_get = attempts_sub.add_parser("get", help="Get one local submission attempt")
+    attempt_get.add_argument("attempt_id")
+    attempt_get.set_defaults(func=command_attempts_get)
 
     tasks = sub.add_parser("tasks", help="Query generation tasks")
     tasks_sub = tasks.add_subparsers(dest="tasks_command", required=True)
@@ -1695,6 +2913,9 @@ def build_parser() -> argparse.ArgumentParser:
     task_list = tasks_sub.add_parser("list")
     task_list.add_argument("--page", type=int, default=1)
     task_list.add_argument("--page-size", type=int, default=20)
+    task_list.add_argument("--start-date", help="Inclusive start date in YYYY-MM-DD; requires --end-date")
+    task_list.add_argument("--end-date", help="Inclusive end date in YYYY-MM-DD; requires --start-date")
+    task_list.add_argument("--type", choices=["IMAGE", "VIDEO", "AUDIO", "TEXT"], help="Filter by task type")
     task_list.set_defaults(func=command_task_list)
     task_wait = tasks_sub.add_parser("wait")
     task_wait.add_argument("uniq_id")
@@ -1706,6 +2927,7 @@ def build_parser() -> argparse.ArgumentParser:
     download.add_argument("uniq_id")
     download.add_argument("--output", required=True)
     download.add_argument("--index", type=int, default=0)
+    download.add_argument("--force", action="store_true", help="Replace an existing output file")
     download.set_defaults(func=command_download)
 
     real_human = sub.add_parser("real-human", help="Authorize a real person and query their assets")
@@ -1713,11 +2935,11 @@ def build_parser() -> argparse.ArgumentParser:
     human_start = human_sub.add_parser("start", help="Create a private link and local QR image for manual verification")
     human_start.add_argument("--name", required=True)
     human_start.set_defaults(func=command_real_human_start)
-    human_get = human_sub.add_parser("get")
-    human_get.add_argument("authorization_id")
+    human_get = human_sub.add_parser("get", help="Query the same authorization ID without creating another")
+    human_get.add_argument("authorization_id", help="Authorization ID returned by real-human start")
     human_get.set_defaults(func=command_real_human_get)
-    human_wait = human_sub.add_parser("wait")
-    human_wait.add_argument("authorization_id")
+    human_wait = human_sub.add_parser("wait", help="Wait for authorization status changes; default timeout 600 seconds")
+    human_wait.add_argument("authorization_id", help="Authorization ID returned by real-human start")
     add_wait_arguments(human_wait)
     human_wait.set_defaults(func=command_real_human_wait)
     groups = human_sub.add_parser("groups").add_subparsers(dest="groups_command", required=True)
@@ -1745,34 +2967,58 @@ def build_parser() -> argparse.ArgumentParser:
 
     assets = sub.add_parser("assets", help="Upload and query media assets")
     assets_sub = assets.add_subparsers(dest="assets_command", required=True)
-    upload = assets_sub.add_parser("upload")
-    upload.add_argument("file")
-    upload.add_argument("--content-type")
-    upload.add_argument("--duration-seconds", type=int)
-    upload.add_argument("--name")
-    upload.add_argument("--real-human-group", help="Upload into this authorized person's public group ID")
+    upload = assets_sub.add_parser("upload", help="Preview 1-10 files, confirm once, then upload in order")
+    upload.add_argument("file", nargs="+", help="One to ten local image/video/audio files")
+    upload.add_argument("--duration-seconds", type=int, help="Known media duration sent for server validation")
+    upload.add_argument("--real-human-group", help="Authorized person's public group ID; real-human formats apply")
+    upload.add_argument("--yes", action="store_true", help="Confirm the complete printed file list and target")
     upload.set_defaults(func=command_upload_asset)
-    asset_get = assets_sub.add_parser("get")
-    asset_get.add_argument("uniq_id")
+    asset_get = assets_sub.add_parser("get", help="Query one asset and receive its next action")
+    asset_get.add_argument("uniq_id", help="Public asset ID")
     asset_get.set_defaults(func=command_asset_get)
-    asset_wait = assets_sub.add_parser("wait")
-    asset_wait.add_argument("uniq_id")
+    asset_wait = assets_sub.add_parser("wait", help="Wait for one or more assets; default timeout 600 seconds each")
+    asset_wait.add_argument("uniq_id", nargs="+", help="One or more public asset IDs")
     add_wait_arguments(asset_wait)
     asset_wait.set_defaults(func=command_asset_wait)
 
     mcp = sub.add_parser("mcp", help="Run the local stdio MCP server")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
     mcp_sub.add_parser("serve").set_defaults(func=command_mcp_serve)
+    update = sub.add_parser("update", help="Check for or install a verified stable CLI release")
+    update.add_argument("--check", action="store_true", help="Only check; never run an installer")
+    update.add_argument("--yes", action="store_true", help="Install after release and digest verification")
+    update.set_defaults(func=command_update)
     doctor = sub.add_parser("doctor", help="Check the local installation")
     doctor.add_argument("--json", action="store_true")
+    doctor.add_argument("--online", action="store_true", help="Refresh release status and verify the API Key")
     doctor.set_defaults(func=command_doctor)
     return parser
+
+
+def startup_maintenance(raw_args: list[str]) -> None:
+    if raw_args and raw_args[0] == "doctor":
+        return
+    try:
+        report = local_health_report(online=False)
+        for repair in report.get("repairs", []):
+            print(f"HolyCrab local check needs attention. Repair: {repair}", file=sys.stderr)
+        if raw_args and raw_args[0] == "update":
+            return
+        check_for_update(force=False, timeout=UPDATE_CHECK_TIMEOUT)
+        notice = cached_update_notice()
+        if notice:
+            print(notice, file=sys.stderr)
+    except (Exception, SystemExit):
+        # Maintenance can never block the requested business command.
+        return
 
 
 def main() -> int:
     warning = cleanup_authorization_qrs()
     if warning:
         print(warning, file=sys.stderr)
+    cleanup_upload_plans()
+    startup_maintenance(sys.argv[1:])
     args = build_parser().parse_args()
     try:
         return args.func(args)

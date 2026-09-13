@@ -307,22 +307,22 @@ class GenerationWorkflowTests(unittest.TestCase):
         }
         replies = [
             (200, {"code": 0, "data": {"frozenCredit": 10}}),
-            (200, {"code": 0, "data": {"uniqId": "task-1"}}),
+            (200, {"code": 0, "data": {"uniqId": "task1"}}),
             (200, {"code": 0, "data": {"frozenCredit": 10}}),
-            (200, {"code": 0, "data": {"uniqId": "task-2"}}),
+            (200, {"code": 0, "data": {"uniqId": "task2"}}),
         ]
         with patch.object(holycrab, "send", side_effect=replies):
             first = holycrab.create_generation("video", payload, confirmed=True)
             second = holycrab.create_generation("video", payload, confirmed=True)
         self.assertNotEqual(first["attemptId"], second["attemptId"])
-        self.assertEqual(first["taskId"], "task-1")
-        self.assertEqual(second["taskId"], "task-2")
+        self.assertEqual(first["taskId"], "task1")
+        self.assertEqual(second["taskId"], "task2")
 
     def test_reusing_same_attempt_id_never_submits_twice(self) -> None:
         payload = {"model": "seedream-5-0-lite-260128", "prompt": "draw", "size": "2k"}
         replies = [
             (200, {"code": 0, "data": {"frozenCredit": 5}}),
-            (200, {"code": 0, "data": {"uniqId": "task-1"}}),
+            (200, {"code": 0, "data": {"uniqId": "task1"}}),
         ]
         with patch.object(holycrab, "send", side_effect=replies) as send:
             holycrab.create_generation("image", payload, confirmed=True, attempt_id="attempt-fixed")
@@ -358,8 +358,7 @@ class GenerationWorkflowTests(unittest.TestCase):
         )
         replies = [
             (200, {"code": 0, "data": {"frozenCredit": 5}}),
-            (200, {"code": 0, "data": {"frozenCredit": 5}}),
-            (200, {"code": 0, "data": {"uniqId": "task-1"}}),
+            (200, {"code": 0, "data": {"uniqId": "task1"}}),
         ]
         with patch.object(holycrab, "send", side_effect=replies) as send, patch.object(
             sys.stdin, "isatty", return_value=True
@@ -374,10 +373,10 @@ class GenerationWorkflowTests(unittest.TestCase):
             urllib.error.URLError("timed out"),
         ]
         with patch.object(holycrab, "send", side_effect=replies) as send:
-            with self.assertRaises(urllib.error.URLError):
-                holycrab.create_generation(
-                    "image", payload, confirmed=True, attempt_id="attempt-unknown"
-                )
+            result = holycrab.create_generation(
+                "image", payload, confirmed=True, attempt_id="attempt-unknown"
+            )
+        self.assertEqual(result["state"], "unknown")
         self.assertEqual(send.call_count, 2)
         record = holycrab.load_attempts()["attempt-unknown"]
         self.assertEqual(record["state"], "unknown")
@@ -393,8 +392,8 @@ class GenerationWorkflowTests(unittest.TestCase):
                 200,
                 {"code": 0, "data": {"uniqId": "task-1", "videoUrl": "https://cdn.example/result.mp4?secret=value"}},
             ),
-        ), patch.object(holycrab.urllib.request, "urlopen", return_value=response), redirect_stdout(io.StringIO()) as output:
-            args = argparse.Namespace(uniq_id="task-1", output=str(destination), index=0)
+        ), patch.object(holycrab, "open_download", return_value=response), redirect_stdout(io.StringIO()) as output:
+            args = argparse.Namespace(uniq_id="task-1", output=str(destination), index=0, force=False)
             self.assertEqual(holycrab.command_download(args), 0)
         self.assertEqual(destination.read_bytes(), b"video-bytes")
         self.assertNotIn("secret=value", output.getvalue())
@@ -414,10 +413,10 @@ class GenerationWorkflowTests(unittest.TestCase):
                 200,
                 {"code": 0, "data": {"uniqId": "task-1", "videoUrl": "https://cdn.example/result.mp4"}},
             ),
-        ), patch.object(holycrab.urllib.request, "urlopen", return_value=response), redirect_stdout(
+        ), patch.object(holycrab, "open_download", return_value=response), redirect_stdout(
             io.StringIO()
         ):
-            args = argparse.Namespace(uniq_id="task-1", output=str(destination), index=0)
+            args = argparse.Namespace(uniq_id="task-1", output=str(destination), index=0, force=False)
             self.assertEqual(holycrab.command_download(args), 0)
 
         self.assertEqual(protected.read_bytes(), b"keep-me")
@@ -504,7 +503,7 @@ class AssetUploadTests(unittest.TestCase):
 
     def test_upload_registers_chinese_filename_as_multipart(self) -> None:
         image = Path(self.temp.name) / "懵懵.jpeg"
-        image.write_bytes(b"jpeg-bytes")
+        image.write_bytes(b"\xff\xd8\xffjpeg-bytes")
         replies = [
             (
                 200,
@@ -513,7 +512,7 @@ class AssetUploadTests(unittest.TestCase):
                     "data": {
                         "preSignedUrl": "https://storage.example/object?signature=secret",
                         "objectKey": "user/asset.jpeg",
-                        "uniqId": "asset-1",
+                        "uniqId": "asset1",
                     },
                 },
             ),
@@ -522,9 +521,10 @@ class AssetUploadTests(unittest.TestCase):
         with patch.object(holycrab, "send", side_effect=replies) as send, patch.object(
             holycrab, "open_presigned_upload", return_value=self.upload_response()
         ):
-            result = holycrab.upload_asset(str(image))
+            plan = holycrab.prepare_upload_plan([str(image)])
+            result = holycrab.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
 
-        self.assertEqual(result["assetUniqId"], "asset-1")
+        self.assertEqual(result["uploaded"][0]["assetUniqId"], "asset1")
         send.assert_any_call(
             "POST",
             "/api/user-assets/upload",
@@ -540,7 +540,7 @@ class AssetUploadTests(unittest.TestCase):
         replies = []
         for index, name in enumerate(("yuna_1.jpeg", "懵懵.jpeg", "yuna.jpeg"), start=1):
             image = Path(self.temp.name) / name
-            image.write_bytes(f"image-{index}".encode())
+            image.write_bytes(b"\xff\xd8\xff" + f"image-{index}".encode())
             images.append(image)
             replies.extend(
                 [
@@ -551,7 +551,7 @@ class AssetUploadTests(unittest.TestCase):
                             "data": {
                                 "preSignedUrl": f"https://storage.example/{index}?signature=secret",
                                 "objectKey": f"user/asset-{index}.jpeg",
-                                "uniqId": f"asset-{index}",
+                                "uniqId": f"asset{index}",
                             },
                         },
                     ),
@@ -562,9 +562,10 @@ class AssetUploadTests(unittest.TestCase):
         with patch.object(holycrab, "send", side_effect=replies) as send, patch.object(
             holycrab, "open_presigned_upload", return_value=self.upload_response()
         ):
-            results = [holycrab.upload_asset(str(image)) for image in images]
+            plan = holycrab.prepare_upload_plan([str(image) for image in images])
+            result = holycrab.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
 
-        self.assertEqual([result["assetUniqId"] for result in results], ["asset-1", "asset-2", "asset-3"])
+        self.assertEqual([item["assetUniqId"] for item in result["uploaded"]], ["asset1", "asset2", "asset3"])
         registration_calls = [
             call for call in send.call_args_list if call.args == ("POST", "/api/user-assets/upload")
         ]
@@ -573,7 +574,7 @@ class AssetUploadTests(unittest.TestCase):
 
     def test_registration_400_is_reported_without_returning_asset(self) -> None:
         image = Path(self.temp.name) / "yuna.jpeg"
-        image.write_bytes(b"jpeg-bytes")
+        image.write_bytes(b"\xff\xd8\xffjpeg-bytes")
         replies = [
             (
                 200,
@@ -582,7 +583,7 @@ class AssetUploadTests(unittest.TestCase):
                     "data": {
                         "preSignedUrl": "https://storage.example/object?signature=secret",
                         "objectKey": "user/asset.jpeg",
-                        "uniqId": "asset-not-registered",
+                        "uniqId": "assetnotregistered",
                     },
                 },
             ),
@@ -591,8 +592,10 @@ class AssetUploadTests(unittest.TestCase):
         with patch.object(holycrab, "send", side_effect=replies), patch.object(
             holycrab, "open_presigned_upload", return_value=self.upload_response()
         ):
-            with self.assertRaisesRegex(SystemExit, "HTTP 400: missing multipart field"):
-                holycrab.upload_asset(str(image))
+            plan = holycrab.prepare_upload_plan([str(image)])
+            result = holycrab.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
+        self.assertEqual(result["failedOrUnknown"]["state"], "failed")
+        self.assertEqual(result["failedOrUnknown"]["assetUniqId"], "assetnotregistered")
 
 
 if __name__ == "__main__":

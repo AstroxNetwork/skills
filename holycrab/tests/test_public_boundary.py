@@ -59,7 +59,7 @@ class PublicBoundaryTests(unittest.TestCase):
     def test_public_docs_describe_a_versioned_snapshot_not_live_capabilities(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         skill = (REPO_ROOT / "holycrab" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("2026-08-22", readme)
+        self.assertIn("2026-09-14", readme)
         self.assertIn("versioned capability snapshot", skill)
         self.assertNotIn("Treat the capability response as current", skill)
 
