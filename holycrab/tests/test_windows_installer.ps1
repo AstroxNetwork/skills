@@ -1,7 +1,11 @@
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$TestRoot = Join-Path $env:RUNNER_TEMP "HolyCrab-中文用户-安装测试"
+$ChinesePath = -join @(
+    [char]0x4E2D, [char]0x6587, [char]0x7528, [char]0x6237,
+    [char]0x5B89, [char]0x88C5, [char]0x6D4B, [char]0x8BD5
+)
+$TestRoot = Join-Path $env:RUNNER_TEMP ("HolyCrab-" + $ChinesePath)
 $env:HOLYCRAB_INSTALL_SOURCE_DIR = $RepoRoot
 $env:HOLYCRAB_INSTALL_PREFIX = Join-Path $TestRoot "prefix"
 $env:HOLYCRAB_CONFIG_DIR = Join-Path $TestRoot "config"
