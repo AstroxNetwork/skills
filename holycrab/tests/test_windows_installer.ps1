@@ -29,9 +29,7 @@ $CliPath = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\holycrab_cli.py"
 $Python = (Get-Command python).Source
 $ProcessInfo = [System.Diagnostics.ProcessStartInfo]::new()
 $ProcessInfo.FileName = $Python
-$ProcessInfo.ArgumentList.Add($CliPath)
-$ProcessInfo.ArgumentList.Add("mcp")
-$ProcessInfo.ArgumentList.Add("serve")
+$ProcessInfo.Arguments = ('"{0}" mcp serve' -f ($CliPath -replace '"', '\"'))
 $ProcessInfo.RedirectStandardInput = $true
 $ProcessInfo.RedirectStandardOutput = $true
 $ProcessInfo.RedirectStandardError = $true
