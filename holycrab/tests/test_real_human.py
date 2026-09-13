@@ -71,8 +71,9 @@ class RealHumanTests(unittest.TestCase):
         qr = Path(data["qrPath"])
         self.assertTrue(qr.is_absolute())
         self.assertTrue(qr.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
-        self.assertEqual(stat.S_IMODE(qr.stat().st_mode), 0o600)
-        self.assertEqual(stat.S_IMODE(qr.parent.stat().st_mode), 0o700)
+        if os.name != "nt":
+            self.assertEqual(stat.S_IMODE(qr.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(qr.parent.stat().st_mode), 0o700)
         picture = next(item for item in result["content"] if item["type"] == "image")
         self.assertEqual(base64.b64decode(picture["data"]), qr.read_bytes())
         self.assertNotIn("private-byted", json.dumps(result))

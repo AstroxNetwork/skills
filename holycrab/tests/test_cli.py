@@ -38,7 +38,8 @@ class LocalAuthenticationTests(unittest.TestCase):
     def test_saved_api_key_uses_user_only_permissions(self) -> None:
         holycrab.save_config({"apiKey": "local-secret"})
         path = holycrab.config_path()
-        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        if os.name != "nt":
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         self.assertEqual(holycrab.credential(), ("X-User-Token", "local-secret"))
 
     def test_custom_base_url_is_rejected_before_reading_a_key(self) -> None:
@@ -421,7 +422,8 @@ class GenerationWorkflowTests(unittest.TestCase):
 
         self.assertEqual(protected.read_bytes(), b"keep-me")
         self.assertEqual(destination.read_bytes(), b"video-bytes")
-        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+        if os.name != "nt":
+            self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
 
 
 class PublicProjectionTests(unittest.TestCase):
