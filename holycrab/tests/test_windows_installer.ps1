@@ -55,7 +55,9 @@ assert module.credential()[1] == sys.argv[2]
 saved = json.loads(pathlib.Path(module.config_path()).read_text(encoding="utf-8"))
 assert "apiKey" not in saved and isinstance(saved.get("apiKeyDpapi"), str)
 '@
-& $Python -c $MigrationCheck $CliPath $LegacyKey
+$MigrationScript = Join-Path $TestRoot "migration-check.py"
+[IO.File]::WriteAllText($MigrationScript, $MigrationCheck, [Text.UTF8Encoding]::new($false))
+& $Python $MigrationScript $CliPath $LegacyKey
 if ($LASTEXITCODE -ne 0) { throw "Legacy plaintext API Key migration failed" }
 
 $FakeBin = Join-Path $TestRoot "fake-bin"
