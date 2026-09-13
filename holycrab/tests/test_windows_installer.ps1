@@ -63,21 +63,29 @@ if ($LASTEXITCODE -ne 0) { throw "Legacy plaintext API Key migration failed" }
 $FakeBin = Join-Path $TestRoot "fake-bin"
 New-Item -ItemType Directory -Force -Path $FakeBin | Out-Null
 $env:FAKE_CODEX_LOG = Join-Path $TestRoot "codex-mcp.log"
+$env:PYTHON_FOR_HOLYCRAB_TEST = $Python
+$FakeCodexPython = @'
+import os
+import sys
+
+arguments = sys.argv[1:]
+if arguments[:3] == ["mcp", "get", "holycrab"]:
+    print(r"command: C:\old\holycrab_cli.py mcp serve")
+    raise SystemExit(0)
+with open(os.environ["FAKE_CODEX_LOG"], "a", encoding="utf-8") as log:
+    log.write(" ".join(arguments) + "\n")
+'@
+[IO.File]::WriteAllText((Join-Path $FakeBin "fake_codex.py"), $FakeCodexPython, [Text.UTF8Encoding]::new($false))
 $FakeCodex = @'
 @echo off
-if "%1 %2 %3" == "mcp get holycrab" (
-  echo command: C:\old\holycrab_cli.py mcp serve
-  exit /b 0
-)
-echo %*>>"%FAKE_CODEX_LOG%"
-exit /b 0
+"%PYTHON_FOR_HOLYCRAB_TEST%" "%~dp0fake_codex.py" %*
 '@
 [IO.File]::WriteAllText((Join-Path $FakeBin "codex.cmd"), $FakeCodex, [Text.Encoding]::ASCII)
 $env:Path = "$FakeBin;$env:Path"
 $env:HOLYCRAB_INSTALL_MCP = "1"
 $env:HOLYCRAB_INSTALL_AGENTS = "codex"
 & (Join-Path $RepoRoot "install.ps1")
-$McpLog = Get-Content -LiteralPath $env:FAKE_CODEX_LOG -Raw
+$McpLog = Get-Content -LiteralPath $env:FAKE_CODEX_LOG -Raw -Encoding UTF8
 if ($McpLog -notmatch "mcp remove holycrab") { throw "Stale HolyCrab MCP was not removed" }
 if ($McpLog -notmatch "mcp add holycrab" -or -not $McpLog.Contains($CliPath)) {
     throw "HolyCrab MCP was not restored with the current CLI path"
