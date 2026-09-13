@@ -16,7 +16,9 @@ $BinDir = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "bin"
 $Launcher = Join-Path $BinDir "holycrab.cmd"
 if (-not (Test-Path $Launcher)) { throw "Missing Windows launcher: $Launcher" }
 
-$PathEntries = @($env:Path -split ";" | Where-Object { $_.TrimEnd("\") -ieq $BinDir.TrimEnd("\") })
+$PathEntries = @($env:Path -split ";" | Where-Object {
+    $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ieq $BinDir.TrimEnd([IO.Path]::DirectorySeparatorChar)
+})
 if ($PathEntries.Count -ne 1) { throw "HolyCrab bin directory should occur once in current PATH" }
 
 $Version = & $Launcher --version

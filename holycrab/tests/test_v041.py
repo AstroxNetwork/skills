@@ -366,9 +366,10 @@ class V041Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             cli.release_update_info({"tag_name": "v0.4.2-rc1", "draft": False, "prerelease": True,
                                      "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.2-rc1"})
+        installer_name = "install.ps1" if os.name == "nt" else "install.sh"
         with self.assertRaisesRegex(SystemExit, "missing its GitHub SHA-256"):
-            cli.release_installer({"tag_name": "v0.4.2", "assets": [{"name": "install.sh", "browser_download_url":
-                "https://github.com/AstroxNetwork/skills/releases/download/v0.4.2/install.sh", "digest": None}]})
+            cli.release_installer({"tag_name": "v0.4.2", "assets": [{"name": installer_name, "browser_download_url":
+                f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.2/{installer_name}", "digest": None}]})
         older = cli.release_update_info({"tag_name": "v0.4.0", "draft": False, "prerelease": False,
                                          "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.0"})
         self.assertFalse(older["updateAvailable"])
@@ -456,7 +457,10 @@ class V041Tests(unittest.TestCase):
             report = cli.local_health_report(online=True)
         self.assertTrue(report["ok"])
         self.assertEqual(report["checks"]["mcpRegistrations"]["codex"], {"ok": True})
-        mcp.assert_called_once_with("codex", "/opt/holycrab/bin/holycrab")
+        expected = str(Path("/opt/holycrab") / (
+            "lib/holycrab/holycrab_cli.py" if os.name == "nt" else "bin/holycrab"
+        ))
+        mcp.assert_called_once_with("codex", expected)
 
 
 if __name__ == "__main__":

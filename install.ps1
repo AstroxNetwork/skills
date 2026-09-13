@@ -64,13 +64,17 @@ function Install-HolyCrabSkill([string]$Destination, [hashtable]$Downloaded) {
 
 function Add-HolyCrabPath([string]$Directory) {
     $CurrentEntries = @($env:Path -split ";" | Where-Object { $_ })
-    if (-not ($CurrentEntries | Where-Object { $_.TrimEnd("\") -ieq $Directory.TrimEnd("\") })) {
+    if (-not ($CurrentEntries | Where-Object {
+        $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ieq $Directory.TrimEnd([IO.Path]::DirectorySeparatorChar)
+    })) {
         $env:Path = "$Directory;$env:Path"
     }
 
     $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $UserEntries = @($UserPath -split ";" | Where-Object { $_ })
-    if (-not ($UserEntries | Where-Object { $_.TrimEnd("\") -ieq $Directory.TrimEnd("\") })) {
+    if (-not ($UserEntries | Where-Object {
+        $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ieq $Directory.TrimEnd([IO.Path]::DirectorySeparatorChar)
+    })) {
         $Updated = if ($UserPath) { "$Directory;$UserPath" } else { $Directory }
         [Environment]::SetEnvironmentVariable("Path", $Updated, "User")
     }
