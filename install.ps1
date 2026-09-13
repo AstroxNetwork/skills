@@ -98,7 +98,7 @@ function Register-HolyCrabMcp([string]$Agent, [hashtable]$Python, [string]$CliPa
         }
     }
 
-    $ServerCommand = @($Python.Executable) + @($Python.Arguments) + @($CliPath, "mcp", "serve")
+    $ServerCommand = @($Python.Executable) + @($Python.Arguments) + @("-X", "utf8", $CliPath, "mcp", "serve")
     if ($Agent -eq "codex") {
         $Arguments = @("mcp", "add", "holycrab", "--") + $ServerCommand
     } else {
@@ -139,7 +139,7 @@ try {
     $PythonInvocation = '"' + $Python.Executable + '"'
     if ($Python.Arguments.Count -gt 0) { $PythonInvocation += " " + ($Python.Arguments -join " ") }
     $Launcher = Join-Path $BinDir "holycrab.cmd"
-    $LauncherContent = "@echo off`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`n"
+    $LauncherContent = "@echo off`r`nchcp 65001 >nul`r`nset `"PYTHONUTF8=1`"`r`nset `"PYTHONIOENCODING=utf-8`"`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`n"
     [IO.File]::WriteAllText($Launcher, $LauncherContent, [Text.UTF8Encoding]::new($false))
 
     $Manifest = @{
@@ -194,9 +194,9 @@ try {
     $PreviousNoUpdate = $env:HOLYCRAB_NO_UPDATE_CHECK
     $env:HOLYCRAB_NO_UPDATE_CHECK = "1"
     try {
-        & $Python.Executable @($Python.Arguments) $CliPath --version | Out-Null
+        & $Launcher --version | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "holycrab --version failed after installation" }
-        $Doctor = & $Python.Executable @($Python.Arguments) $CliPath doctor --json | ConvertFrom-Json
+        $Doctor = & $Launcher doctor --json | ConvertFrom-Json
         if ($LASTEXITCODE -ne 0 -or -not $Doctor.ok) { throw "holycrab doctor failed after installation" }
     } finally {
         $env:HOLYCRAB_NO_UPDATE_CHECK = $PreviousNoUpdate

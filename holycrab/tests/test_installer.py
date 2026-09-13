@@ -262,6 +262,10 @@ fi
         self.assertIn("winget install --id Python.Python.3.12", powershell_installer)
         self.assertIn("SetEnvironmentVariable", powershell_installer)
         self.assertIn("holycrab.cmd", powershell_installer)
+        self.assertIn("chcp 65001", powershell_installer)
+        self.assertIn("PYTHONUTF8=1", powershell_installer)
+        self.assertIn('@("-X", "utf8", $CliPath, "mcp", "serve")', powershell_installer)
+        self.assertIn("& $Launcher doctor --json", powershell_installer)
 
     def test_docs_explain_supported_systems_update_and_uninstall(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
