@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -17,11 +19,15 @@ jobs:
           - os: ubuntu-latest
             python: "3.10"
           - os: ubuntu-latest
-            python: "3.13"
+            python: "3.14"
           - os: macos-latest
-            python: "3.12"
+            python: "3.10"
+          - os: macos-latest
+            python: "3.14"
           - os: windows-latest
-            python: "3.12"
+            python: "3.10"
+          - os: windows-latest
+            python: "3.14"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -41,12 +47,13 @@ jobs:
           holycrab.tests.test_mcp
           holycrab.tests.test_public_boundary
           holycrab.tests.test_real_human
+          holycrab.tests.test_v041
       - name: Compile Python entry points (Unix)
         if: runner.os != 'Windows'
-        run: python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py
+        run: python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py holycrab/scripts/validate_generate_contract.py
       - name: Compile Python entry points (Windows)
         if: runner.os == 'Windows'
-        run: python -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py
+        run: python -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py holycrab/scripts/validate_generate_contract.py
       - name: Validate the capability snapshot (Unix)
         if: runner.os != 'Windows'
         run: python3 holycrab/scripts/validate_capabilities.py
@@ -59,7 +66,7 @@ jobs:
       - name: Check patch whitespace
         run: git diff --check
       - name: Decode offline QR fixtures independently
-        if: matrix.python == '3.13' && runner.os != 'Windows'
+        if: matrix.python == '3.14' && runner.os == 'Linux'
         run: |
           python3 -m venv "${RUNNER_TEMP}/qr-validator"
           "${RUNNER_TEMP}/qr-validator/bin/python" -m pip install --only-binary=:all: -r holycrab/tests/requirements-qr-test.txt
@@ -79,6 +86,23 @@ jobs:
           "${RUNNER_TEMP}/skill-validator/bin/python" -m pip install --disable-pip-version-check PyYAML==6.0.3
           curl -fsSL "https://raw.githubusercontent.com/openai/skills/49f948faa9258a0c61caceaf225e179651397431/skills/.system/skill-creator/scripts/quick_validate.py" -o "${RUNNER_TEMP}/quick_validate.py"
           "${RUNNER_TEMP}/skill-validator/bin/python" "${RUNNER_TEMP}/quick_validate.py" holycrab
+
+  generate-contract:
+    name: Read-only Generate main contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: AstroxNetwork/seedance-2.0
+          ref: main
+          path: generate-contract
+          ssh-key: ${{ secrets.GENERATE_CONTRACT_SSH_KEY }}
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - name: Compare models, enums, limits, and request fields
+        run: python3 holycrab/scripts/validate_generate_contract.py generate-contract
 
   install-and-mcp:
     name: Install and MCP (${{ matrix.os }})
@@ -104,9 +128,9 @@ jobs:
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
           test -f "${HOME}/.claude/skills/holycrab/agents/openai.yaml"
-          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.0'
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.1'
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json > "${RUNNER_TEMP}/doctor.json"
-          python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["keyConfigured"] is False'
+          python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["checks"]["config"]["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("mcp.json").read_text()); assert data["result"]["serverInfo"]["name"] == "holycrab-local"'
 
@@ -125,7 +149,7 @@ jobs:
   release:
     name: Publish release assets
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [quality, official-skill-validation, install-and-mcp, install-windows]
+    needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -158,3 +182,25 @@ jobs:
             --latest \
             --title "HolyCrab Agent Tools $release_version" \
             --notes-file ".github/releases/$release_version.md"
+      - name: Verify published bytes and GitHub SHA-256 digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="$GITHUB_REF_NAME"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$release_version" > "${RUNNER_TEMP}/release.json"
+          python3 - "${RUNNER_TEMP}/release.json" <<'PY'
+          import hashlib, json, pathlib, sys
+          release = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assets = {item["name"]: item for item in release.get("assets", [])}
+          for name in ("install.sh", "install.ps1", "SHA256SUMS"):
+              expected = "sha256:" + hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()
+              assert assets.get(name, {}).get("digest") == expected, f"GitHub digest mismatch: {name}"
+          PY
+          mkdir -p "${RUNNER_TEMP}/published"
+          gh release download "$release_version" --dir "${RUNNER_TEMP}/published" \
+            --pattern install.sh --pattern install.ps1 --pattern SHA256SUMS
+          cmp install.sh "${RUNNER_TEMP}/published/install.sh"
+          cmp install.ps1 "${RUNNER_TEMP}/published/install.ps1"
+          cmp SHA256SUMS "${RUNNER_TEMP}/published/SHA256SUMS"

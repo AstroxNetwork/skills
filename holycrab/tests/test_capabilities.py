@@ -19,8 +19,8 @@ class CapabilityManifestTests(unittest.TestCase):
     def test_records_verified_platform_revision(self) -> None:
         self.assertEqual(self.manifest["schemaVersion"], 1)
         self.assertEqual(self.manifest["source"]["name"], "HolyCrab Public Capability Registry")
-        self.assertEqual(self.manifest["source"]["version"], "2026-08-22")
-        self.assertEqual(self.manifest["source"]["publishedAt"], "2026-08-22")
+        self.assertEqual(self.manifest["source"]["version"], "2026-09-14")
+        self.assertEqual(self.manifest["source"]["publishedAt"], "2026-09-14")
 
     def test_exposes_complete_public_request_schemas(self) -> None:
         schemas = self.manifest["requestSchemas"]
@@ -85,10 +85,12 @@ class CapabilityManifestTests(unittest.TestCase):
         lite = image_models["seedream-5-0-lite-260128"]
         self.assertEqual(lite["sizes"], ["2K", "3K", "4K"])
         self.assertEqual(lite["referenceLimits"]["images"], 14)
+        self.assertNotIn("dimensionMultiple", lite["customSize"])
 
         legacy = image_models["seedream-4-5-251128"]
         self.assertEqual(legacy["sizes"], ["2K", "4K"])
         self.assertIs(legacy["outputFormatSupported"], False)
+        self.assertNotIn("dimensionMultiple", legacy["customSize"])
 
         audio_models = {item["id"]: item for item in self.manifest["audioModels"]}
         self.assertEqual(set(audio_models), {"seed-audio-1.0"})

@@ -64,7 +64,11 @@ class RealHumanTests(unittest.TestCase):
         data = result["structuredContent"]
         self.assertEqual(data["authorizationId"], AUTH_ID)
         self.assertEqual(data["h5Link"], LINK)
-        self.assertEqual(set(data), {"authorizationId", "h5Link", "expiresAt", "qrPath"})
+        self.assertEqual(
+            set(data),
+            {"authorizationId", "name", "status", "h5Link", "expiresAt", "qrPath", "nextAction"},
+        )
+        self.assertEqual(data["nextAction"]["code"], "WAIT_FOR_AUTHORIZATION")
         self.send.assert_called_once_with("POST", "/api/real-human-authorizations/sessions",
                                          payload={"name": "小林", "callbackUrl":
                                                   "https://generate.holycrab.ai/real-human-authorization/callback"})
@@ -425,19 +429,23 @@ class AssetWorkflowTests(unittest.TestCase):
 
     def test_real_human_upload_uses_selected_group_and_never_returns_registration_payload(self):
         path = Path(self.temp.name) / "reference.jpg"
-        path.write_bytes(b"image")
-        self.send.side_effect = [ok({"records": [], "total": 0}),
+        path.write_bytes(b"\xff\xd8\xffimage")
+        group = {"uniqId": GROUP_ID, "name": "小林"}
+        self.send.side_effect = [ok({"records": [group], "total": 1, "pages": 1}),
                                 ok({"preSignedUrl": "https://storage.example/x?sig=private",
                                     "objectKey": "7/" + ASSET_ID + ".jpg", "uniqId": ASSET_ID}),
                                 ok({"arkAccountId": 77})]
         response = MagicMock()
         response.__enter__.return_value.status = 200
         with patch.object(cli, "open_presigned_upload", return_value=response) as upload:
-            result = self.call("asset_upload", file=str(path), groupUniqId=GROUP_ID)
+            prepared = self.call("asset_upload_prepare", files=[str(path)], groupUniqId=GROUP_ID)
+            self.assertFalse(prepared["isError"], prepared)
+            result = self.call("asset_upload_execute", uploadPlanId=prepared["structuredContent"]["uploadPlanId"], confirmed=True)
         self.assertFalse(result["isError"], result)
-        self.assertEqual(result["structuredContent"]["assetUniqId"], ASSET_ID)
-        self.assertEqual(result["structuredContent"]["groupUniqId"], GROUP_ID)
-        self.assertFalse(result["structuredContent"]["ready"])
+        uploaded = result["structuredContent"]["uploaded"][0]
+        self.assertEqual(uploaded["assetUniqId"], ASSET_ID)
+        self.assertEqual(uploaded["groupUniqId"], GROUP_ID)
+        self.assertFalse(uploaded["ready"])
         self.assertNotIn("arkAccountId", json.dumps(result))
         self.send.assert_any_call("POST", "/api/real-human-groups/" + GROUP_ID + "/assets/upload",
                                   form={"name": "reference.jpg", "object_key": "7/" + ASSET_ID + ".jpg",
@@ -446,10 +454,10 @@ class AssetWorkflowTests(unittest.TestCase):
 
     def test_group_access_failure_happens_before_upload(self):
         path = Path(self.temp.name) / "reference.jpg"
-        path.write_bytes(b"image")
-        self.send.side_effect = [ (404, {"message": "Group not found"}) ]
+        path.write_bytes(b"\xff\xd8\xffimage")
+        self.send.side_effect = [(404, {"message": "Group not found"})]
         with patch.object(cli, "open_presigned_upload") as upload:
-            self.assertTrue(self.call("asset_upload", file=str(path), groupUniqId=GROUP_ID)["isError"])
+            self.assertTrue(self.call("asset_upload_prepare", files=[str(path)], groupUniqId=GROUP_ID)["isError"])
         upload.assert_not_called()
         self.send.assert_called_once()
 
@@ -464,22 +472,26 @@ class AssetWorkflowTests(unittest.TestCase):
 
     def test_registration_uncertainty_keeps_asset_id_and_never_retries(self):
         path = Path(self.temp.name) / "reference.jpg"
-        path.write_bytes(b"image")
+        path.write_bytes(b"\xff\xd8\xffimage")
+        group = {"uniqId": GROUP_ID, "name": "小林"}
         for outcome in ((502, {"message": "gateway error"}), urllib.error.URLError("connection lost"),
                         (200, "unexpected HTML")):
             self.send.reset_mock()
-            self.send.side_effect = [ok({"records": [], "total": 0}),
+            self.send.side_effect = [ok({"records": [group], "total": 1, "pages": 1}),
                                     ok({"preSignedUrl": "https://storage.example/x?sig=private",
                                         "objectKey": "7/" + ASSET_ID + ".jpg", "uniqId": ASSET_ID}), outcome]
             response = MagicMock()
             response.__enter__.return_value.status = 200
             with patch.object(cli, "open_presigned_upload", return_value=response) as upload:
-                result = self.call("asset_upload", file=str(path), groupUniqId=GROUP_ID)
-            self.assertTrue(result["isError"])
-            text = result["content"][0]["text"]
+                prepared = self.call("asset_upload_prepare", files=[str(path)], groupUniqId=GROUP_ID)
+                result = self.call("asset_upload_execute", uploadPlanId=prepared["structuredContent"]["uploadPlanId"], confirmed=True)
+            self.assertFalse(result["isError"])
+            failure = result["structuredContent"]["failedOrUnknown"]
+            self.assertEqual(failure["state"], "unknown")
+            text = json.dumps(result)
             self.assertIn(ASSET_ID, text)
             self.assertIn(GROUP_ID, text)
-            self.assertIn("not retry", text)
+            self.assertIn("do not upload", text)
             self.assertEqual(self.send.call_count, 3)
             upload.assert_called_once()
 
@@ -529,6 +541,9 @@ class AssetWorkflowTests(unittest.TestCase):
                 return ok({"authorizationId": AUTH_ID, "status": "CREATED"})
             if path == "/api/real-human-groups/" + GROUP_ID + "/assets":
                 return ok({"records": [], "total": 0})
+            if path == "/api/real-human-groups":
+                return ok({"records": [{"uniqId": GROUP_ID, "name": "小林"}],
+                           "total": 1, "pages": 1})
             if path == "/api/user-assets/pre-signed-download-url":
                 return ok({"preSignedUrl": "https://storage.example/x?sig=offline-upload",
                            "objectKey": "7/" + ASSET_ID + ".jpg", "uniqId": ASSET_ID})
@@ -559,18 +574,19 @@ class AssetWorkflowTests(unittest.TestCase):
         authorized = self.call("real_human_authorization_get", authorizationId=AUTH_ID)
         self.assertEqual(authorized["structuredContent"]["group"]["uniqId"], GROUP_ID)
         path = Path(self.temp.name) / "reference.jpg"
-        path.write_bytes(b"offline-fixture")
+        path.write_bytes(b"\xff\xd8\xffoffline-fixture")
         upload_response = MagicMock()
         upload_response.__enter__.return_value.status = 200
         with patch.object(cli, "open_presigned_upload", return_value=upload_response):
-            uploaded = self.call("asset_upload", file=str(path), groupUniqId=GROUP_ID)
+            prepared = self.call("asset_upload_prepare", files=[str(path)], groupUniqId=GROUP_ID)
+            uploaded = self.call("asset_upload_execute", uploadPlanId=prepared["structuredContent"]["uploadPlanId"], confirmed=True)
         self.assertFalse(uploaded["isError"])
         self.assertTrue(state["registered"])
         self.assertFalse(self.call("asset_get", assetId=ASSET_ID)["structuredContent"]["ready"])
         request = {"model": "dreamina-seedance-2-5-260628", "prompt": "Person waves",
                    "duration": 8, "resolution": "720p", "imageAssetIds": [ASSET_ID]}
         rejected = self.call("generation_create", kind="video", request=request,
-                             confirmed=True, attemptId="offline-draw")
+                             confirmed=False, attemptId="offline-draw")
         self.assertTrue(rejected["isError"])
         self.assertEqual(state["created"], 0)
         state["ready"] = True

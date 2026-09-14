@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -26,14 +28,14 @@ class InstallerTests(unittest.TestCase):
     def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         powershell_installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
-        self.assertIn("VERSION=v0.4.0", installer)
-        self.assertIn('$Version = "v0.4.0"', powershell_installer)
+        self.assertIn("VERSION=v0.4.1", installer)
+        self.assertIn('$Version = "v0.4.1"', powershell_installer)
 
         stable_urls = (
             "https://holycrab.ai/cli/install.sh",
             "https://holycrab.ai/cli/install.ps1",
         )
-        versioned_raw_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.4.0/install.sh"
+        versioned_raw_url = "https://raw.githubusercontent.com/AstroxNetwork/skills/v0.4.1/install.sh"
         for document in (REPO_ROOT / "README.md", REPO_ROOT / "HolyCrab CLI 使用指南.md"):
             content = document.read_text(encoding="utf-8")
             for stable_url in stable_urls:
@@ -69,6 +71,13 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue((Path(home) / ".agents" / "skills" / "holycrab" / "agents" / "openai.yaml").is_file())
             self.assertTrue((Path(home) / ".claude" / "skills" / "holycrab" / "SKILL.md").is_file())
             self.assertTrue((Path(home) / ".claude" / "skills" / "holycrab" / "agents" / "openai.yaml").is_file())
+            manifest = json.loads(
+                (Path(home) / ".local" / "lib" / "holycrab" / "installation.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["schemaVersion"], 2)
+            self.assertEqual(manifest["managedBy"], "holycrab-installer")
+            self.assertEqual(manifest["pathRegistration"]["kind"], "shell-profile")
+            self.assertTrue(manifest["pathRegistration"]["addedByInstaller"])
             check = subprocess.run(
                 [str(command), "doctor", "--json"],
                 env=env,
@@ -101,7 +110,9 @@ class InstallerTests(unittest.TestCase):
                 "HOLYCRAB_INSTALL_MCP": "0",
                 "HOLYCRAB_INSTALL_AGENTS": "none",
             }
-            for _ in range(2):
+            for install_number in range(2):
+                if install_number == 1:
+                    env["SHELL"] = "/bin/bash"
                 result = subprocess.run(
                     ["sh", str(REPO_ROOT / "install.sh")],
                     env=env,
@@ -115,7 +126,14 @@ class InstallerTests(unittest.TestCase):
             self.assertIn("export USER_SETTING=kept", content)
             self.assertEqual(content.count("# HolyCrab CLI"), 1)
             self.assertIn('export PATH="$HOME/.local/bin:$PATH"', content)
-            self.assertIn("Restart this terminal", result.stdout)
+            self.assertIn("PATH is active inside the installer", result.stdout)
+            manifest = json.loads(
+                (Path(home) / ".local" / "lib" / "holycrab" / "installation.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(manifest["pathRegistration"]["addedByInstaller"])
+            self.assertEqual(Path(manifest["pathRegistration"]["profile"]).resolve(), profile.resolve())
+            self.assertFalse((Path(home) / ".bashrc").exists())
+            self.assertFalse((Path(home) / ".bash_profile").exists())
 
     def test_fresh_install_and_upgrade_can_generate_qr_without_pip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -125,6 +143,7 @@ class InstallerTests(unittest.TestCase):
             config.mkdir()
             config_file = config / "config.json"
             config_file.write_text('{"installMarker":"preserved"}')
+            config_file.chmod(0o600)
             env = {**os.environ, "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT),
                    "HOLYCRAB_INSTALL_PREFIX": str(prefix), "HOLYCRAB_CONFIG_DIR": str(config),
                    "HOLYCRAB_INSTALL_AGENTS": "none", "HOLYCRAB_INSTALL_MCP": "0"}
@@ -153,6 +172,48 @@ assert 'real_human_group_delete' in {t['name'] for t in module.MCP_TOOLS}
                 self.assertEqual(config_file.read_text(), '{"installMarker":"preserved"}')
                 self.assertTrue((prefix / "lib" / "holycrab" / "vendor" / "LICENSE.segno").is_file())
 
+    def test_failed_upgrade_restores_managed_files_and_preserves_user_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            home = root / "home"
+            prefix = root / "prefix"
+            config = root / "config"
+            source = root / "corrupt-release"
+            shutil.copytree(REPO_ROOT / "holycrab", source / "holycrab")
+            shutil.copytree(REPO_ROOT / "bin", source / "bin")
+            cli_source = source / "holycrab" / "scripts" / "holycrab_cli.py"
+            cli_source.write_text(cli_source.read_text(encoding="utf-8") + "\n# corrupt release fixture\n", encoding="utf-8")
+
+            old_lib = prefix / "lib" / "holycrab"
+            old_lib.mkdir(parents=True)
+            (old_lib / "old.txt").write_text("old-lib", encoding="utf-8")
+            old_bin = prefix / "bin"
+            old_bin.mkdir(parents=True)
+            (old_bin / "holycrab").write_text("old-launcher", encoding="utf-8")
+            for destination in (home / ".agents" / "skills" / "holycrab",
+                                home / ".claude" / "skills" / "holycrab"):
+                destination.mkdir(parents=True)
+                (destination / "old.txt").write_text("old-skill", encoding="utf-8")
+            config.mkdir(parents=True)
+            (config / "config.json").write_text('{"apiKey":"preserved-key"}', encoding="utf-8")
+            (config / "attempts.json").write_text('{"attempt1":{"state":"unknown"}}', encoding="utf-8")
+            os.chmod(config / "config.json", 0o600)
+            os.chmod(config / "attempts.json", 0o600)
+
+            env = {**os.environ, "HOME": str(home), "HOLYCRAB_INSTALL_SOURCE_DIR": str(source),
+                   "HOLYCRAB_INSTALL_PREFIX": str(prefix), "HOLYCRAB_CONFIG_DIR": str(config),
+                   "HOLYCRAB_INSTALL_AGENTS": "codex,claude", "HOLYCRAB_INSTALL_MCP": "0"}
+            result = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
+                                    text=True, capture_output=True, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("previous managed files were restored", result.stderr)
+            self.assertEqual((old_lib / "old.txt").read_text(encoding="utf-8"), "old-lib")
+            self.assertEqual((old_bin / "holycrab").read_text(encoding="utf-8"), "old-launcher")
+            self.assertEqual((home / ".agents" / "skills" / "holycrab" / "old.txt").read_text(), "old-skill")
+            self.assertEqual((home / ".claude" / "skills" / "holycrab" / "old.txt").read_text(), "old-skill")
+            self.assertIn("preserved-key", (config / "config.json").read_text(encoding="utf-8"))
+            self.assertIn("attempt1", (config / "attempts.json").read_text(encoding="utf-8"))
+
     def test_remote_release_hashes_match_the_bundled_files(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         for variable, path in self.RELEASE_FILES.items():
@@ -179,7 +240,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-relative=${url#*/v0.4.0/}
+relative=${url#*/v0.4.1/}
 cp "$FAKE_RELEASE_ROOT/$relative" "$destination"
 if [ "$relative" = "holycrab/scripts/holycrab_cli.py" ]; then
   printf '\\n# tampered\\n' >> "$destination"
@@ -218,6 +279,16 @@ fi
         self.assertIn("winget install --id Python.Python.3.12", powershell_installer)
         self.assertIn("SetEnvironmentVariable", powershell_installer)
         self.assertIn("holycrab.cmd", powershell_installer)
+        self.assertIn("chcp 65001", powershell_installer)
+        self.assertIn("PYTHONUTF8=1", powershell_installer)
+        self.assertIn('@("-X", "utf8", $CliPath, "mcp", "serve")', powershell_installer)
+        self.assertIn("-Raw -Encoding UTF8 | ConvertFrom-Json", powershell_installer)
+
+        attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
+        for release_file in ("/holycrab/SKILL.md", "/holycrab/references/*.json",
+                             "/holycrab/scripts/*.py", "/holycrab/scripts/vendor/LICENSE.segno"):
+            self.assertIn(f"{release_file} text eol=lf", attributes)
+        self.assertIn("& $Launcher doctor --json", powershell_installer)
 
     def test_docs_explain_supported_systems_update_and_uninstall(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
@@ -226,6 +297,11 @@ fi
         self.assertIn("Linux", readme)
         self.assertIn("覆盖安装", readme)
         self.assertIn("卸载", readme)
+        self.assertIn("holycrab uninstall --purge --yes", readme)
+        self.assertNotIn('rm -rf "$HOME/.local/lib/holycrab"', readme)
+        skill = (REPO_ROOT / "holycrab" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("not an MCP tool", skill)
+        self.assertIn("explicitly asks to uninstall", skill)
 
     def test_ci_runs_release_gates_on_linux_macos_and_windows(self) -> None:
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
@@ -247,7 +323,7 @@ fi
     def test_tagged_release_uploads_the_installer_after_all_release_gates(self) -> None:
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         for token in (
-            "needs: [quality, official-skill-validation, install-and-mcp, install-windows]",
+            "needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]",
             "if: startsWith(github.ref, 'refs/tags/v')",
             "contents: write",
             'release_version="$GITHUB_REF_NAME"',
@@ -265,11 +341,11 @@ fi
         self.assertNotIn('gh release upload "$release_version"', workflow)
 
     def test_release_notes_have_the_approved_english_title(self) -> None:
-        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.0.md").read_text(encoding="utf-8")
-        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.0\n"))
+        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.1.md").read_text(encoding="utf-8")
+        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.1\n"))
         self.assertIn("SHA-256", notes)
         self.assertIn("Windows", notes)
-        self.assertIn("PATH", notes)
+        self.assertIn("DPAPI", notes)
 
 
 if __name__ == "__main__":
