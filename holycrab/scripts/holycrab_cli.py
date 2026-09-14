@@ -2719,11 +2719,8 @@ def schedule_windows_program_cleanup(launcher: Path, library: Path) -> None:  # 
     descriptor, helper_name = tempfile.mkstemp(prefix="holycrab-uninstall-", suffix=".ps1")
     helper = Path(helper_name)
     failure_log = helper.with_suffix(".log")
-    program = r'''param([int]$ParentPid,[string]$Launcher,[string]$Library,[string]$SelfPath,[string]$FailureLog)
-$deadline = [DateTime]::UtcNow.AddSeconds(10)
-while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) {
-  Start-Sleep -Milliseconds 100
-}
+    program = r'''param([string]$Launcher,[string]$Library,[string]$SelfPath,[string]$FailureLog)
+$deadline = [DateTime]::UtcNow.AddSeconds(8)
 do {
   Remove-Item -LiteralPath $Launcher -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $Library -Recurse -Force -ErrorAction SilentlyContinue
@@ -2742,7 +2739,7 @@ Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
     try:
         subprocess.Popen(
             [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper),
-             str(os.getpid()), str(launcher), str(library), str(helper), str(failure_log)],
+             str(launcher), str(library), str(helper), str(failure_log)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             close_fds=True, creationflags=creation_flags,
         )
