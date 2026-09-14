@@ -103,7 +103,8 @@ if ($ManifestText.Contains($SavedKey) -or $ManifestText.Contains($LegacyKey)) { 
 $Manifest = $ManifestText | ConvertFrom-Json
 if ($Manifest.schemaVersion -ne 2 -or $Manifest.managedBy -ne "holycrab-installer") { throw "Installation ownership metadata is missing" }
 if ($Manifest.pathRegistration.kind -ne "windows-user-path" -or $Manifest.pathRegistration.addedByInstaller -ne $true) {
-    throw "Windows PATH ownership was not preserved across reinstall"
+    $PathRegistrationJson = $Manifest.pathRegistration | ConvertTo-Json -Compress
+    throw "Windows PATH ownership was not preserved across reinstall: $PathRegistrationJson; expected directory: $BinDir"
 }
 
 & $Python (Join-Path $PSScriptRoot "windows_mcp_smoke.py") $CliPath
