@@ -115,7 +115,12 @@ if ($LASTEXITCODE -ne 0) { throw "Default Windows uninstall failed" }
 for ($Attempt = 0; $Attempt -lt 100 -and ((Test-Path $Launcher) -or (Test-Path $CliPath)); $Attempt++) {
     Start-Sleep -Milliseconds 100
 }
-if ((Test-Path $Launcher) -or (Test-Path $CliPath)) { throw "Windows self-uninstall did not finish within 10 seconds" }
+if ((Test-Path $Launcher) -or (Test-Path $CliPath)) {
+    $CleanupLog = Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Filter "holycrab-uninstall-*.log" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    $CleanupDetail = if ($CleanupLog) { Get-Content -LiteralPath $CleanupLog.FullName -Raw -Encoding UTF8 } else { "no cleanup log" }
+    throw "Windows self-uninstall did not finish within 10 seconds: $CleanupDetail"
+}
 if (-not (Test-Path $ConfigPath)) { throw "Default Windows uninstall removed local configuration" }
 $UserPathAfterUninstall = [Environment]::GetEnvironmentVariable("Path", "User")
 if (@($UserPathAfterUninstall -split ";" | Where-Object {

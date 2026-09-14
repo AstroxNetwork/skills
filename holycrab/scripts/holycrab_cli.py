@@ -2690,23 +2690,23 @@ def remove_managed_path_registration(manifest: dict[str, Any], prefix: Path, lau
             return [f"PATH profile entry could not be removed safely: {profile}"]
         return []
     if kind == "windows-user-path" and os.name == "nt":  # pragma: no cover - Windows CI
-        powershell = shutil.which("powershell")
-        if powershell is None:
-            return ["Windows user PATH was kept because PowerShell is unavailable"]
-        script = (
-            "$target=$args[0].TrimEnd('\\');"
-            "$value=[Environment]::GetEnvironmentVariable('Path','User');"
-            "$kept=@($value -split ';' | Where-Object { $_ -and $_.TrimEnd('\\') -ine $target });"
-            "[Environment]::SetEnvironmentVariable('Path',($kept -join ';'),'User')"
-        )
         try:
-            completed = subprocess.run(
-                [powershell, "-NoProfile", "-Command", script, str(bin_directory)],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return ["Windows user PATH entry could not be removed safely"]
-        if completed.returncode != 0:
+            import winreg
+
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE
+            ) as key:
+                try:
+                    value, value_type = winreg.QueryValueEx(key, "Path")
+                except FileNotFoundError:
+                    value, value_type = "", winreg.REG_EXPAND_SZ
+                target = os.path.normcase(os.path.normpath(str(bin_directory)))
+                kept = [
+                    entry for entry in str(value).split(";") if entry
+                    and os.path.normcase(os.path.normpath(entry)) != target
+                ]
+                winreg.SetValueEx(key, "Path", 0, value_type, ";".join(kept))
+        except OSError:
             return ["Windows user PATH entry could not be removed safely"]
         return []
     return ["PATH registration was kept because its ownership record does not match this platform"]
@@ -2718,7 +2718,8 @@ def schedule_windows_program_cleanup(launcher: Path, library: Path) -> None:  # 
         raise RuntimeError("PowerShell is required to finish Windows self-uninstall")
     descriptor, helper_name = tempfile.mkstemp(prefix="holycrab-uninstall-", suffix=".ps1")
     helper = Path(helper_name)
-    program = r'''param([int]$ParentPid,[string]$Launcher,[string]$Library,[string]$SelfPath)
+    failure_log = helper.with_suffix(".log")
+    program = r'''param([int]$ParentPid,[string]$Launcher,[string]$Library,[string]$SelfPath,[string]$FailureLog)
 $deadline = [DateTime]::UtcNow.AddSeconds(10)
 while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) {
   Start-Sleep -Milliseconds 100
@@ -2729,6 +2730,10 @@ do {
   if (-not (Test-Path -LiteralPath $Launcher) -and -not (Test-Path -LiteralPath $Library)) { break }
   Start-Sleep -Milliseconds 200
 } while ([DateTime]::UtcNow -lt $deadline)
+if ((Test-Path -LiteralPath $Launcher) -or (Test-Path -LiteralPath $Library)) {
+  $message = "launcherExists=$([bool](Test-Path -LiteralPath $Launcher)); libraryExists=$([bool](Test-Path -LiteralPath $Library))"
+  [IO.File]::WriteAllText($FailureLog, $message, [Text.UTF8Encoding]::new($false))
+}
 Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
 '''
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
@@ -2737,7 +2742,7 @@ Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
     try:
         subprocess.Popen(
             [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper),
-             str(os.getpid()), str(launcher), str(library), str(helper)],
+             str(os.getpid()), str(launcher), str(library), str(helper), str(failure_log)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             close_fds=True, creationflags=creation_flags,
         )
