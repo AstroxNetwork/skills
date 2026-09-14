@@ -2798,6 +2798,21 @@ def command_uninstall(args: argparse.Namespace) -> int:
         except (OSError, RuntimeError) as error:
             print(f"Could not schedule Windows program cleanup: {sanitize_text_for_output(str(error))}", file=sys.stderr)
             return 1
+        # Installed Python sources and the batch launcher are normally removable
+        # while this process is still finishing.  Removing them here avoids
+        # depending on whether a terminal or CI runner delays detached children;
+        # the PowerShell helper above remains the fallback for transient locks.
+        try:
+            launcher.unlink()
+        except (FileNotFoundError, OSError):
+            pass
+        try:
+            if library.is_symlink():
+                library.unlink()
+            elif library.exists():
+                shutil.rmtree(library)
+        except OSError:
+            pass
         print("HolyCrab program cleanup is scheduled and will finish within 10 seconds.")
     else:
         try:

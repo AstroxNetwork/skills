@@ -17,7 +17,7 @@ $PathAddedThisRun = $false
 $PreviousPathManaged = $false
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "4b462ab2eb757ae3ee609ed3617094f0e37423a087cfe0924b099473e5752a14" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "1a4304332846a2e8dd8d6caf4e0d5c933582496919fa2d23dff256799d13ad5d" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
     @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "74ac0726e3c7b2f3d735ea3d060e1bafd5a3d852d0e78efb19f77d0157c88d01" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
