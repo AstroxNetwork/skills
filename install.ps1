@@ -131,7 +131,7 @@ try {
     $PreviousManifestPath = Join-Path $LibDir "installation.json"
     if (Test-Path -LiteralPath $PreviousManifestPath) {
         try {
-            $PreviousManifest = Get-Content -LiteralPath $PreviousManifestPath -Raw | ConvertFrom-Json
+            $PreviousManifest = Get-Content -LiteralPath $PreviousManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
             $PreviousPathDirectory = [string]$PreviousManifest.pathRegistration.directory
             $PreviousPathManaged = (
                 $PreviousManifest.pathRegistration.addedByInstaller -eq $true -and

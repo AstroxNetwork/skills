@@ -98,7 +98,7 @@ if ($McpLog -notmatch "mcp add holycrab" -or -not $McpLog.Contains($CliPath)) {
     throw "HolyCrab MCP was not restored with the current CLI path"
 }
 
-$ManifestText = Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\installation.json") -Raw
+$ManifestText = Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\installation.json") -Raw -Encoding UTF8
 if ($ManifestText.Contains($SavedKey) -or $ManifestText.Contains($LegacyKey)) { throw "installation.json contains an API Key" }
 $Manifest = $ManifestText | ConvertFrom-Json
 if ($Manifest.schemaVersion -ne 2 -or $Manifest.managedBy -ne "holycrab-installer") { throw "Installation ownership metadata is missing" }

@@ -282,6 +282,7 @@ fi
         self.assertIn("chcp 65001", powershell_installer)
         self.assertIn("PYTHONUTF8=1", powershell_installer)
         self.assertIn('@("-X", "utf8", $CliPath, "mcp", "serve")', powershell_installer)
+        self.assertIn("-Raw -Encoding UTF8 | ConvertFrom-Json", powershell_installer)
 
         attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
         for release_file in ("/holycrab/SKILL.md", "/holycrab/references/*.json",
