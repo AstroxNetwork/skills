@@ -17,7 +17,7 @@ $PathAddedThisRun = $false
 $PreviousPathManaged = $false
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "1a4304332846a2e8dd8d6caf4e0d5c933582496919fa2d23dff256799d13ad5d" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "a56ba08121682299f3fd15df3374ca469e271ee46cb6c0be400656aef8a76d30" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
     @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "74ac0726e3c7b2f3d735ea3d060e1bafd5a3d852d0e78efb19f77d0157c88d01" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
@@ -161,7 +161,7 @@ try {
     $PythonInvocation = '"' + $Python.Executable + '"'
     if ($Python.Arguments.Count -gt 0) { $PythonInvocation += " " + ($Python.Arguments -join " ") }
     $Launcher = Join-Path $BinDir "holycrab.cmd"
-    $LauncherContent = "@echo off`r`nchcp 65001 >nul`r`nset `"PYTHONUTF8=1`"`r`nset `"PYTHONIOENCODING=utf-8`"`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`n"
+    $LauncherContent = "@echo off`r`nchcp 65001 >nul`r`nset `"PYTHONUTF8=1`"`r`nset `"PYTHONIOENCODING=utf-8`"`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`nset `"_HOLYCRAB_EXIT_CODE=%ERRORLEVEL%`"`r`nif exist `"%~dp0..\lib\holycrab\holycrab_cli.py`" exit /b %_HOLYCRAB_EXIT_CODE%`r`n(goto) 2>nul & >`"%~dp0.holycrab-uninstall-ready`" echo ready`r`n"
     [IO.File]::WriteAllText($Launcher, $LauncherContent, [Text.UTF8Encoding]::new($false))
 
     $PathResult = Add-HolyCrabPath $BinDir $PreviousPathManaged

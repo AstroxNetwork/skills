@@ -2719,8 +2719,17 @@ def schedule_windows_program_cleanup(launcher: Path, library: Path) -> None:  # 
     descriptor, helper_name = tempfile.mkstemp(prefix="holycrab-uninstall-", suffix=".ps1")
     helper = Path(helper_name)
     failure_log = helper.with_suffix(".log")
-    program = r'''param([string]$Launcher,[string]$Library,[string]$SelfPath,[string]$FailureLog)
+    ready_marker = launcher.with_name(".holycrab-uninstall-ready")
+    try:
+        ready_marker.unlink()
+    except FileNotFoundError:
+        pass
+    program = r'''param([string]$Launcher,[string]$Library,[string]$ReadyMarker,[string]$SelfPath,[string]$FailureLog)
 $deadline = [DateTime]::UtcNow.AddSeconds(8)
+while ([DateTime]::UtcNow -lt $deadline -and -not (Test-Path -LiteralPath $ReadyMarker)) {
+  Start-Sleep -Milliseconds 50
+}
+if (Test-Path -LiteralPath $ReadyMarker) { Start-Sleep -Milliseconds 100 }
 do {
   Remove-Item -LiteralPath $Launcher -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $Library -Recurse -Force -ErrorAction SilentlyContinue
@@ -2731,6 +2740,7 @@ if ((Test-Path -LiteralPath $Launcher) -or (Test-Path -LiteralPath $Library)) {
   $message = "launcherExists=$([bool](Test-Path -LiteralPath $Launcher)); libraryExists=$([bool](Test-Path -LiteralPath $Library))"
   [IO.File]::WriteAllText($FailureLog, $message, [Text.UTF8Encoding]::new($false))
 }
+Remove-Item -LiteralPath $ReadyMarker -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
 '''
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
@@ -2739,7 +2749,7 @@ Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
     try:
         subprocess.Popen(
             [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper),
-             str(launcher), str(library), str(helper), str(failure_log)],
+             str(launcher), str(library), str(ready_marker), str(helper), str(failure_log)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             close_fds=True, creationflags=creation_flags,
         )
@@ -2798,14 +2808,9 @@ def command_uninstall(args: argparse.Namespace) -> int:
         except (OSError, RuntimeError) as error:
             print(f"Could not schedule Windows program cleanup: {sanitize_text_for_output(str(error))}", file=sys.stderr)
             return 1
-        # Installed Python sources and the batch launcher are normally removable
-        # while this process is still finishing.  Removing them here avoids
-        # depending on whether a terminal or CI runner delays detached children;
-        # the PowerShell helper above remains the fallback for transient locks.
-        try:
-            launcher.unlink()
-        except (FileNotFoundError, OSError):
-            pass
+        # Installed Python sources are normally removable while this process is
+        # still finishing.  The batch launcher signals the helper only after
+        # Python returns, so cmd.exe never loses the file it is executing.
         try:
             if library.is_symlink():
                 library.unlink()
