@@ -335,7 +335,24 @@ holycrab update --yes
 
 只接受版本更高、非 Draft、非 prerelease 的严格语义版本。更新器校验 GitHub Release 的 SHA-256 `digest`，安装器再校验内部文件；更新后的 `doctor` 不通过会恢复旧托管文件和原配置。`v0.4.0` 用户需要最后手动安装一次 `v0.4.1`。受管或离线环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
 
-## 11. 常见问题
+## 11. 安全卸载
+
+交互式卸载会先显示程序、MCP、Skill、PATH 和本地数据的处理方式，只询问一次：
+
+```text
+holycrab uninstall
+holycrab uninstall --yes
+holycrab uninstall --purge
+holycrab uninstall --purge --yes
+```
+
+默认模式只移除当前安装器管理的 CLI、真实命令仍指向当前安装位置的 MCP 登记，以及没有被修改的 Skill 文件。API Key、attempt、上传计划和真人授权临时记录保留在本机，重新安装后可以继续使用。脚本环境只有在用户已经看过完整预览并明确同意时才能加 `--yes`。
+
+`--purge` 会清理 HolyCrab 已知的本地凭据和记录，但不会调用 HolyCrab API，也不会删除云端任务、素材或授权。需要让 API Key 彻底失效时，仍须前往 [API Key 页面](https://generate.holycrab.ai/user-tokens)撤销。修改过的 Skill、额外文件、其他 MCP 和共享 `.local/bin` 中的其他程序不会删除；旧安装缺少 PATH 所有权记录时，命令会保留 PATH 并显示人工处理提示。
+
+卸载是本机用户操作，不提供 MCP 工具。Agent 必须先用用户当前语言说明默认卸载与 `--purge` 的区别，并获得对应模式的明确授权。
+
+## 12. 常见问题
 
 `holycrab: command not found`
 
@@ -355,7 +372,7 @@ holycrab auth clear-key
 
 这只删除本机保存的 Key。需要彻底撤销时，还要去 HolyCrab 网页禁用该 Key。
 
-## 12. 隐私、条款与支持
+## 13. 隐私、条款与支持
 
 HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政策和服务条款。
 

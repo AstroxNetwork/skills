@@ -12,11 +12,14 @@ $TempDir = Join-Path ([IO.Path]::GetTempPath()) ("holycrab-install." + [Guid]::N
 $BackupDir = Join-Path $TempDir "backup"
 $InstallStarted = $false
 $InstallComplete = $false
+$PathRegistration = $null
+$PathAddedThisRun = $false
+$PreviousPathManaged = $false
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "92d398e99d3c3d090011120e5600559aa5f948dc1af53eedbc4e91aa6bed7a24" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "47ca773856fb2a4d90807e397df51ca71c036a34a1dcf12a899d45651e8bf135" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
-    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "508a610154f6937010a2c1d650106ba5305592ca72196e3fdcc50d1c2d04aaba" },
+    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "74ac0726e3c7b2f3d735ea3d060e1bafd5a3d852d0e78efb19f77d0157c88d01" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
     @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" }
@@ -62,7 +65,7 @@ function Install-HolyCrabSkill([string]$Destination, [hashtable]$Downloaded) {
     Copy-Item -LiteralPath $Downloaded.OpenAI -Destination (Join-Path $Destination "agents\openai.yaml") -Force
 }
 
-function Add-HolyCrabPath([string]$Directory) {
+function Add-HolyCrabPath([string]$Directory, [bool]$PreviouslyManaged) {
     $CurrentEntries = @($env:Path -split ";" | Where-Object { $_ })
     if (-not ($CurrentEntries | Where-Object {
         $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ieq $Directory.TrimEnd([IO.Path]::DirectorySeparatorChar)
@@ -72,11 +75,17 @@ function Add-HolyCrabPath([string]$Directory) {
 
     $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $UserEntries = @($UserPath -split ";" | Where-Object { $_ })
+    $Added = $false
     if (-not ($UserEntries | Where-Object {
         $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ieq $Directory.TrimEnd([IO.Path]::DirectorySeparatorChar)
     })) {
         $Updated = if ($UserPath) { "$Directory;$UserPath" } else { $Directory }
         [Environment]::SetEnvironmentVariable("Path", $Updated, "User")
+        $Added = $true
+    }
+    return @{
+        Registration = @{ kind = "windows-user-path"; directory = $Directory; profile = $null; addedByInstaller = ($Added -or $PreviouslyManaged) }
+        AddedThisRun = $Added
     }
 }
 
@@ -119,6 +128,19 @@ try {
     }
 
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
+    $PreviousManifestPath = Join-Path $LibDir "installation.json"
+    if (Test-Path -LiteralPath $PreviousManifestPath) {
+        try {
+            $PreviousManifest = Get-Content -LiteralPath $PreviousManifestPath -Raw | ConvertFrom-Json
+            $PreviousPathDirectory = [string]$PreviousManifest.pathRegistration.directory
+            $PreviousPathManaged = (
+                $PreviousManifest.pathRegistration.addedByInstaller -eq $true -and
+                $PreviousPathDirectory -ieq $BinDir
+            )
+        } catch {
+            $PreviousPathManaged = $false
+        }
+    }
     if (Test-Path -LiteralPath $LibDir) { Copy-Item -LiteralPath $LibDir -Destination (Join-Path $BackupDir "lib") -Recurse }
     $ExistingLauncher = Join-Path $BinDir "holycrab.cmd"
     if (Test-Path -LiteralPath $ExistingLauncher) { Copy-Item -LiteralPath $ExistingLauncher -Destination (Join-Path $BackupDir "holycrab.cmd") }
@@ -142,7 +164,13 @@ try {
     $LauncherContent = "@echo off`r`nchcp 65001 >nul`r`nset `"PYTHONUTF8=1`"`r`nset `"PYTHONIOENCODING=utf-8`"`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`n"
     [IO.File]::WriteAllText($Launcher, $LauncherContent, [Text.UTF8Encoding]::new($false))
 
+    $PathResult = Add-HolyCrabPath $BinDir $PreviousPathManaged
+    $PathRegistration = $PathResult.Registration
+    $PathAddedThisRun = $PathResult.AddedThisRun
+
     $Manifest = @{
+        schemaVersion = 2
+        managedBy = "holycrab-installer"
         version = "0.4.1"
         prefix = $Prefix
         agents = @($InstallAgents -split "," | Where-Object { $_ -and $_ -ne "none" })
@@ -154,6 +182,7 @@ try {
             @{ path = "vendor/LICENSE.segno"; sha256 = $ReleaseFiles[5].Sha256 }
             @{ path = "../../bin/holycrab.cmd"; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $Launcher).Hash.ToLowerInvariant() }
         )
+        pathRegistration = $PathRegistration
     }
     $SkillRoots = @{
         codex = (Join-Path $HOME ".agents\skills\holycrab")
@@ -182,7 +211,6 @@ try {
         }
     }
 
-    Add-HolyCrabPath $BinDir
     if ($InstallMcp -eq "1") {
         if (",$InstallAgents," -like "*,codex,*") { Register-HolyCrabMcp "codex" $Python $CliPath }
         if (",$InstallAgents," -like "*,claude,*") { Register-HolyCrabMcp "claude" $Python $CliPath }
@@ -216,6 +244,13 @@ try {
                               @{ Backup = "claude-skill"; Target = (Join-Path $HOME ".claude\skills\holycrab") })) {
             Remove-Item -LiteralPath $Skill.Target -Recurse -Force -ErrorAction SilentlyContinue
             if (Test-Path -LiteralPath (Join-Path $BackupDir $Skill.Backup)) { Copy-Item -LiteralPath (Join-Path $BackupDir $Skill.Backup) -Destination $Skill.Target -Recurse }
+        }
+        if ($PathAddedThisRun) {
+            $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+            $Kept = @($UserPath -split ";" | Where-Object {
+                $_ -and $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ine $BinDir.TrimEnd([IO.Path]::DirectorySeparatorChar)
+            })
+            [Environment]::SetEnvironmentVariable("Path", ($Kept -join ";"), "User")
         }
         Write-Warning "HolyCrab installation failed; previous managed files were restored."
     }

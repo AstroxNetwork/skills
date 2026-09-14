@@ -63,17 +63,24 @@ if ($LASTEXITCODE -ne 0) { throw "Legacy plaintext API Key migration failed" }
 $FakeBin = Join-Path $TestRoot "fake-bin"
 New-Item -ItemType Directory -Force -Path $FakeBin | Out-Null
 $env:FAKE_CODEX_LOG = Join-Path $TestRoot "codex-mcp.log"
+$env:FAKE_CODEX_STATE = Join-Path $TestRoot "codex-mcp-state.txt"
 $env:PYTHON_FOR_HOLYCRAB_TEST = $Python
 $FakeCodexPython = @'
 import os
 import sys
+from pathlib import Path
 
 arguments = sys.argv[1:]
+state = Path(os.environ["FAKE_CODEX_STATE"])
 if arguments[:3] == ["mcp", "get", "holycrab"]:
-    print(r"command: C:\old\holycrab_cli.py mcp serve")
+    print(state.read_text(encoding="utf-8") if state.exists() else r"command: C:\old\holycrab_cli.py mcp serve")
     raise SystemExit(0)
 with open(os.environ["FAKE_CODEX_LOG"], "a", encoding="utf-8") as log:
     log.write(" ".join(arguments) + "\n")
+if arguments[:3] == ["mcp", "remove", "holycrab"]:
+    state.unlink(missing_ok=True)
+elif arguments[:3] == ["mcp", "add", "holycrab"]:
+    state.write_text("command: " + " ".join(arguments) + "\n", encoding="utf-8")
 '@
 [IO.File]::WriteAllText((Join-Path $FakeBin "fake_codex.py"), $FakeCodexPython, [Text.UTF8Encoding]::new($false))
 $FakeCodex = @'
@@ -93,6 +100,34 @@ if ($McpLog -notmatch "mcp add holycrab" -or -not $McpLog.Contains($CliPath)) {
 
 $ManifestText = Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\installation.json") -Raw
 if ($ManifestText.Contains($SavedKey) -or $ManifestText.Contains($LegacyKey)) { throw "installation.json contains an API Key" }
+$Manifest = $ManifestText | ConvertFrom-Json
+if ($Manifest.schemaVersion -ne 2 -or $Manifest.managedBy -ne "holycrab-installer") { throw "Installation ownership metadata is missing" }
+if ($Manifest.pathRegistration.kind -ne "windows-user-path" -or $Manifest.pathRegistration.addedByInstaller -ne $true) {
+    throw "Windows PATH ownership was not preserved across reinstall"
+}
 
 & $Python (Join-Path $PSScriptRoot "windows_mcp_smoke.py") $CliPath
 if ($LASTEXITCODE -ne 0) { throw "MCP smoke test failed" }
+
+& $Launcher uninstall --yes
+if ($LASTEXITCODE -ne 0) { throw "Default Windows uninstall failed" }
+for ($Attempt = 0; $Attempt -lt 100 -and ((Test-Path $Launcher) -or (Test-Path $CliPath)); $Attempt++) {
+    Start-Sleep -Milliseconds 100
+}
+if ((Test-Path $Launcher) -or (Test-Path $CliPath)) { throw "Windows self-uninstall did not finish within 10 seconds" }
+if (-not (Test-Path $ConfigPath)) { throw "Default Windows uninstall removed local configuration" }
+$UserPathAfterUninstall = [Environment]::GetEnvironmentVariable("Path", "User")
+if (@($UserPathAfterUninstall -split ";" | Where-Object {
+    $_ -and $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ieq $BinDir.TrimEnd([IO.Path]::DirectorySeparatorChar)
+}).Count -ne 0) { throw "Windows uninstall retained its managed user PATH entry" }
+
+& (Join-Path $RepoRoot "install.ps1")
+& $Python $MigrationScript $CliPath $LegacyKey
+if ($LASTEXITCODE -ne 0) { throw "Reinstall could not read the preserved API Key" }
+& $Launcher uninstall --purge --yes
+if ($LASTEXITCODE -ne 0) { throw "Purging Windows uninstall failed" }
+for ($Attempt = 0; $Attempt -lt 100 -and ((Test-Path $Launcher) -or (Test-Path $CliPath)); $Attempt++) {
+    Start-Sleep -Milliseconds 100
+}
+if ((Test-Path $Launcher) -or (Test-Path $CliPath)) { throw "Purging Windows self-uninstall did not finish within 10 seconds" }
+if (Test-Path $env:HOLYCRAB_CONFIG_DIR) { throw "Purging Windows uninstall retained known local state" }

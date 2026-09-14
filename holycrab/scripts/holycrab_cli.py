@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import errno
 import getpass
 import hashlib
 import html
@@ -64,6 +65,13 @@ MAX_IMAGE_UPLOAD_BYTES = 30 * 1024 * 1024
 MAX_VIDEO_UPLOAD_BYTES = 200 * 1024 * 1024
 MAX_REAL_HUMAN_VIDEO_UPLOAD_BYTES = 50 * 1024 * 1024
 MAX_AUDIO_UPLOAD_BYTES = 15 * 1024 * 1024
+INSTALLATION_SCHEMA_VERSION = 2
+INSTALLATION_MANAGER = "holycrab-installer"
+MANAGED_SKILL_FILES = (
+    "SKILL.md",
+    "references/capabilities.json",
+    "agents/openai.yaml",
+)
 GENERATION_ROUTES = {
     "seedanceVideo": ("/api/tasks/generation/freeze-credit", "/api/tasks/generation"),
     "minimaxVideo": (
@@ -2393,6 +2401,443 @@ def command_update(args: argparse.Namespace) -> int:
     return 0
 
 
+def _normalized_path(value: str | Path) -> Path:
+    return Path(value).expanduser().resolve(strict=False)
+
+
+def validated_uninstall_manifest() -> tuple[dict[str, Any], Path, Path, Path]:
+    manifest = load_installation()
+    if manifest is None:
+        raise SystemExit("This is not an installer-managed HolyCrab installation; nothing was removed")
+    manager = manifest.get("managedBy")
+    if manager not in {None, INSTALLATION_MANAGER}:
+        raise SystemExit("This HolyCrab installation is managed by an unknown installer; nothing was removed")
+    schema = manifest.get("schemaVersion")
+    if schema not in {None, INSTALLATION_SCHEMA_VERSION}:
+        raise SystemExit("This HolyCrab installation uses an unsupported manifest schema; nothing was removed")
+    prefix_value = manifest.get("prefix")
+    if not isinstance(prefix_value, str) or not prefix_value.strip():
+        raise SystemExit("HolyCrab installation manifest has no valid prefix; nothing was removed")
+    prefix = _normalized_path(prefix_value)
+    library = prefix / "lib" / "holycrab"
+    current_library = _normalized_path(installation_path().parent)
+    if current_library != _normalized_path(library):
+        raise SystemExit("HolyCrab installation manifest does not match this CLI; nothing was removed")
+    launcher = prefix / "bin" / ("holycrab.cmd" if os.name == "nt" else "holycrab")
+    agents = manifest.get("agents")
+    if not isinstance(agents, list) or any(agent not in {"codex", "claude"} for agent in agents):
+        raise SystemExit("HolyCrab installation manifest has invalid Agent selections; nothing was removed")
+    return manifest, prefix, library, launcher
+
+
+def remove_managed_mcp_registrations(manifest: dict[str, Any], expected_command: str) -> list[str]:
+    warnings: list[str] = []
+    if manifest.get("mcp") is not True:
+        return warnings
+    for agent in manifest.get("agents", []):
+        if agent not in {"codex", "claude"}:
+            continue
+        executable = shutil.which(agent)
+        if executable is None:
+            warnings.append(f"{agent} is unavailable; its HolyCrab MCP registration could not be checked")
+            continue
+        try:
+            inspected = subprocess.run(
+                [executable, "mcp", "get", "holycrab"], capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=10, check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            warnings.append(f"Could not inspect {agent} MCP registration: {sanitize_text_for_output(str(error))}")
+            continue
+        if inspected.returncode != 0:
+            continue
+        output = f"{inspected.stdout}\n{inspected.stderr}"
+        command_matches = (
+            expected_command.lower() in output.lower() if os.name == "nt" else expected_command in output
+        )
+        owned = (
+            command_matches
+            and re.search(r"\bmcp\b", output, re.IGNORECASE) is not None
+            and re.search(r"\bserve\b", output, re.IGNORECASE) is not None
+        )
+        if not owned:
+            warnings.append(f"The {agent} MCP entry named holycrab is unmanaged or points elsewhere; it was kept")
+            continue
+        try:
+            removed = subprocess.run(
+                [executable, "mcp", "remove", "holycrab"], capture_output=True, text=True,
+                encoding="utf-8", errors="replace", timeout=10, check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise RuntimeError(
+                f"Could not remove the managed {agent} MCP registration; no program files were removed: "
+                f"{sanitize_text_for_output(str(error))}"
+            ) from error
+        if removed.returncode != 0:
+            detail = sanitize_text_for_output(removed.stderr or removed.stdout or "unknown error")
+            raise RuntimeError(
+                f"Could not remove the managed {agent} MCP registration; no program files were removed: {detail}"
+            )
+    return warnings
+
+
+def _manifest_hashes(manifest: dict[str, Any]) -> dict[Path, str]:
+    result: dict[Path, str] = {}
+    core_files = manifest.get("coreFiles")
+    if not isinstance(core_files, list):
+        return result
+    for item in core_files:
+        if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+            continue
+        expected = item.get("sha256")
+        if isinstance(expected, str) and re.fullmatch(r"[0-9a-fA-F]{64}", expected):
+            result[_normalized_path(item["path"])] = expected.lower()
+    return result
+
+
+def _skill_root(agent: str) -> Path:
+    parent = ".agents" if agent == "codex" else ".claude"
+    return Path.home() / parent / "skills" / "holycrab"
+
+
+def remove_managed_skill_files(manifest: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    expected_hashes = _manifest_hashes(manifest)
+    for agent in manifest.get("agents", []):
+        if agent not in {"codex", "claude"}:
+            continue
+        root = _skill_root(agent)
+        for relative in MANAGED_SKILL_FILES:
+            target = root / relative
+            if not target.exists() and not target.is_symlink():
+                continue
+            expected = expected_hashes.get(_normalized_path(target))
+            try:
+                matches = target.is_file() and expected is not None and sha256_stream(target) == expected
+            except OSError:
+                matches = False
+            if not matches:
+                warnings.append(f"Modified or unverified Skill file was kept: {target}")
+                continue
+            try:
+                target.unlink()
+            except OSError as error:
+                warnings.append(f"Could not remove Skill file {target}: {sanitize_text_for_output(str(error))}")
+        for directory in (root / "references", root / "agents", root):
+            try:
+                directory.rmdir()
+            except (FileNotFoundError, OSError):
+                pass
+    return warnings
+
+
+def purge_known_local_state() -> list[str]:
+    warnings: list[str] = []
+    configured_root = config_dir().expanduser().absolute()
+    root = _normalized_path(configured_root)
+    dangerous = {_normalized_path(Path(root.anchor)), _normalized_path(Path.home())}
+    if configured_root.is_symlink() or root in dangerous:
+        return [f"Refused to purge unsafe configuration directory: {root}"]
+    for name in ("config.json", "attempts.json", "attempts.lock", "update-state.json", "health-state.json"):
+        try:
+            (root / name).unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            warnings.append(f"Could not remove {root / name}: {sanitize_text_for_output(str(error))}")
+    plans = root / "upload-plans"
+    try:
+        if plans.is_symlink():
+            plans.unlink()
+        elif plans.is_dir():
+            for path in plans.iterdir():
+                if path.is_symlink() or not path.is_file() or not re.fullmatch(r"[A-Za-z0-9]{1,64}\.json", path.name):
+                    continue
+                try:
+                    value = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if isinstance(value, dict) and value.get("uploadPlanId") == path.stem:
+                    path.unlink()
+            try:
+                plans.rmdir()
+            except OSError as error:
+                if error.errno != errno.ENOTEMPTY:
+                    raise
+                warnings.append(f"Unknown files were kept in {plans}")
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        warnings.append(f"Could not remove all known state from {plans}: {sanitize_text_for_output(str(error))}")
+    authorizations = root / "real-human"
+    try:
+        if authorizations.is_symlink():
+            authorizations.unlink()
+        elif authorizations.is_dir():
+            for directory in authorizations.iterdir():
+                if directory.is_symlink() or not directory.is_dir() or not re.fullmatch(r"[A-Za-z0-9]{1,64}", directory.name):
+                    continue
+                for name in ("qr.png", "metadata.json"):
+                    path = directory / name
+                    if path.is_file() and not path.is_symlink():
+                        path.unlink()
+                try:
+                    directory.rmdir()
+                except OSError as error:
+                    if error.errno != errno.ENOTEMPTY:
+                        raise
+                    warnings.append(f"Unknown files were kept in {directory}")
+            try:
+                authorizations.rmdir()
+            except OSError as error:
+                if error.errno != errno.ENOTEMPTY:
+                    raise
+                warnings.append(f"Unknown files were kept in {authorizations}")
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        warnings.append(f"Could not remove all known state from {authorizations}: {sanitize_text_for_output(str(error))}")
+    try:
+        root.rmdir()
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        if error.errno == errno.ENOTEMPTY:
+            warnings.append(f"Unknown files were kept in {root}")
+        else:
+            warnings.append(f"Could not remove empty configuration directory {root}: {sanitize_text_for_output(str(error))}")
+    return warnings
+
+
+def _bin_has_other_entries(bin_directory: Path, launcher: Path) -> bool:
+    try:
+        return any(_normalized_path(item) != _normalized_path(launcher) for item in bin_directory.iterdir())
+    except FileNotFoundError:
+        return False
+
+
+def _remove_posix_profile_registration(profile: Path) -> bool:
+    path_line = 'export PATH="$HOME/.local/bin:$PATH"'
+    try:
+        lines = profile.read_text(encoding="utf-8").splitlines(keepends=True)
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+    kept: list[str] = []
+    index = 0
+    removed = False
+    while index < len(lines):
+        if (
+            lines[index].rstrip("\r\n") == "# HolyCrab CLI"
+            and index + 1 < len(lines)
+            and lines[index + 1].rstrip("\r\n") == path_line
+        ):
+            if kept and not kept[-1].strip():
+                kept.pop()
+            index += 2
+            removed = True
+            continue
+        kept.append(lines[index])
+        index += 1
+    if not removed:
+        return True
+    descriptor = -1
+    temporary: Path | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(prefix=f".{profile.name}.", suffix=".tmp", dir=profile.parent)
+        temporary = Path(temporary_name)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            descriptor = -1
+            stream.write("".join(kept))
+        temporary.chmod(stat.S_IMODE(profile.stat().st_mode))
+        os.replace(temporary, profile)
+        return True
+    except OSError:
+        return False
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        if temporary is not None:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def remove_managed_path_registration(manifest: dict[str, Any], prefix: Path, launcher: Path) -> list[str]:
+    registration = manifest.get("pathRegistration")
+    if not isinstance(registration, dict):
+        return ["PATH registration was kept because this installation has no ownership record"]
+    if registration.get("kind") == "none" and registration.get("addedByInstaller") is False:
+        return []
+    if registration.get("addedByInstaller") is not True:
+        return ["PATH registration was kept because the installer did not add it"]
+    bin_directory = prefix / "bin"
+    if _bin_has_other_entries(bin_directory, launcher):
+        return [f"PATH registration was kept because {bin_directory} contains other programs"]
+    kind = registration.get("kind")
+    recorded_directory = registration.get("directory")
+    if not isinstance(recorded_directory, str) or _normalized_path(recorded_directory) != _normalized_path(bin_directory):
+        return ["PATH registration was kept because its ownership record is invalid"]
+    if kind == "shell-profile" and os.name != "nt":
+        profile_value = registration.get("profile")
+        if not isinstance(profile_value, str):
+            return ["PATH profile entry was kept because its ownership record is incomplete"]
+        profile = _normalized_path(profile_value)
+        allowed = {_normalized_path(Path.home() / name) for name in (".zshrc", ".bashrc", ".bash_profile", ".profile")}
+        if profile not in allowed or not _remove_posix_profile_registration(profile):
+            return [f"PATH profile entry could not be removed safely: {profile}"]
+        return []
+    if kind == "windows-user-path" and os.name == "nt":  # pragma: no cover - Windows CI
+        powershell = shutil.which("powershell")
+        if powershell is None:
+            return ["Windows user PATH was kept because PowerShell is unavailable"]
+        script = (
+            "$target=$args[0].TrimEnd('\\');"
+            "$value=[Environment]::GetEnvironmentVariable('Path','User');"
+            "$kept=@($value -split ';' | Where-Object { $_ -and $_.TrimEnd('\\') -ine $target });"
+            "[Environment]::SetEnvironmentVariable('Path',($kept -join ';'),'User')"
+        )
+        try:
+            completed = subprocess.run(
+                [powershell, "-NoProfile", "-Command", script, str(bin_directory)],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10, check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ["Windows user PATH entry could not be removed safely"]
+        if completed.returncode != 0:
+            return ["Windows user PATH entry could not be removed safely"]
+        return []
+    return ["PATH registration was kept because its ownership record does not match this platform"]
+
+
+def schedule_windows_program_cleanup(launcher: Path, library: Path) -> None:  # pragma: no cover - Windows CI
+    powershell = shutil.which("powershell")
+    if powershell is None:
+        raise RuntimeError("PowerShell is required to finish Windows self-uninstall")
+    descriptor, helper_name = tempfile.mkstemp(prefix="holycrab-uninstall-", suffix=".ps1")
+    helper = Path(helper_name)
+    program = r'''param([int]$ParentPid,[string]$Launcher,[string]$Library,[string]$SelfPath)
+$deadline = [DateTime]::UtcNow.AddSeconds(10)
+while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) {
+  Start-Sleep -Milliseconds 100
+}
+do {
+  Remove-Item -LiteralPath $Launcher -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $Library -Recurse -Force -ErrorAction SilentlyContinue
+  if (-not (Test-Path -LiteralPath $Launcher) -and -not (Test-Path -LiteralPath $Library)) { break }
+  Start-Sleep -Milliseconds 200
+} while ([DateTime]::UtcNow -lt $deadline)
+Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
+'''
+    with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(program)
+    creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+    try:
+        subprocess.Popen(
+            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper),
+             str(os.getpid()), str(launcher), str(library), str(helper)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            close_fds=True, creationflags=creation_flags,
+        )
+    except OSError:
+        try:
+            helper.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def command_uninstall(args: argparse.Namespace) -> int:
+    manifest, prefix, library, launcher = validated_uninstall_manifest()
+    config = _normalized_path(config_dir())
+    print("HolyCrab uninstall preview:")
+    print(f"- Remove program: {library}")
+    print(f"- Remove launcher: {launcher}")
+    print("- Remove installer-managed HolyCrab MCP registrations and unchanged Skill files")
+    registration = manifest.get("pathRegistration")
+    if not isinstance(registration, dict):
+        print("- Keep PATH/profile entry: this installation has no ownership record")
+    elif registration.get("kind") == "none" and registration.get("addedByInstaller") is False:
+        print("- PATH/profile entry: the installer did not add one")
+    elif registration.get("addedByInstaller") is True and _bin_has_other_entries(prefix / "bin", launcher):
+        print(f"- Keep PATH/profile entry: {prefix / 'bin'} contains other programs")
+    elif registration.get("addedByInstaller") is True:
+        print(f"- Remove installer-managed PATH/profile entry for: {prefix / 'bin'}")
+    else:
+        print("- Keep PATH/profile entry: the installer did not add it")
+    if args.purge:
+        print(f"- Purge known local credentials and records: {config}")
+    else:
+        print(f"- Local credentials and records will be preserved: {config}")
+    if not args.yes:
+        if not sys.stdin.isatty():
+            print("Nothing was removed. Re-run with --yes after reviewing this preview.", file=sys.stderr)
+            return 2
+        prompt = "Uninstall HolyCrab and purge known local data? [y/N] " if args.purge else "Uninstall HolyCrab and preserve local data? [y/N] "
+        if input(prompt).strip().lower() not in {"y", "yes"}:
+            print("Uninstall cancelled; nothing was removed.")
+            return 2
+
+    expected_command = str(prefix / ("lib/holycrab/holycrab_cli.py" if os.name == "nt" else "bin/holycrab"))
+    try:
+        warnings = remove_managed_mcp_registrations(manifest, expected_command)
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    warnings.extend(remove_managed_skill_files(manifest))
+    hard_failures: list[str] = []
+
+    if os.name == "nt":  # pragma: no cover - Windows CI
+        warnings.extend(remove_managed_path_registration(manifest, prefix, launcher))
+        try:
+            schedule_windows_program_cleanup(launcher, library)
+        except (OSError, RuntimeError) as error:
+            print(f"Could not schedule Windows program cleanup: {sanitize_text_for_output(str(error))}", file=sys.stderr)
+            return 1
+        print("HolyCrab program cleanup is scheduled and will finish within 10 seconds.")
+    else:
+        try:
+            launcher.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            hard_failures.append(f"Could not remove launcher {launcher}: {sanitize_text_for_output(str(error))}")
+        try:
+            if library.is_symlink():
+                library.unlink()
+            elif library.exists():
+                shutil.rmtree(library)
+        except OSError as error:
+            hard_failures.append(f"Could not remove program directory {library}: {sanitize_text_for_output(str(error))}")
+        warnings.extend(remove_managed_path_registration(manifest, prefix, launcher))
+
+    if hard_failures:
+        for failure in hard_failures:
+            print(f"Error: {failure}", file=sys.stderr)
+        print("Local credentials and records were kept because program removal was incomplete.", file=sys.stderr)
+        return 1
+    if args.purge:
+        purge_warnings = purge_known_local_state()
+        warnings.extend(purge_warnings)
+        if any(message.startswith(("Could not remove", "Refused to purge")) for message in purge_warnings):
+            for warning in warnings:
+                print(f"Warning: {warning}")
+            print("HolyCrab program files were removed, but local data purge was incomplete.", file=sys.stderr)
+            return 1
+
+    if args.purge:
+        print("Known local HolyCrab credentials and records were purged.")
+        print(f"Revoke the API Key separately if it must stop working: {PUBLIC_ACCOUNT_URL}")
+    else:
+        print(f"Local HolyCrab credentials and records were preserved at {config}.")
+    for warning in warnings:
+        print(f"Warning: {warning}")
+    print("HolyCrab uninstall completed.")
+    return 0
+
+
 def file_check(path: Path, expected: str | None = None,
                hash_cache: dict[str, Any] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {"path": str(path), "exists": path.is_file(), "readable": os.access(path, os.R_OK)}
@@ -2489,7 +2934,17 @@ def local_health_report(*, online: bool = False) -> dict[str, Any]:
             and isinstance(manifest.get("mcp"), bool)
             and isinstance(core_files, list)
             and len(core_files) >= 5
+            and manifest.get("schemaVersion") in {None, INSTALLATION_SCHEMA_VERSION}
+            and manifest.get("managedBy") in {None, INSTALLATION_MANAGER}
         )
+        path_registration = manifest.get("pathRegistration")
+        if path_registration is not None:
+            manifest_format_ok = manifest_format_ok and (
+                isinstance(path_registration, dict)
+                and path_registration.get("kind") in {"none", "shell-profile", "windows-user-path"}
+                and isinstance(path_registration.get("directory"), str)
+                and isinstance(path_registration.get("addedByInstaller"), bool)
+            )
         for item in core_files if isinstance(core_files, list) else []:
             if isinstance(item, dict) and isinstance(item.get("path"), str):
                 candidate = Path(item["path"])
@@ -2992,11 +3447,15 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--json", action="store_true")
     doctor.add_argument("--online", action="store_true", help="Refresh release status and verify the API Key")
     doctor.set_defaults(func=command_doctor)
+    uninstall = sub.add_parser("uninstall", help="Remove this installer-managed HolyCrab CLI")
+    uninstall.add_argument("--purge", action="store_true", help="Also remove known local credentials and records")
+    uninstall.add_argument("--yes", action="store_true", help="Confirm the complete uninstall preview")
+    uninstall.set_defaults(func=command_uninstall)
     return parser
 
 
 def startup_maintenance(raw_args: list[str]) -> None:
-    if raw_args and raw_args[0] == "doctor":
+    if raw_args and raw_args[0] in {"doctor", "uninstall"}:
         return
     try:
         report = local_health_report(online=False)
@@ -3014,11 +3473,13 @@ def startup_maintenance(raw_args: list[str]) -> None:
 
 
 def main() -> int:
-    warning = cleanup_authorization_qrs()
-    if warning:
-        print(warning, file=sys.stderr)
-    cleanup_upload_plans()
-    startup_maintenance(sys.argv[1:])
+    raw_args = sys.argv[1:]
+    if not raw_args or raw_args[0] != "uninstall":
+        warning = cleanup_authorization_qrs()
+        if warning:
+            print(warning, file=sys.stderr)
+        cleanup_upload_plans()
+    startup_maintenance(raw_args)
     args = build_parser().parse_args()
     try:
         return args.func(args)

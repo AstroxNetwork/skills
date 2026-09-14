@@ -576,6 +576,7 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 - 下载只接受无内嵌凭据、无 fragment、非本机/内网地址的 HTTPS；每次重定向重新校验，限制跳转和总大小，先写私有临时文件再原子落盘，默认不覆盖现有文件。
 - 任务接口原始字符串 `audioIds` 由 CLI 解析为 `audioUrls`，音频结果可由 `holycrab download` 下载。
 - 普通 `doctor` 只看本地状态和版本缓存；`doctor --online` 额外刷新版本并验证 API Key。更新只接受更高的稳定语义版本，需用户运行 `holycrab update`，不会静默安装。
+- `holycrab uninstall [--purge] [--yes]` 是纯本地生命周期命令，不对应后端 API 或 MCP 工具。默认保留凭据与任务记录；`--purge` 只删除已知本地状态，不撤销服务端 API Key。命令只移除安装清单证明属于当前 CLI 的文件、PATH 和 MCP 登记，修改过或无法确认归属的内容保留并提示。
 
 ## 11. 变更说明
 
