@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -70,6 +71,13 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue((Path(home) / ".agents" / "skills" / "holycrab" / "agents" / "openai.yaml").is_file())
             self.assertTrue((Path(home) / ".claude" / "skills" / "holycrab" / "SKILL.md").is_file())
             self.assertTrue((Path(home) / ".claude" / "skills" / "holycrab" / "agents" / "openai.yaml").is_file())
+            manifest = json.loads(
+                (Path(home) / ".local" / "lib" / "holycrab" / "installation.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(manifest["schemaVersion"], 2)
+            self.assertEqual(manifest["managedBy"], "holycrab-installer")
+            self.assertEqual(manifest["pathRegistration"]["kind"], "shell-profile")
+            self.assertTrue(manifest["pathRegistration"]["addedByInstaller"])
             check = subprocess.run(
                 [str(command), "doctor", "--json"],
                 env=env,
@@ -102,7 +110,9 @@ class InstallerTests(unittest.TestCase):
                 "HOLYCRAB_INSTALL_MCP": "0",
                 "HOLYCRAB_INSTALL_AGENTS": "none",
             }
-            for _ in range(2):
+            for install_number in range(2):
+                if install_number == 1:
+                    env["SHELL"] = "/bin/bash"
                 result = subprocess.run(
                     ["sh", str(REPO_ROOT / "install.sh")],
                     env=env,
@@ -117,6 +127,13 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(content.count("# HolyCrab CLI"), 1)
             self.assertIn('export PATH="$HOME/.local/bin:$PATH"', content)
             self.assertIn("PATH is active inside the installer", result.stdout)
+            manifest = json.loads(
+                (Path(home) / ".local" / "lib" / "holycrab" / "installation.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue(manifest["pathRegistration"]["addedByInstaller"])
+            self.assertEqual(Path(manifest["pathRegistration"]["profile"]).resolve(), profile.resolve())
+            self.assertFalse((Path(home) / ".bashrc").exists())
+            self.assertFalse((Path(home) / ".bash_profile").exists())
 
     def test_fresh_install_and_upgrade_can_generate_qr_without_pip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -279,6 +296,11 @@ fi
         self.assertIn("Linux", readme)
         self.assertIn("覆盖安装", readme)
         self.assertIn("卸载", readme)
+        self.assertIn("holycrab uninstall --purge --yes", readme)
+        self.assertNotIn('rm -rf "$HOME/.local/lib/holycrab"', readme)
+        skill = (REPO_ROOT / "holycrab" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("not an MCP tool", skill)
+        self.assertIn("explicitly asks to uninstall", skill)
 
     def test_ci_runs_release_gates_on_linux_macos_and_windows(self) -> None:
         workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

@@ -17,10 +17,16 @@ HAD_LIB=0
 HAD_LAUNCHER=0
 HAD_CODEX_SKILL=0
 HAD_CLAUDE_SKILL=0
-SHA256_HOLYCRAB_CLI=92d398e99d3c3d090011120e5600559aa5f948dc1af53eedbc4e91aa6bed7a24
+PATH_REG_KIND=none
+PATH_REG_DIR="$BIN_DIR"
+PATH_REG_PROFILE=
+PATH_REG_ADDED=0
+PATH_REG_ADDED_THIS_RUN=0
+PREVIOUS_PATH_PROFILE=
+SHA256_HOLYCRAB_CLI=d585cfa6fc75c4927a83cdddb8087b92b5b393a42a54befea47bc797fe2b4a9c
 SHA256_CAPABILITIES=75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
-SHA256_SKILL=508a610154f6937010a2c1d650106ba5305592ca72196e3fdcc50d1c2d04aaba
+SHA256_SKILL=74ac0726e3c7b2f3d735ea3d060e1bafd5a3d852d0e78efb19f77d0157c88d01
 SHA256_OPENAI_YAML=64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7
 SHA256_SEGNO=28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7
 SHA256_SEGNO_LICENSE=de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935
@@ -32,6 +38,70 @@ command -v python3 >/dev/null 2>&1 || {
 python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' || {
   echo "Python 3.10 or newer is required for HolyCrab." >&2
   exit 1
+}
+
+remove_managed_profile_block() {
+  rollback_profile=$1
+  python3 - "$rollback_profile" <<'PY'
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+try:
+    text = path.read_text(encoding="utf-8")
+except FileNotFoundError:
+    raise SystemExit(0)
+block = '\n# HolyCrab CLI\nexport PATH="$HOME/.local/bin:$PATH"\n'
+if block in text:
+    path.write_text(text.replace(block, '\n', 1), encoding="utf-8")
+PY
+}
+
+persist_path() {
+  if [ "$PREFIX" != "$HOME/.local" ]; then
+    echo "Custom install prefix detected; add this directory to your shell PATH: $BIN_DIR"
+    return
+  fi
+
+  if [ -n "$PREVIOUS_PATH_PROFILE" ] && [ -f "$PREVIOUS_PATH_PROFILE" ] \
+    && grep -F 'export PATH="$HOME/.local/bin:$PATH"' "$PREVIOUS_PATH_PROFILE" >/dev/null 2>&1; then
+    PATH_REG_KIND=shell-profile
+    PATH_REG_PROFILE=$PREVIOUS_PATH_PROFILE
+    PATH_REG_ADDED=1
+    echo "PATH is already saved in $PREVIOUS_PATH_PROFILE."
+    return
+  fi
+  PATH_REG_ADDED=0
+
+  shell_name=$(basename "${SHELL:-sh}")
+  case "$shell_name" in
+    zsh) profile="$HOME/.zshrc" ;;
+    bash)
+      if [ "$(uname -s)" = "Darwin" ]; then
+        profile="$HOME/.bash_profile"
+      else
+        profile="$HOME/.bashrc"
+      fi
+      ;;
+    sh|dash|ksh) profile="$HOME/.profile" ;;
+    *)
+      echo "Could not select a profile for $shell_name; add this directory to PATH: $BIN_DIR"
+      return
+      ;;
+  esac
+
+  PATH_REG_KIND=shell-profile
+  PATH_REG_PROFILE=$profile
+  path_line='export PATH="$HOME/.local/bin:$PATH"'
+  if [ -f "$profile" ] && grep -F "$path_line" "$profile" >/dev/null 2>&1; then
+    echo "PATH is already saved in $profile."
+    return
+  fi
+  if printf '\n# HolyCrab CLI\n%s\n' "$path_line" >> "$profile"; then
+    PATH_REG_ADDED=1
+    PATH_REG_ADDED_THIS_RUN=1
+    echo "PATH saved in $profile."
+  else
+    echo "Warning: could not update $profile; add this directory to PATH: $BIN_DIR" >&2
+  fi
 }
 
 cleanup() {
@@ -52,6 +122,9 @@ cleanup() {
         if [ "$HAD_CLAUDE_SKILL" = "1" ]; then cp -R "$BACKUP_DIR/claude-skill" "$HOME/.claude/skills/holycrab"; fi
         ;;
     esac
+    if [ "$PATH_REG_ADDED_THIS_RUN" = "1" ] && [ -n "$PATH_REG_PROFILE" ]; then
+      remove_managed_profile_block "$PATH_REG_PROFILE" || true
+    fi
     echo "HolyCrab installation failed; previous managed files were restored." >&2
   fi
   rm -rf "$TEMP_DIR"
@@ -96,6 +169,29 @@ fetch() {
 }
 
 mkdir -p "$BACKUP_DIR"
+if [ -f "$LIB_DIR/installation.json" ] && PREVIOUS_PATH_PROFILE=$(python3 - "$LIB_DIR/installation.json" "$BIN_DIR" "$HOME" <<'PY'
+import json, pathlib, sys
+try:
+    value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+    registration = value.get("pathRegistration", {})
+    profile = pathlib.Path(registration.get("profile", "")).expanduser().resolve()
+    home = pathlib.Path(sys.argv[3]).expanduser().resolve()
+    matches = (
+        registration.get("addedByInstaller") is True
+        and registration.get("kind") == "shell-profile"
+        and pathlib.Path(registration.get("directory", "")).expanduser().resolve()
+        == pathlib.Path(sys.argv[2]).expanduser().resolve()
+        and profile in {(home / name).resolve() for name in (".zshrc", ".bashrc", ".bash_profile", ".profile")}
+    )
+except (OSError, ValueError, TypeError):
+    matches = False
+if matches:
+    print(profile)
+raise SystemExit(0 if matches else 1)
+PY
+); then
+  PATH_REG_ADDED=1
+fi
 if [ -d "$LIB_DIR" ]; then cp -R "$LIB_DIR" "$BACKUP_DIR/lib"; HAD_LIB=1; fi
 if [ -f "$BIN_DIR/holycrab" ]; then cp "$BIN_DIR/holycrab" "$BACKUP_DIR/holycrab"; HAD_LAUNCHER=1; fi
 case ",$INSTALL_AGENTS," in
@@ -123,11 +219,13 @@ install -m 755 "$TEMP_DIR/holycrab" "$BIN_DIR/holycrab"
 install -m 644 "$TEMP_DIR/segno.whl" "$LIB_DIR/vendor/segno-1.6.6-py3-none-any.whl"
 install -m 644 "$TEMP_DIR/LICENSE.segno" "$LIB_DIR/vendor/LICENSE.segno"
 
+persist_path
+
 python3 - "$LIB_DIR/installation.json" "$PREFIX" "$INSTALL_AGENTS" "$INSTALL_MCP" \
   "$SHA256_HOLYCRAB_CLI" "$SHA256_CAPABILITIES" "$SHA256_SEGNO" "$SHA256_SEGNO_LICENSE" "$SHA256_LAUNCHER" \
-  "$SHA256_SKILL" "$SHA256_OPENAI_YAML" <<'PY'
+  "$SHA256_SKILL" "$SHA256_OPENAI_YAML" "$PATH_REG_KIND" "$PATH_REG_DIR" "$PATH_REG_PROFILE" "$PATH_REG_ADDED" <<'PY'
 import json, os, pathlib, sys, tempfile
-target, prefix, agents, mcp, cli, capabilities, segno, license_hash, launcher, skill, openai = sys.argv[1:]
+target, prefix, agents, mcp, cli, capabilities, segno, license_hash, launcher, skill, openai, path_kind, path_dir, path_profile, path_added = sys.argv[1:]
 selected = [item for item in agents.split(",") if item and item != "none"]
 core = [
     {"path": "holycrab_cli.py", "sha256": cli},
@@ -147,11 +245,19 @@ for agent in selected:
             {"path": str(root / "agents/openai.yaml"), "sha256": openai},
         ])
 value = {
+    "schemaVersion": 2,
+    "managedBy": "holycrab-installer",
     "version": "0.4.1",
     "prefix": prefix,
     "agents": selected,
     "mcp": mcp == "1",
     "coreFiles": core,
+    "pathRegistration": {
+        "kind": path_kind,
+        "directory": path_dir,
+        "profile": path_profile or None,
+        "addedByInstaller": path_added == "1",
+    },
 }
 path = pathlib.Path(target)
 fd, temporary = tempfile.mkstemp(prefix=".installation.", suffix=".tmp", dir=path.parent)
@@ -230,42 +336,6 @@ fi
 
 echo "HolyCrab CLI, local MCP, and Skill are installed."
 echo "Command: $BIN_DIR/holycrab"
-persist_path() {
-  if [ "$PREFIX" != "$HOME/.local" ]; then
-    echo "Custom install prefix detected; add this directory to your shell PATH: $BIN_DIR"
-    return
-  fi
-
-  shell_name=$(basename "${SHELL:-sh}")
-  case "$shell_name" in
-    zsh) profile="$HOME/.zshrc" ;;
-    bash)
-      if [ "$(uname -s)" = "Darwin" ]; then
-        profile="$HOME/.bash_profile"
-      else
-        profile="$HOME/.bashrc"
-      fi
-      ;;
-    sh|dash|ksh) profile="$HOME/.profile" ;;
-    *)
-      echo "Could not select a profile for $shell_name; add this directory to PATH: $BIN_DIR"
-      return
-      ;;
-  esac
-
-  path_line='export PATH="$HOME/.local/bin:$PATH"'
-  if [ -f "$profile" ] && grep -F "$path_line" "$profile" >/dev/null 2>&1; then
-    echo "PATH is already saved in $profile."
-    return
-  fi
-  if printf '\n# HolyCrab CLI\n%s\n' "$path_line" >> "$profile"; then
-    echo "PATH saved in $profile."
-  else
-    echo "Warning: could not update $profile; add this directory to PATH: $BIN_DIR" >&2
-  fi
-}
-
-persist_path
 PATH="$BIN_DIR:$PATH"
 export PATH
 HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" --version >/dev/null
