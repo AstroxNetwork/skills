@@ -139,7 +139,7 @@ class ReadableGuidanceTests(unittest.TestCase):
         with patch.object(cli, "send") as transport:
             guidance = cli.local_health_report()["onboarding"]
         text = cli.format_onboarding(guidance, installed=True)
-        self.assertIn("HolyCrab 0.4.3 installed", text)
+        self.assertIn("HolyCrab 0.4.4 installed", text)
         self.assertIn("Next: verify your account", text)
         self.assertIn("holycrab auth status", text)
         self.assertNotIn("account connected", text)
@@ -233,7 +233,7 @@ class ReadableGuidanceTests(unittest.TestCase):
             with self.subTest(configured=configured):
                 guidance = cli.onboarding_guidance(configured=configured)
                 text = cli.format_onboarding(guidance, installed=True)
-                self.assertIn("HolyCrab 0.4.3 installed", text)
+                self.assertIn("HolyCrab 0.4.4 installed", text)
                 self.assertIn(guidance["command"], text)
                 self.assertIn("Create product listing images", text)
                 self.assertNotIn("For Agents", text)
@@ -350,8 +350,8 @@ class ReadableGuidanceTests(unittest.TestCase):
     def test_update_check_is_not_an_installation_or_unverified_latest_claim(self):
         for reply, heading in (({"updateAvailable": False}, "Version status unavailable"),
                                ({"updateAvailable": False, "latestVersion": "0.4.0"}, "No newer stable release"),
-                               ({"updateAvailable": True, "latestVersion": "0.4.4",
-                                 "releasePage": "https://github.com/AstroxNetwork/skills/releases/tag/v0.4.4"},
+                               ({"updateAvailable": True, "latestVersion": "0.4.5",
+                                 "releasePage": "https://github.com/AstroxNetwork/skills/releases/tag/v0.4.5"},
                                 "Update available")):
             with self.subTest(reply=reply), patch.object(cli, "check_for_update", return_value=reply), \
                     patch.object(cli, "run_update") as install:
@@ -392,7 +392,7 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_upgrade_summary_does_not_repeat_first_use_introduction(self):
         output = cli.format_onboarding(cli.onboarding_guidance(configured=True), installed=True, upgrading=True)
-        self.assertIn("HolyCrab 0.4.3 installed", output)
+        self.assertIn("HolyCrab 0.4.4 installed", output)
         self.assertIn("holycrab auth status", output)
         self.assertNotIn("Create product listing images", output)
         self.assertNotIn("What would you like", output)

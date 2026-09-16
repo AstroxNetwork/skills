@@ -33,7 +33,7 @@ class TerminalFeedbackTests(unittest.TestCase):
             self.assertEqual(process.wait(timeout=5), 0)
             for number in range(1, 6):
                 self.assertEqual(output.count(f"[{number}/5]".encode()), 1)
-            self.assertEqual(output.count(b"HolyCrab 0.4.3 installed"), 1)
+            self.assertEqual(output.count(b"HolyCrab 0.4.4 installed"), 1)
             self.assertIn(b"Next: connect your account", output)
             self.assertNotIn(b"For Agents:", output)
             self.assertNotIn(b"Verifying SHA-256 for", output)

@@ -2,11 +2,11 @@
 set -eu
 
 REPOSITORY=AstroxNetwork/skills
-VERSION=v0.4.3
+VERSION=v0.4.4
 SOURCE_REF=${HOLYCRAB_INSTALL_REF:-$VERSION}
 SOURCE_DIR=${HOLYCRAB_INSTALL_SOURCE_DIR:-}
-INSTALL_MCP=${HOLYCRAB_INSTALL_MCP:-1}
-INSTALL_AGENTS=${HOLYCRAB_INSTALL_AGENTS:-codex,claude}
+INSTALL_MCP=${HOLYCRAB_INSTALL_MCP-}
+INSTALL_AGENTS=${HOLYCRAB_INSTALL_AGENTS-}
 PREFIX=${HOLYCRAB_INSTALL_PREFIX:-"$HOME/.local"}
 BIN_DIR="$PREFIX/bin"
 LIB_DIR="$PREFIX/lib/holycrab"
@@ -24,7 +24,7 @@ PATH_REG_PROFILE=
 PATH_REG_ADDED=0
 PATH_REG_ADDED_THIS_RUN=0
 PREVIOUS_PATH_PROFILE=
-SHA256_HOLYCRAB_CLI=9cbdb353ebefeaa3a8679ed0b62b4550136cd77fcfd4878607d6ac407cfff960
+SHA256_HOLYCRAB_CLI=d849a1360864960d14f04a5848f7e7a754d15589349019353f3fb44edf22c28f
 SHA256_CAPABILITIES=75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
 SHA256_SKILL=9e90c6ca370e552569f0f6e4389263a845bb79319b54c47c43927dea9b93fae3
@@ -116,29 +116,26 @@ persist_path() {
 }
 
 cleanup() {
+  cleanup_ok=1
   if [ "$INSTALL_STARTED" = "1" ] && [ "$INSTALL_COMPLETE" != "1" ]; then
-    rm -rf "$LIB_DIR"
-    if [ "$HAD_LIB" = "1" ]; then cp -R "$BACKUP_DIR/lib" "$LIB_DIR"; fi
-    rm -f "$BIN_DIR/holycrab"
-    if [ "$HAD_LAUNCHER" = "1" ]; then cp "$BACKUP_DIR/holycrab" "$BIN_DIR/holycrab"; fi
-    case ",$INSTALL_AGENTS," in
-      *,codex,*)
-        rm -rf "$HOME/.agents/skills/holycrab"
-        if [ "$HAD_CODEX_SKILL" = "1" ]; then cp -R "$BACKUP_DIR/codex-skill" "$HOME/.agents/skills/holycrab"; fi
-        ;;
-    esac
-    case ",$INSTALL_AGENTS," in
-      *,claude,*)
-        rm -rf "$HOME/.claude/skills/holycrab"
-        if [ "$HAD_CLAUDE_SKILL" = "1" ]; then cp -R "$BACKUP_DIR/claude-skill" "$HOME/.claude/skills/holycrab"; fi
-        ;;
-    esac
+    python3 - "$TEMP_DIR/holycrab_cli.py" "$BACKUP_DIR" "$PREFIX" "$INSTALL_AGENTS" <<'PY' || cleanup_ok=0
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("holycrab_rollback", sys.argv[1])
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+cli.restore_installer_files(pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]),
+    [a for a in sys.argv[4].split(",") if a != "none"])
+PY
     if [ "$PATH_REG_ADDED_THIS_RUN" = "1" ] && [ -n "$PATH_REG_PROFILE" ]; then
-      remove_managed_profile_block "$PATH_REG_PROFILE" || true
+      remove_managed_profile_block "$PATH_REG_PROFILE" || cleanup_ok=0
     fi
-    echo "HolyCrab installation failed; previous managed files were restored." >&2
+    if [ "$cleanup_ok" = "1" ]; then
+      echo "HolyCrab installation failed; previous managed files were restored." >&2
+    else
+      echo "HolyCrab installation failed; recovery is incomplete. Backup retained: $BACKUP_DIR" >&2
+    fi
   fi
-  rm -rf "$TEMP_DIR"
+  if [ "$cleanup_ok" = "1" ]; then rm -rf "$TEMP_DIR"; fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -181,10 +178,28 @@ fetch() {
       exit 1
     }
     curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/$SOURCE_REF/$fetch_relative" -o "$fetch_destination"
-    verify_sha256 "$fetch_destination" "$fetch_sha256" "$fetch_relative"
   fi
+  verify_sha256 "$fetch_destination" "$fetch_sha256" "$fetch_relative"
 }
 
+fetch "holycrab/scripts/holycrab_cli.py" "$TEMP_DIR/holycrab_cli.py" "$SHA256_HOLYCRAB_CLI"
+fetch "holycrab/references/capabilities.json" "$TEMP_DIR/capabilities.json" "$SHA256_CAPABILITIES"
+fetch "bin/holycrab" "$TEMP_DIR/holycrab" "$SHA256_LAUNCHER"
+fetch "holycrab/SKILL.md" "$TEMP_DIR/SKILL.md" "$SHA256_SKILL"
+fetch "holycrab/agents/openai.yaml" "$TEMP_DIR/openai.yaml" "$SHA256_OPENAI_YAML"
+fetch "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl" "$TEMP_DIR/segno.whl" "$SHA256_SEGNO"
+fetch "holycrab/scripts/vendor/LICENSE.segno" "$TEMP_DIR/LICENSE.segno" "$SHA256_SEGNO_LICENSE"
+settings=$(python3 - "$TEMP_DIR/holycrab_cli.py" "$LIB_DIR/installation.json" "$PREFIX" "$INSTALL_AGENTS" "$INSTALL_MCP" <<'PY'
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("holycrab_settings", sys.argv[1])
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+settings = cli.installer_settings(cli.read_json_file(pathlib.Path(sys.argv[2]), {}), *sys.argv[3:])
+print(settings["agents"] + ":" + settings["mcp"])
+PY
+)
+INSTALL_AGENTS=${settings%:*}
+INSTALL_MCP=${settings##*:}
 mkdir -p "$BACKUP_DIR"
 if [ -f "$LIB_DIR/installation.json" ] && PREVIOUS_PATH_PROFILE=$(python3 - "$LIB_DIR/installation.json" "$BIN_DIR" "$HOME" <<'PY'
 import json, pathlib, sys
@@ -221,13 +236,6 @@ case ",$INSTALL_AGENTS," in
     if [ -d "$HOME/.claude/skills/holycrab" ]; then cp -R "$HOME/.claude/skills/holycrab" "$BACKUP_DIR/claude-skill"; HAD_CLAUDE_SKILL=1; fi
     ;;
 esac
-fetch "holycrab/scripts/holycrab_cli.py" "$TEMP_DIR/holycrab_cli.py" "$SHA256_HOLYCRAB_CLI"
-fetch "holycrab/references/capabilities.json" "$TEMP_DIR/capabilities.json" "$SHA256_CAPABILITIES"
-fetch "bin/holycrab" "$TEMP_DIR/holycrab" "$SHA256_LAUNCHER"
-fetch "holycrab/SKILL.md" "$TEMP_DIR/SKILL.md" "$SHA256_SKILL"
-fetch "holycrab/agents/openai.yaml" "$TEMP_DIR/openai.yaml" "$SHA256_OPENAI_YAML"
-fetch "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl" "$TEMP_DIR/segno.whl" "$SHA256_SEGNO"
-fetch "holycrab/scripts/vendor/LICENSE.segno" "$TEMP_DIR/LICENSE.segno" "$SHA256_SEGNO_LICENSE"
 progress "[3/5] Installing verified program files and configuring PATH..."
 INSTALL_STARTED=1
 mkdir -p "$BIN_DIR" "$LIB_DIR/references" "$LIB_DIR/vendor"
@@ -314,7 +322,8 @@ script, agent, command, previous = sys.argv[1:]
 spec = importlib.util.spec_from_file_location("holycrab_installer", script)
 cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)
-cli.register_installer_mcp(agent, None, command, ["mcp", "serve"], previous)
+cli.register_installer_mcp(agent, None, command, ["mcp", "serve"], previous,
+                         str(__import__("pathlib").Path(previous).parent.parent / "mcp-transaction.json"))
 PY
 }
 
@@ -322,14 +331,16 @@ if [ "$INSTALL_MCP" = "1" ]; then
   case ",$INSTALL_AGENTS," in
     *,codex,*)
         if ! repair_or_add_mcp codex; then
-          echo "Warning: Codex MCP registration failed; run: codex mcp add holycrab -- $BIN_DIR/holycrab mcp serve" >&2
+          echo "Codex connection recovery failed; rolling back installation." >&2
+          exit 1
         fi
       ;;
   esac
   case ",$INSTALL_AGENTS," in
     *,claude,*)
         if ! repair_or_add_mcp claude; then
-          echo "Warning: Claude MCP registration failed; run: claude mcp add --scope user holycrab -- $BIN_DIR/holycrab mcp serve" >&2
+          echo "Claude connection recovery failed; rolling back installation." >&2
+          exit 1
         fi
       ;;
   esac

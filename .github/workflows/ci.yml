@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Verify and resume the existing immutable v0.4.3 Draft after the tag-endpoint fix
+        description: Verify and resume the existing immutable v0.4.4 Draft after the tag-endpoint fix
         required: true
         type: choice
-        options: [v0.4.3]
+        options: [v0.4.4]
 
 permissions:
   contents: read
@@ -64,6 +64,7 @@ jobs:
           tests.test_cleanup_contract
           tests.test_public_guidance
           tests.test_release_acceptance
+          tests.test_update_v044
       - name: Compile Python entry points (Unix)
         if: runner.os != 'Windows'
         run: python3 -m py_compile holycrab/scripts/holycrab_cli.py tools/validate_capabilities.py tools/validate_generate_contract.py tests/safe_live_smoke.py
@@ -108,11 +109,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Identify the version for the explicitly authorized v0.4.3 local check
+      - name: Identify the version for the explicitly authorized v0.4.4 local check
         id: contract-version
         run: echo "version=$(sed -n 's/^VERSION=//p' install.sh)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        if: steps.contract-version.outputs.version != 'v0.4.3'
+        if: steps.contract-version.outputs.version != 'v0.4.4'
         with:
           repository: AstroxNetwork/seedance-2.0
           ref: main
@@ -122,11 +123,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compare models, enums, limits, and request fields
-        if: steps.contract-version.outputs.version != 'v0.4.3'
+        if: steps.contract-version.outputs.version != 'v0.4.4'
         run: python3 tools/validate_generate_contract.py generate-contract
-      - name: Verify the user-approved v0.4.3 synchronized local main evidence
-        if: steps.contract-version.outputs.version == 'v0.4.3'
-        run: python3 tools/verify_release_acceptance.py v0.4.3 --contract-only
+      - name: Verify the user-approved v0.4.4 synchronized local main evidence
+        if: steps.contract-version.outputs.version == 'v0.4.4'
+        run: python3 tools/verify_release_acceptance.py v0.4.4 --contract-only
 
   install-and-mcp:
     name: Install and MCP (${{ matrix.os }})
@@ -152,7 +153,7 @@ jobs:
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
           test -f "${HOME}/.claude/skills/holycrab/agents/openai.yaml"
-          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.3'
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.4'
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json > "${RUNNER_TEMP}/doctor.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["checks"]["config"]["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"
@@ -174,7 +175,7 @@ jobs:
 
   release:
     name: Publish release assets
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.3')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
     needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]
     permissions:
       contents: write
@@ -204,10 +205,10 @@ jobs:
           set -euo pipefail
           release_version="$RELEASE_VERSION"
           if [ "$RESUME_EXISTING_DRAFT" = "true" ]; then
-            test "$release_version" = v0.4.3
+            test "$release_version" = v0.4.4
             test "$(gh release view "$release_version" --json isDraft --jq .isDraft)" = true
             test "$(gh release view "$release_version" --json isPrerelease --jq .isPrerelease)" = false
-            echo "Existing v0.4.3 Draft assets will only be verified, never overwritten."
+            echo "Existing v0.4.4 Draft assets will only be verified, never overwritten."
             exit 0
           fi
           if gh release view "$release_version" >/dev/null 2>&1; then
@@ -247,7 +248,7 @@ jobs:
 
   verify-draft-install:
     name: Verify draft installation (${{ matrix.os }})
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.3')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
     needs: [release]
     # GitHub only exposes Draft assets to identities with push access. This
     # job does not mutate releases; no token is passed to the installer.
@@ -330,7 +331,7 @@ jobs:
 
   publish-verified-release:
     name: Publish verified release as Latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.3')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
     needs: [release, verify-draft-install]
     runs-on: ubuntu-latest
     permissions:

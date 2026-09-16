@@ -1,0 +1,24 @@
+{
+  "version": "v0.4.4",
+  "realHumanCoreFlow": {
+    "status": "previously-accepted",
+    "operator": "user",
+    "retestWaived": true,
+    "testedAt": null,
+    "confirmedAt": "2026-09-16T17:19:35Z",
+    "notes": "User explicitly excluded live real-person commands from this release test and will verify them manually after publication. Prior acceptance is reused; no new real-person acceptance is claimed."
+  },
+  "generateMainContract": {
+    "status": "passed",
+    "mode": "local-synced-main",
+    "localMainCommit": "3fb945d2d73dc1e4fa3a780d3cf90a66c3d7adfc",
+    "remoteMainCommit": "3fb945d2d73dc1e4fa3a780d3cf90a66c3d7adfc",
+    "verifiedAt": "2026-09-16T17:22:59Z",
+    "files": {
+      "holycrab/scripts/holycrab_cli.py": "d849a1360864960d14f04a5848f7e7a754d15589349019353f3fb44edf22c28f",
+      "holycrab/references/capabilities.json": "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308",
+      "tools/validate_generate_contract.py": "a4e45190f1e28fce1aff213f5bfcfc780837519bda0e8eb967e49663408cfbed"
+    },
+    "notes": "Fetched origin main, verified equal local main and detached test checkout, then ran the read-only Generate contract validator successfully. The existing Generate working branches were not changed."
+  }
+}
