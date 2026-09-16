@@ -17,6 +17,18 @@ REPO_ROOT = Path(__file__).parents[1]
 
 
 class InstallerTests(unittest.TestCase):
+    def test_post_release_downloader_identifies_itself_to_the_website(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
+        self.assertIn('"User-Agent": "holycrab-release-smoke/" + version', workflow)
+        self.assertIn('urllib.request.urlopen(request, timeout=30)', workflow)
+
+    def test_post_release_smoke_uses_the_installed_utf8_launcher(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
+        self.assertIn("'holycrab.cmd' if os.name == 'nt' else 'holycrab'", workflow)
+        self.assertIn('command = [str(launcher)]', workflow)
+        self.assertIn("encoding='utf-8'", workflow)
+        self.assertNotIn('command = [sys.executable, str(cli)]', workflow)
+
     def test_post_release_smoke_checks_both_native_platforms(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
         self.assertIn("workflow_dispatch:", workflow)
