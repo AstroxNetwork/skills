@@ -26,11 +26,47 @@ class InstallerTests(unittest.TestCase):
         "SHA256_SEGNO_LICENSE": REPO_ROOT / "holycrab" / "scripts" / "vendor" / "LICENSE.segno",
     }
 
+    def test_fixed_commit_ref_is_independent_of_the_installed_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fake_bin = root / "fake-bin"
+            fake_bin.mkdir()
+            curl = fake_bin / "curl"
+            curl.write_text('#!/usr/bin/env python3\nimport os, shutil, sys\nfrom pathlib import Path\n'
+                            'url = next(arg for arg in sys.argv if arg.startswith("https://"))\n'
+                            'ref, relative = url.split("/skills/", 1)[1].split("/", 1)\n'
+                            'assert ref == os.environ["HOLYCRAB_INSTALL_REF"]\n'
+                            'shutil.copyfile(Path(os.environ["FAKE_RELEASE_ROOT"]) / relative, sys.argv[sys.argv.index("-o")+1])\n',
+                            encoding="utf-8")
+            curl.chmod(0o755)
+            env = {**os.environ, "HOME": str(root / "home"), "HOLYCRAB_CONFIG_DIR": str(root / "config"),
+                   "HOLYCRAB_INSTALL_PREFIX": str(root / "prefix"), "HOLYCRAB_INSTALL_REF": "a" * 40,
+                   "FAKE_RELEASE_ROOT": str(REPO_ROOT), "HOLYCRAB_INSTALL_AGENTS": "none", "HOLYCRAB_INSTALL_MCP": "0",
+                   "PATH": str(fake_bin) + os.pathsep + os.environ["PATH"]}
+            env.pop("HOLYCRAB_INSTALL_SOURCE_DIR", None)
+            result = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            version = subprocess.run([str(root / "prefix/bin/holycrab"), "--version"], env=env, text=True, capture_output=True)
+            self.assertEqual(version.stdout.strip(), "holycrab 0.4.2")
+            self.assertIn("Next: holycrab setup", result.stdout)
+            self.assertNotIn("account is connected", result.stdout)
+
+    def test_invalid_download_ref_is_rejected_before_installing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            for ref in ("main", "../main", "v0.4.2-rc1", "a" * 39, "a?token=secret"):
+                with self.subTest(ref=ref):
+                    env = {**os.environ, "HOME": temporary, "HOLYCRAB_INSTALL_REF": ref,
+                           "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT), "HOLYCRAB_INSTALL_AGENTS": "none"}
+                    result = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("HOLYCRAB_INSTALL_REF", result.stderr)
+                    self.assertFalse((Path(temporary) / ".local/lib/holycrab").exists())
+
     def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         powershell_installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
-        self.assertIn("VERSION=v0.4.1", installer)
-        self.assertIn('$Version = "v0.4.1"', powershell_installer)
+        self.assertIn("VERSION=v0.4.2", installer)
+        self.assertIn('$Version = "v0.4.2"', powershell_installer)
 
         stable_urls = (
             "https://holycrab.ai/cli/install.sh",
@@ -194,10 +230,10 @@ class InstallerTests(unittest.TestCase):
             env = {**os.environ, "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT),
                    "HOLYCRAB_INSTALL_PREFIX": str(prefix), "HOLYCRAB_CONFIG_DIR": str(config),
                    "HOLYCRAB_INSTALL_AGENTS": "none", "HOLYCRAB_INSTALL_MCP": "0"}
-            for install_number in range(2):
-                if install_number == 1:
-                    # v0.4.0 had no self-updater, so users upgrade by running the installer again.
-                    (prefix / "lib" / "holycrab" / "holycrab_cli.py").write_text('VERSION = "0.4.0"\n')
+            for previous_version in (None, "0.4.0", "0.4.1"):
+                if previous_version is not None:
+                    # Simulate an older CLI, then reinstall without touching local user state.
+                    (prefix / "lib" / "holycrab" / "holycrab_cli.py").write_text('VERSION = "' + previous_version + '"\n')
                 installed = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
                                            text=True, capture_output=True)
                 self.assertEqual(installed.returncode, 0, installed.stderr)
@@ -303,7 +339,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-relative=${url#*/v0.4.1/}
+relative=${url#*/v0.4.2/}
 cp "$FAKE_RELEASE_ROOT/$relative" "$destination"
 if [ "$relative" = "holycrab/scripts/holycrab_cli.py" ]; then
   printf '\\n# tampered\\n' >> "$destination"
@@ -404,8 +440,8 @@ fi
         self.assertNotIn('gh release upload "$release_version"', workflow)
 
     def test_release_notes_have_the_approved_english_title(self) -> None:
-        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.1.md").read_text(encoding="utf-8")
-        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.1\n"))
+        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.2.md").read_text(encoding="utf-8")
+        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.2\n"))
         self.assertIn("SHA-256", notes)
         self.assertIn("Windows", notes)
         self.assertIn("DPAPI", notes)

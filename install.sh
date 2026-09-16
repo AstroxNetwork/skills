@@ -2,7 +2,8 @@
 set -eu
 
 REPOSITORY=AstroxNetwork/skills
-VERSION=v0.4.1
+VERSION=v0.4.2
+SOURCE_REF=${HOLYCRAB_INSTALL_REF:-$VERSION}
 SOURCE_DIR=${HOLYCRAB_INSTALL_SOURCE_DIR:-}
 INSTALL_MCP=${HOLYCRAB_INSTALL_MCP:-1}
 INSTALL_AGENTS=${HOLYCRAB_INSTALL_AGENTS:-codex,claude}
@@ -23,10 +24,10 @@ PATH_REG_PROFILE=
 PATH_REG_ADDED=0
 PATH_REG_ADDED_THIS_RUN=0
 PREVIOUS_PATH_PROFILE=
-SHA256_HOLYCRAB_CLI=0b550cde6b6411a8c993798abcb44a6fe2e24fd5c31f2ff3d9963eb3082eba8b
+SHA256_HOLYCRAB_CLI=bab709a5ad2d4738ff852fea780d84007aea21e011ece63f3461780d973ff435
 SHA256_CAPABILITIES=75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
-SHA256_SKILL=9ebe8ea23804b0a4b3c26e7e3f84e74b27749dfb00b1e18afd0aa1940d52ef62
+SHA256_SKILL=b5e52ba0aa5ede2e5c6a99491805f232cc4cc5ff6e158c4c27c81336ce149b23
 SHA256_OPENAI_YAML=64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7
 SHA256_SEGNO=28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7
 SHA256_SEGNO_LICENSE=de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935
@@ -43,6 +44,10 @@ command -v python3 >/dev/null 2>&1 || {
 }
 python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' || {
   echo "Python 3.10 or newer is required for HolyCrab." >&2
+  exit 1
+}
+python3 -c 'import re, sys; raise SystemExit(0 if re.fullmatch(r"(?:[0-9a-f]{40}|v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))", sys.argv[1]) else 1)' "$SOURCE_REF" || {
+  echo "HOLYCRAB_INSTALL_REF must be a full commit hash or stable version tag; installation stopped." >&2
   exit 1
 }
 
@@ -173,7 +178,7 @@ fetch() {
       echo "curl is required to install HolyCrab." >&2
       exit 1
     }
-    curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/$VERSION/$fetch_relative" -o "$fetch_destination"
+    curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/$SOURCE_REF/$fetch_relative" -o "$fetch_destination"
     progress "Verifying SHA-256 for $fetch_relative..."
     verify_sha256 "$fetch_destination" "$fetch_sha256" "$fetch_relative"
   fi
@@ -236,9 +241,9 @@ persist_path
 
 python3 - "$LIB_DIR/installation.json" "$PREFIX" "$INSTALL_AGENTS" "$INSTALL_MCP" \
   "$SHA256_HOLYCRAB_CLI" "$SHA256_CAPABILITIES" "$SHA256_SEGNO" "$SHA256_SEGNO_LICENSE" "$SHA256_LAUNCHER" \
-  "$SHA256_SKILL" "$SHA256_OPENAI_YAML" "$PATH_REG_KIND" "$PATH_REG_DIR" "$PATH_REG_PROFILE" "$PATH_REG_ADDED" <<'PY'
+  "$SHA256_SKILL" "$SHA256_OPENAI_YAML" "$PATH_REG_KIND" "$PATH_REG_DIR" "$PATH_REG_PROFILE" "$PATH_REG_ADDED" "$VERSION" <<'PY'
 import json, os, pathlib, sys, tempfile
-target, prefix, agents, mcp, cli, capabilities, segno, license_hash, launcher, skill, openai, path_kind, path_dir, path_profile, path_added = sys.argv[1:]
+target, prefix, agents, mcp, cli, capabilities, segno, license_hash, launcher, skill, openai, path_kind, path_dir, path_profile, path_added, version = sys.argv[1:]
 selected = [item for item in agents.split(",") if item and item != "none"]
 core = [
     {"path": "holycrab_cli.py", "sha256": cli},
@@ -260,7 +265,7 @@ for agent in selected:
 value = {
     "schemaVersion": 2,
     "managedBy": "holycrab-installer",
-    "version": "0.4.1",
+    "version": version.removeprefix("v"),
     "prefix": prefix,
     "agents": selected,
     "mcp": mcp == "1",
@@ -357,7 +362,7 @@ if [ "$installed_version" != "holycrab ${VERSION#v}" ]; then
   echo "Installed CLI version does not match $VERSION; installation stopped." >&2
   exit 1
 fi
-HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" doctor --json >/dev/null || {
+doctor_report=$(HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" doctor --json) || {
   echo "Installed files failed HolyCrab doctor; installation stopped." >&2
   exit 1
 }
@@ -365,4 +370,12 @@ INSTALL_COMPLETE=1
 echo "HolyCrab CLI, local MCP, and Skill are installed."
 echo "Command: $BIN_DIR/holycrab"
 echo "PATH is active inside the installer. If this command was piped to sh, run: export PATH=\"$BIN_DIR:\$PATH\""
-echo "Next: holycrab setup"
+printf '%s\n' "$doctor_report" | python3 -c '
+import json, sys
+guide = json.load(sys.stdin)["onboarding"]
+print(guide["instruction"])
+if guide["command"]:
+    print("Next: " + guide["command"])
+print("Available workflows after account verification: " + "; ".join(guide["businessUses"]) + ".")
+print("For Agents: " + guide["agentInstruction"])
+'

@@ -364,29 +364,29 @@ class V041Tests(unittest.TestCase):
 
     def test_update_rejects_unstable_versions_and_missing_digest(self) -> None:
         with self.assertRaises(ValueError):
-            cli.release_update_info({"tag_name": "v0.4.2-rc1", "draft": False, "prerelease": True,
-                                     "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.2-rc1"})
+            cli.release_update_info({"tag_name": "v0.4.3-rc1", "draft": False, "prerelease": True,
+                                     "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.3-rc1"})
         installer_name = "install.ps1" if os.name == "nt" else "install.sh"
         with self.assertRaisesRegex(SystemExit, "missing its GitHub SHA-256"):
-            cli.release_installer({"tag_name": "v0.4.2", "assets": [{"name": installer_name, "browser_download_url":
-                f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.2/{installer_name}", "digest": None}]})
+            cli.release_installer({"tag_name": "v0.4.3", "assets": [{"name": installer_name, "browser_download_url":
+                f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.3/{installer_name}", "digest": None}]})
         older = cli.release_update_info({"tag_name": "v0.4.0", "draft": False, "prerelease": False,
                                          "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.0"})
         self.assertFalse(older["updateAvailable"])
         bad_asset_name = "install.ps1" if os.name == "nt" else "install.sh"
         with self.assertRaisesRegex(SystemExit, "invalid download URL"):
-            cli.release_installer({"tag_name": "v0.4.2", "assets": [{"name": bad_asset_name,
+            cli.release_installer({"tag_name": "v0.4.3", "assets": [{"name": bad_asset_name,
                 "browser_download_url": "https://evil.example/install", "digest": "sha256:" + "0" * 64}]})
 
     def test_update_cache_limits_automatic_checks_to_once_per_day(self) -> None:
-        release = {"checkedAt": cli.utc_now(), "latestVersion": "0.4.2", "updateAvailable": True,
-                   "releasePage": cli.RELEASE_PAGE_PREFIX + "v0.4.2", "release": {"tag_name": "v0.4.2"}}
+        release = {"checkedAt": cli.utc_now(), "latestVersion": "0.4.3", "updateAvailable": True,
+                   "releasePage": cli.RELEASE_PAGE_PREFIX + "v0.4.3", "release": {"tag_name": "v0.4.3"}}
         with patch.dict(os.environ, {"HOLYCRAB_NO_UPDATE_CHECK": "0"}), \
                 patch.object(cli, "fetch_latest_release", return_value=release) as fetch:
             first = cli.check_for_update()
             second = cli.check_for_update()
         self.assertTrue(first["updateAvailable"])
-        self.assertEqual(second["latestVersion"], "0.4.2")
+        self.assertEqual(second["latestVersion"], "0.4.3")
         fetch.assert_called_once()
 
     def test_failed_automatic_update_check_is_also_cached_for_one_day(self) -> None:
@@ -400,14 +400,14 @@ class V041Tests(unittest.TestCase):
 
     def test_update_requires_confirmation_and_verifies_digest_before_execution(self) -> None:
         name = "install.ps1" if os.name == "nt" else "install.sh"
-        marker = '$Version = "v0.4.2"\n' if os.name == "nt" else "VERSION=v0.4.2\n"
+        marker = '$Version = "v0.4.3"\n' if os.name == "nt" else "VERSION=v0.4.3\n"
         body = marker.encode()
-        release = {"tag_name": "v0.4.2", "assets": [{"name": name,
-            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.2/{name}",
+        release = {"tag_name": "v0.4.3", "assets": [{"name": name,
+            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.3/{name}",
             "digest": "sha256:" + cli.hashlib.sha256(body).hexdigest()}]}
         state = {"release": release}
         args = argparse.Namespace(check=False, yes=False)
-        with patch.object(cli, "check_for_update", return_value={"latestVersion": "0.4.2", "updateAvailable": True}), \
+        with patch.object(cli, "check_for_update", return_value={"latestVersion": "0.4.3", "updateAvailable": True}), \
                 patch.object(cli, "read_update_state", return_value=state), \
                 patch.object(cli.sys.stdin, "isatty", return_value=False), \
                 patch.object(cli, "run_update") as run, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
@@ -426,12 +426,13 @@ class V041Tests(unittest.TestCase):
         remote = MagicMock()
         remote.__enter__.return_value.read.side_effect = [body, b""]
         completed = MagicMock(returncode=0)
-        with patch.dict(os.environ, {"HOLYCRAB_INSTALL_SOURCE_DIR": "/unsafe/source"}), \
+        with patch.dict(os.environ, {"HOLYCRAB_INSTALL_SOURCE_DIR": "/unsafe/source", "HOLYCRAB_INSTALL_REF": "a" * 40}), \
                 patch.object(cli, "open_download", return_value=remote), \
                 patch.object(cli, "load_installation", return_value={"prefix": "/chosen", "agents": ["codex"], "mcp": False}), \
                 patch.object(cli.subprocess, "run", return_value=completed) as run:
             cli.run_update(release)
         self.assertNotIn("HOLYCRAB_INSTALL_SOURCE_DIR", run.call_args.kwargs["env"])
+        self.assertNotIn("HOLYCRAB_INSTALL_REF", run.call_args.kwargs["env"])
         self.assertEqual(run.call_args.kwargs["env"]["HOLYCRAB_INSTALL_PREFIX"], "/chosen")
 
     def test_corrupt_update_cache_is_discarded_and_online_doctor_checks_selected_mcp(self) -> None:
@@ -451,7 +452,7 @@ class V041Tests(unittest.TestCase):
                     ]}
         with patch.object(cli, "load_installation", return_value=manifest), \
                 patch.object(cli, "mcp_registration_check", return_value={"ok": True}) as mcp, \
-                patch.object(cli, "send", return_value=(200, {"code": 200, "data": {}})), \
+                patch.object(cli, "send", return_value=(200, {"code": 200, "data": {"username": "Fixture", "credit": 10}})), \
                 patch.object(cli, "check_for_update", return_value={"latestVersion": cli.VERSION,
                                                                       "updateAvailable": False}):
             report = cli.local_health_report(online=True)

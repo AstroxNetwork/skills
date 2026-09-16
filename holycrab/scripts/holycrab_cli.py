@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - POSIX runtime
     msvcrt = None
 
 
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
 PUBLIC_ACCOUNT_URL = "https://generate.holycrab.ai/user-tokens"
 REAL_HUMAN_CALLBACK_URL = "https://generate.holycrab.ai/real-human-authorization/callback"
@@ -651,6 +651,68 @@ def public_account_data(value: Any) -> Any:
     return {key: value[key] for key in PUBLIC_ACCOUNT_FIELDS if key in value}
 
 
+def valid_account_payload(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    named = any(isinstance(value.get(key), str) and value[key].strip() for key in ("username", "nickname"))
+    credit = value.get("credit")
+    return bool(named or (isinstance(credit, (int, float)) and not isinstance(credit, bool) and math.isfinite(credit)))
+
+
+ONBOARDING_EXAMPLES = (
+    {"code": "PRODUCT_IMAGES", "title": "Product images",
+     "prompt": "Turn these product photos into clean e-commerce listing images that highlight the product's selling points."},
+    {"code": "SOCIAL_AD_VIDEO", "title": "Social media ad video",
+     "prompt": "Use these product images to make a social media ad video showing how the product is used."},
+    {"code": "PRODUCT_VOICEOVER", "title": "Product voiceover",
+     "prompt": "Turn this product introduction into a natural, clear Chinese voiceover for a promotional video."},
+)
+ONBOARDING_AGENT_INSTRUCTION = (
+    "During installation or the first account connection, use the onboarding state to guide setup or verify the active account. "
+    "Only after verification, introduce the business uses and translate the three examples into the user's current language. "
+    "Give the full introduction once in that installation conversation, then ask what the user wants to work on first. "
+    "Do not repeat it for ordinary queries, reconnections, or updates. The examples are suggestions, not permission to execute. "
+    "Ask for the user's goal, selected materials, and desired result; check actual capabilities before proposing a workflow. "
+    "Keep credit estimates in the execution workflow, not in the example prompts. Confirm uploads and paid generation separately. "
+    "Real-person authorization does not create assets; continue with file selection, preview, and upload confirmation. "
+    "If the Agent must reload its tools, explain how to restart it; do not restart it yourself."
+)
+
+
+def onboarding_guidance(*, configured: bool, verified: bool = False, environment_override: bool = False) -> dict[str, Any]:
+    if not configured:
+        state, instruction, command = "CONNECT_ACCOUNT", "Connect your HolyCrab account locally. Never send your API Key in chat.", "holycrab setup"
+    elif environment_override:
+        state, instruction, command = (
+            "VERIFY_ACCOUNT", "HOLYCRAB_API_KEY overrides the saved login. Clear the override, then check the active account.",
+            clear_environment_command("HOLYCRAB_API_KEY") + ("; " if os.name == "nt" else " && ") + "holycrab auth status",
+        )
+    elif not verified:
+        state, instruction, command = "VERIFY_ACCOUNT", "A Key is configured, but the active account has not been verified. Check it before starting work.", "holycrab auth status"
+    else:
+        state, instruction, command = "READY", "Your HolyCrab account is connected. Return to Codex or Claude Code and describe what you want to create.", None
+    return {
+        "state": state, "instruction": instruction, "command": command,
+        "businessUses": ["E-commerce product images", "Social media advertising videos", "Product voiceovers",
+                         "Upload selected local media", "Authorize a real person and upload their media",
+                         "Check tasks and download results"],
+        "examples": [dict(example) for example in ONBOARDING_EXAMPLES],
+        "question": "What would you like to work on first?",
+        "agentInstruction": ONBOARDING_AGENT_INSTRUCTION,
+    }
+
+
+def show_onboarding(guidance: dict[str, Any], *, introduce: bool = False) -> None:
+    command_progress(guidance["instruction"])
+    if guidance["command"]:
+        command_progress("Next: " + guidance["command"])
+    if guidance["state"] == "READY" and introduce:
+        command_progress("Business uses: " + "; ".join(guidance["businessUses"]) + ".")
+        for example in guidance["examples"]:
+            command_progress(example["title"] + ": " + example["prompt"])
+        command_progress(guidance["question"])
+
+
 def public_account_response(response: Any) -> Any:
     return public_envelope(response, public_account_data)
 
@@ -1217,7 +1279,7 @@ def command_set_key(args: argparse.Namespace) -> int:
     if args.stdin:
         api_key = sys.stdin.readline().strip()
     else:
-        print(f"Create or copy an API Key at: {PUBLIC_ACCOUNT_URL}")
+        command_progress(f"Create or copy an API Key at: {PUBLIC_ACCOUNT_URL}")
         api_key = getpass.getpass("Paste API Key (input hidden): ").strip()
     if not api_key:
         raise SystemExit("API Key cannot be empty")
@@ -1227,22 +1289,26 @@ def command_set_key(args: argparse.Namespace) -> int:
         command_progress("API Key received. Verifying your HolyCrab account...")
         status, response = send("GET", "/api/user/me", api_key=api_key)
         account = response_data(status, response)
-        if not isinstance(account, dict) or not public_account_data(account):
+        if not valid_account_payload(account):
             raise ValueError("Account verification returned an incomplete response; the API Key was not saved")
     config = load_config()
+    previously_configured = bool(config.get("apiKey"))
     config["apiKey"] = api_key
     save_config(config)
-    print("HolyCrab API Key saved locally with user-only permissions.")
-    if os.environ.get("HOLYCRAB_API_KEY"):
-        print("Warning: HOLYCRAB_API_KEY is still set and overrides the saved login.")
-        print("Run: " + clear_environment_command("HOLYCRAB_API_KEY"))
-    if isinstance(account, dict):
-        visible = public_account_data(account)
-        if visible:
-            print_json(visible)
-        command_progress("HolyCrab account connected. Return to Codex or Claude Code and ask it to check HolyCrab capabilities or estimate a request.")
-    elif args.no_verify:
-        command_progress("API Key saved without verification. Next: holycrab auth status")
+    command_progress("HolyCrab API Key saved locally with user-only permissions.")
+    overridden = bool(os.environ.get("HOLYCRAB_API_KEY"))
+    if overridden:
+        command_progress("Warning: HOLYCRAB_API_KEY is still set and overrides the saved login.")
+        command_progress("Run: " + clear_environment_command("HOLYCRAB_API_KEY"))
+    verified = valid_account_payload(account)
+    guidance = onboarding_guidance(configured=True, verified=verified, environment_override=overridden)
+    result = public_account_data(account) if isinstance(account, dict) else {}
+    result.update({"configured": True, "valid": verified and not overridden, "savedKeyVerified": verified,
+                   "credentialSource": "environment" if overridden else "local config", "onboarding": guidance})
+    print_json(result)
+    if args.no_verify:
+        command_progress("API Key saved without verification.")
+    show_onboarding(guidance, introduce=not previously_configured)
     return 0
 
 
@@ -1253,15 +1319,19 @@ def command_auth_status(args: argparse.Namespace) -> int:
     )
     if not source:
         print_json({"configured": False, "valid": False, "next": "Run `holycrab setup`.",
+                    "onboarding": onboarding_guidance(configured=False),
                     "nextAction": next_action("CONNECT_ACCOUNT", "Configure your API Key locally; never send it in chat.", "holycrab setup")})
         return 1
     command_progress("Checking your HolyCrab account...")
     status, response = send("GET", "/api/user/me")
-    if not response_ok(status, response):
+    account = response_data(status, response) if response_ok(status, response) else None
+    if not valid_account_payload(account):
         print_json({"configured": True, "valid": False, "credentialSource": source, "httpStatus": status,
+                    "onboarding": onboarding_guidance(configured=True),
                     "nextAction": next_action("CHECK_API_KEY", "Check that the API Key is enabled on the account page, then configure the correct Key locally.", "holycrab setup")})
         return 1
-    print_json({"configured": True, "valid": True, "credentialSource": source, "account": public_account_data(response_data(status, response))})
+    print_json({"configured": True, "valid": True, "credentialSource": source, "account": public_account_data(account),
+                "onboarding": onboarding_guidance(configured=True, verified=True)})
     return 0
 
 
@@ -2604,6 +2674,7 @@ def run_update(release: dict[str, Any], *, progress: Callable[[str], None] | Non
             raise SystemExit("Release installer version does not match its release; update stopped")
         environment = os.environ.copy()
         environment.pop("HOLYCRAB_INSTALL_SOURCE_DIR", None)
+        environment.pop("HOLYCRAB_INSTALL_REF", None)
         if isinstance(manifest.get("prefix"), str):
             environment["HOLYCRAB_INSTALL_PREFIX"] = manifest["prefix"]
         agents = manifest.get("agents")
@@ -3282,7 +3353,7 @@ def local_health_report(*, online: bool = False) -> dict[str, Any]:
         if checks["apiKey"]["configured"]:
             try:
                 status, response = send("GET", "/api/user/me")
-                checks["apiKey"]["ok"] = response_ok(status, response)
+                checks["apiKey"]["ok"] = response_ok(status, response) and valid_account_payload(response_data(status, response))
                 checks["apiKey"]["httpStatus"] = status
             except (SystemExit, OSError, urllib.error.URLError, http.client.HTTPException) as error:
                 checks["apiKey"]["error"] = sanitize_text_for_output(str(error))
@@ -3314,7 +3385,9 @@ def local_health_report(*, online: bool = False) -> dict[str, Any]:
     if online:
         ok = ok and checks.get("apiKey", {}).get("ok") is True and not update.get("error")
         ok = ok and all(row.get("ok") is True for row in checks.get("mcpRegistrations", {}).values())
-    return {"ok": ok, "version": VERSION, "checks": checks, "update": update, "repairs": list(dict.fromkeys(repairs))}
+    return {"ok": ok, "version": VERSION, "checks": checks, "update": update, "repairs": list(dict.fromkeys(repairs)),
+            "onboarding": onboarding_guidance(configured=bool(checks.get("config", {}).get("keyConfigured")),
+                                               verified=checks.get("apiKey", {}).get("ok") is True)}
 
 
 def command_doctor(args: argparse.Namespace) -> int:
@@ -3448,7 +3521,10 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
         return local_health_report(online=False)
     if name == "account_get":
         status, response = send("GET", "/api/user/me")
-        return public_account_data(response_data(status, response))
+        account = response_data(status, response)
+        if not valid_account_payload(account):
+            raise ValueError("Account verification returned an incomplete response; check the active API Key locally")
+        return {**public_account_data(account), "onboarding": onboarding_guidance(configured=True, verified=True)}
     if name == "capabilities_list":
         return capability_snapshot()
     if name == "capability_get":
@@ -3515,6 +3591,7 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
             "Before an operation explain what you will do in the user's current language. Afterward explain the result and the returned nextAction when one applies; do not invent extra steps for completed queries. "
             "Never treat authorization as upload consent or generation consent. Never retry an unknown mutation."
         )
+        instructions += " " + ONBOARDING_AGENT_INSTRUCTION + " Read cli_status/account_get onboarding for the shared business examples."
         if notice:
             instructions += " " + notice
         return {

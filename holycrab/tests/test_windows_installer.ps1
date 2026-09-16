@@ -26,10 +26,30 @@ $PathEntries = @($env:Path -split ";" | Where-Object {
 if ($PathEntries.Count -ne 1) { throw "HolyCrab bin directory should occur once in current PATH" }
 
 $Version = & $Launcher --version
-if ($Version -notmatch "0\.4\.1") { throw "Unexpected version: $Version" }
+if ($Version -ne "holycrab 0.4.2") { throw "Unexpected version: $Version" }
 
 $Doctor = & $Launcher doctor --json | ConvertFrom-Json
 if ($Doctor.ok -ne $true) { throw "HolyCrab doctor did not report ok" }
+if ($Doctor.onboarding.state -ne "CONNECT_ACCOUNT") { throw "Unconfigured account falsely reported ready" }
+
+# Execute the actual colleague command against a fixed GitHub commit, not a version-string replacement.
+if ($env:HOLYCRAB_TEST_INSTALL_REF) {
+    $PreviousSourceDir = $env:HOLYCRAB_INSTALL_SOURCE_DIR
+    $PreviousRef = $env:HOLYCRAB_INSTALL_REF
+    $env:HOLYCRAB_INSTALL_SOURCE_DIR = $null
+    $ref = $env:HOLYCRAB_TEST_INSTALL_REF
+    try {
+        $oldRef=$env:HOLYCRAB_INSTALL_REF; try { $env:HOLYCRAB_INSTALL_REF=$ref; & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/AstroxNetwork/skills/$ref/install.ps1"))) } finally { $env:HOLYCRAB_INSTALL_REF=$oldRef }
+        if ($env:HOLYCRAB_INSTALL_REF -ne $PreviousRef) { throw "Temporary download ref was not restored" }
+        $PinnedVersion = & $Launcher --version
+        if ($LASTEXITCODE -ne 0 -or $PinnedVersion -ne "holycrab 0.4.2") { throw "Fixed-commit Windows installation failed" }
+        $PinnedHelp = & $Launcher --help | Out-String
+        if ($PinnedHelp -notmatch "uninstall") { throw "Fixed-commit Windows installation omitted uninstall" }
+    } finally {
+        $env:HOLYCRAB_INSTALL_SOURCE_DIR = $PreviousSourceDir
+        $env:HOLYCRAB_INSTALL_REF = $PreviousRef
+    }
+}
 
 $CliPath = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\holycrab_cli.py"
 $Python = (Get-Command python).Source
@@ -37,12 +57,25 @@ $Python = (Get-Command python).Source
 $SavedKey = "hc_test_windows_dpapi_123456789"
 $SetupOutput = ($SavedKey | & $Launcher setup --stdin --no-verify | Out-String)
 if ($SetupOutput.Contains($SavedKey)) { throw "API Key leaked in setup output" }
+$SetupJson = $SetupOutput | ConvertFrom-Json
+if ($SetupJson.valid -ne $false -or $SetupJson.onboarding.state -ne "VERIFY_ACCOUNT") { throw "Unverified setup falsely reported connected" }
 $ConfigPath = Join-Path $env:HOLYCRAB_CONFIG_DIR "config.json"
 $ConfigText = Get-Content -LiteralPath $ConfigPath -Raw
 $Config = $ConfigText | ConvertFrom-Json
 if ($Config.PSObject.Properties.Name -contains "apiKey") { throw "Windows config retained plaintext apiKey" }
 if (-not ($Config.PSObject.Properties.Name -contains "apiKeyDpapi")) { throw "Windows config omitted DPAPI ciphertext" }
 if ($ConfigText.Contains($SavedKey)) { throw "Windows config contains plaintext API Key" }
+
+$OriginalCli = Get-Content -LiteralPath $CliPath -Raw -Encoding UTF8
+foreach ($OldVersion in @("0.4.0", "0.4.1")) {
+    [IO.File]::WriteAllText($CliPath, $OriginalCli.Replace('VERSION = "0.4.2"', ('VERSION = "' + $OldVersion + '"')), [Text.UTF8Encoding]::new($false))
+    & (Join-Path $RepoRoot "install.ps1")
+    if ((Get-Content -LiteralPath $ConfigPath -Raw) -ne $ConfigText) { throw "Upgrade changed the saved DPAPI credential" }
+    $UpgradedVersion = & $Launcher --version
+    if ($UpgradedVersion -ne "holycrab 0.4.2") { throw "Older-version upgrade failed" }
+    $UpgradedDoctor = & $Launcher doctor --json | ConvertFrom-Json
+    if ($UpgradedDoctor.onboarding.state -ne "VERIFY_ACCOUNT") { throw "Upgrade confused saved credentials with verified login" }
+}
 
 $LegacyKey = "hc_test_legacy_plaintext_123456789"
 [IO.File]::WriteAllText($ConfigPath, ('{"apiKey":"' + $LegacyKey + '"}'), [Text.UTF8Encoding]::new($false))

@@ -7,6 +7,14 @@ description: Use for HolyCrab generation, media uploads, and real-person authori
 
 Use the installed `holycrab` CLI or its local MCP tools. Treat its versioned capability snapshot as the contract bundled with the installed release; do not call it live data and do not guess model limits from memory.
 
+## Installation and first-use guidance
+
+After installation or the first account connection, read the shared `onboarding` from `holycrab doctor --json`, `holycrab auth status`, or MCP `cli_status` / `account_get`. `CONNECT_ACCOUNT` means guide the user to local setup; `VERIFY_ACCOUNT` means verify the active login, not just a saved Key. Offline doctor, `--no-verify`, an empty account response, and an environment override do not establish a connected account.
+
+When the account is `READY`, give one short introduction in the user's current language: product listing images, social media ad videos, product voiceovers, selected local uploads, real-person authorization and uploads, and task/result downloads. Translate the three `onboarding.examples` and ask what they want to work on first. Use practical business goals, not commands, IDs, or credit-estimate prompts. Ask for the goal, selected materials, and desired result; check supported capabilities rather than promising a feature from the example alone.
+
+Show the full introduction once in that installation conversation, not on ordinary queries, reconnects, or updates. Do not persist a claim that the user has read it. Examples are suggestions, not authorization to create tasks, start verification, upload files, or delete anything. Estimates and explicit paid-generation confirmation remain part of the execution workflow; file uploads require their own complete preview and confirmation. Authorization creates a person group, not material: continue by asking the user to select files for upload.
+
 ## Safe workflow
 
 1. Check the configured API Key with `holycrab auth status`. If missing, ask the user to run `holycrab setup` locally. Never ask them to paste the API Key into chat.

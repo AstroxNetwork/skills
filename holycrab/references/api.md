@@ -504,7 +504,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/audio-generation' \
 
 ## 9. 真人授权与真人素材
 
-本节对应 `v0.4.1` 工具能力，需要配套 API 和官方回调页已部署。工具不替本人完成验证；真人授权也不代替素材上传确认或生成任务的积分确认。所有账户操作使用现有 API Key，公共 ID 为 1–64 位字母或数字。
+本节对应 `v0.4.2` 工具能力，需要配套 API 和官方回调页已部署。工具不替本人完成验证；真人授权也不代替素材上传确认或生成任务的积分确认。所有账户操作使用现有 API Key，公共 ID 为 1–64 位字母或数字。
 
 ### 9.1 发起授权
 
@@ -569,6 +569,10 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 
 ## 10. CLI 安全层
 
+- `setup` / `auth set-key` 保留公开账号字段并输出一个 JSON 结果，追加 `configured`、`valid`、`savedKeyVerified`、`credentialSource` 和 `onboarding`；保存成功不代表环境变量覆盖后的活动账号有效。
+- `doctor`、`auth status`、MCP `cli_status` / `account_get` 追加统一 `onboarding`，包括 `state`、`instruction`、`command`、`businessUses`、三个 `examples`、`question` 和 `agentInstruction`。状态为 `CONNECT_ACCOUNT / VERIFY_ACCOUNT / READY`；普通离线自检不会返回 `READY`。异常成功响应不能证明账号有效。
+- Agent 仅在安装或首次连接对话中、账号验证成功后介绍业务场景一次，并使用用户当前语言。示例不构成上传、授权、付费或删除许可；费用估算留在实际执行流程，不要求用户在需求中提及。
+- 测试安装通过 `HOLYCRAB_INSTALL_REF` 指定完整提交号，默认下载引用仍为版本标签；下载引用不改变版本号校验。正式更新清除该变量，保留 GitHub Release、SHA-256 和严格版本校验。
 - `estimate` 与 `create` 共用能力校验器；已知非法模型、分辨率、时长、素材组合和字段会在请求前拒绝。
 - 生成提交只在收到合法任务 ID 时记为 `created`；明确 4xx 业务拒绝记为 `failed`；408、5xx、断网、异常 2xx 和缺少任务 ID 都记为 `unknown`，不会重试。用 `generate attempts list|get` 或 MCP `generation_attempt_list|get` 查询本地记录。
 - 授权、素材、估算、任务及需要恢复的 attempt 结果包含 `nextAction: {code, instruction, command}`。缺少文件、输出位置或请求时 `command` 为 `null`，Agent 应询问用户，不应拼接占位命令。即时查询无需额外建议。轮询仅在状态变化和结束时输出。

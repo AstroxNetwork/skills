@@ -1,7 +1,11 @@
 $ErrorActionPreference = "Stop"
 
 $Repository = "AstroxNetwork/skills"
-$Version = "v0.4.1"
+$Version = "v0.4.2"
+$SourceRef = if ($env:HOLYCRAB_INSTALL_REF) { $env:HOLYCRAB_INSTALL_REF } else { $Version }
+if ($SourceRef -cnotmatch '^(?:[0-9a-f]{40}|v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$') {
+    throw "HOLYCRAB_INSTALL_REF must be a full commit hash or stable version tag; installation stopped."
+}
 $SourceDir = $env:HOLYCRAB_INSTALL_SOURCE_DIR
 $InstallMcp = if ($env:HOLYCRAB_INSTALL_MCP) { $env:HOLYCRAB_INSTALL_MCP } else { "1" }
 $InstallAgents = if ($env:HOLYCRAB_INSTALL_AGENTS) { $env:HOLYCRAB_INSTALL_AGENTS } else { "codex,claude" }
@@ -24,9 +28,9 @@ function Write-HolyCrabProgress([string]$Message) {
 }
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "0b550cde6b6411a8c993798abcb44a6fe2e24fd5c31f2ff3d9963eb3082eba8b" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "bab709a5ad2d4738ff852fea780d84007aea21e011ece63f3461780d973ff435" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
-    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "9ebe8ea23804b0a4b3c26e7e3f84e74b27749dfb00b1e18afd0aa1940d52ef62" },
+    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "b5e52ba0aa5ede2e5c6a99491805f232cc4cc5ff6e158c4c27c81336ce149b23" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
     @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" }
@@ -56,7 +60,7 @@ function Copy-ReleaseFile([hashtable]$File) {
     if ($SourceDir) {
         Copy-Item -LiteralPath (Join-Path $SourceDir $File.Relative) -Destination $Destination
     } else {
-        $Url = "https://raw.githubusercontent.com/$Repository/$Version/$($File.Relative)"
+        $Url = "https://raw.githubusercontent.com/$Repository/$SourceRef/$($File.Relative)"
         Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Destination
         Write-HolyCrabProgress "Verifying SHA-256 for $($File.Relative)..."
         $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Destination).Hash.ToLowerInvariant()
@@ -183,7 +187,7 @@ try {
     $Manifest = @{
         schemaVersion = 2
         managedBy = "holycrab-installer"
-        version = "0.4.1"
+        version = $Version.TrimStart("v")
         prefix = $Prefix
         agents = @($InstallAgents -split "," | Where-Object { $_ -and $_ -ne "none" })
         mcp = $InstallMcp -eq "1"
@@ -250,7 +254,10 @@ try {
     Write-Host "HolyCrab CLI, local MCP, and Skill are installed."
     Write-Host "Command: $Launcher"
     Write-Host "PATH is active in this PowerShell session and saved for future sessions."
-    Write-Host "Next: holycrab setup"
+    Write-Host $Doctor.onboarding.instruction
+    if ($Doctor.onboarding.command) { Write-Host ("Next: " + $Doctor.onboarding.command) }
+    Write-Host ("Available workflows after account verification: " + ($Doctor.onboarding.businessUses -join "; ") + ".")
+    Write-Host ("For Agents: " + $Doctor.onboarding.agentInstruction)
 } finally {
     if ($InstallStarted -and -not $InstallComplete) {
         Remove-Item -LiteralPath $LibDir -Recurse -Force -ErrorAction SilentlyContinue

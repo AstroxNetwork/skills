@@ -51,6 +51,7 @@ jobs:
           holycrab.tests.test_v041
           holycrab.tests.test_feedback
           holycrab.tests.test_command_matrix
+          holycrab.tests.test_onboarding
       - name: Compile Python entry points (Unix)
         if: runner.os != 'Windows'
         run: python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py holycrab/scripts/validate_generate_contract.py holycrab/tests/safe_live_smoke.py
@@ -131,7 +132,7 @@ jobs:
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
           test -f "${HOME}/.claude/skills/holycrab/agents/openai.yaml"
-          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.1'
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.2'
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json > "${RUNNER_TEMP}/doctor.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["checks"]["config"]["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"
@@ -147,6 +148,8 @@ jobs:
           python-version: "3.12"
       - name: Install twice, verify PATH, CLI, and MCP
         shell: powershell
+        env:
+          HOLYCRAB_TEST_INSTALL_REF: ${{ github.event.pull_request.head.sha || github.sha }}
         run: .\holycrab\tests\test_windows_installer.ps1
 
   release:

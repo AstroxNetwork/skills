@@ -46,7 +46,7 @@ class TerminalFeedbackTests(unittest.TestCase):
             output = self.read_until(master, b"Paste API Key (input hidden):")
             os.write(master, b"hc_test_pty_hidden_input\n")
             output += self.read_until(master, b"Verifying", timeout=1)
-            output += self.read_until(master, b"Return to Codex")
+            output += self.read_until(master, b"\r\nWhat would you like to work on first?")
             self.assertEqual(process.wait(timeout=5), 0)
             self.assertNotIn(b"hc_test_pty_hidden_input", output)
             self.assertLess(output.index(b"Verifying"), output.index(b"saved locally"))

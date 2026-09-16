@@ -6,7 +6,9 @@
 - 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
 - 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.4.1` 内置 `2026-09-14` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
+它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.4.2` 内置 `2026-09-14` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
+
+`v0.4.2` 增加安装后的业务场景引导，并分离测试安装的下载引用与版本号。本版本仍在测试分支，官方稳定入口不会安装尚未发布的测试版。
 
 `v0.4.1` 增加启动自检、每日更新提示、付费提交防重、严格下载防护和真人素材两阶段批量上传。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
@@ -64,6 +66,28 @@ holycrab auth status
 ```
 
 `holycrab setup` 会隐藏输入、验证并保存 Key；`holycrab auth set-key` 提供相同的显式配置入口。macOS/Linux 使用仅当前用户可读写的本地配置文件；Windows 使用当前用户 DPAPI 加密，首次读取旧版明文时会自动迁移。临时环境变量 `HOLYCRAB_API_KEY` 会覆盖本地配置；如果看到覆盖警告，请先清除该变量，再检查 Key 状态。
+
+## 连接后开始创作
+
+账号验证成功后，Agent 会介绍可用的业务场景。你可以直接告诉 Codex 或 Claude Code：
+
+> 帮我把这些产品照片制作成电商商品主图，突出产品卖点，风格简洁。
+>
+> 把这几张产品图片做成一段适合社交媒体投放的广告视频，重点展示产品的使用场景。
+>
+> 把这段产品介绍制作成自然、清晰的中文配音，用于产品宣传视频。
+
+提供素材和期望效果即可。Agent 会确认缺少的信息、检查模型支持情况，并在执行时说明费用、等待确认；上传文件会单独展示清单并询问确认。真人授权后仍需选择和上传素材。示例不会自动执行；如果 Agent 仍看不到工具，请重启 Agent 后继续。
+
+普通离线自检只能确认本地文件及 Key 是否已配置，不能证明账号有效。`setup`、账号查询与 `doctor` 结果中的 `onboarding` 提供账号连接状态和统一引导；终端过程提示写入 stderr，stdout 保持 JSON。
+
+测试固定提交时，通过 `HOLYCRAB_INSTALL_REF` 指定完整的 40 位提交号；不要替换安装器版本变量，也不要使用可变分支作为下载地址。PowerShell 示例中的 `COMMIT_SHA` 需替换为已验证的测试提交：
+
+```powershell
+$ref='COMMIT_SHA'; $oldRef=$env:HOLYCRAB_INSTALL_REF; try { $env:HOLYCRAB_INSTALL_REF=$ref; & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/AstroxNetwork/skills/$ref/install.ps1"))) } finally { $env:HOLYCRAB_INSTALL_REF=$oldRef }
+```
+
+此命令面向原生 Windows PowerShell，先确认电脑已有 Python 3.10+。测试安装仍校验 `0.4.2` 版本与文件哈希；正式更新会清除临时下载引用，仅安装通过发布校验的稳定版。
 
 ## 常用命令
 
