@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-SCRIPT_PATH = Path(__file__).parents[1] / "scripts" / "holycrab_cli.py"
+SCRIPT_PATH = Path(__file__).parents[1] / "holycrab" / "scripts" / "holycrab_cli.py"
 SPEC = importlib.util.spec_from_file_location("holycrab_mcp", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 holycrab = importlib.util.module_from_spec(SPEC)
@@ -67,10 +67,12 @@ class McpProtocolTests(unittest.TestCase):
         self.assertNotIn("request", names)
         self.assertEqual(names, {"account_get", "capabilities_list", "capability_get",
                                 "generation_estimate", "generation_create", "generation_get", "generation_list",
+                                "generation_attempt_list", "generation_attempt_get", "cli_status",
                                 "real_human_authorization_start", "real_human_authorization_get",
                                 "real_human_groups_list", "real_human_group_rename",
                                 "real_human_group_delete", "real_human_assets_list",
-                                "real_human_asset_delete", "asset_upload", "asset_get"})
+                                "real_human_asset_delete", "asset_upload_prepare", "asset_upload_execute",
+                                "asset_get"})
 
     def test_delete_tools_require_confirmation_and_are_destructive(self) -> None:
         response = holycrab.mcp_dispatch(
@@ -83,6 +85,27 @@ class McpProtocolTests(unittest.TestCase):
                 self.assertEqual(tools[name]["inputSchema"]["properties"]["confirmed"]["type"], "boolean")
                 self.assertTrue(tools[name]["annotations"]["destructiveHint"])
                 self.assertFalse(tools[name]["annotations"]["idempotentHint"])
+
+    def test_removed_direct_upload_tool_is_not_advertised(self) -> None:
+        response = holycrab.mcp_dispatch(
+            {"jsonrpc": "2.0", "id": 22, "method": "tools/list", "params": {}}
+        )
+        names = {tool["name"] for tool in response["result"]["tools"]}
+        self.assertNotIn("asset_upload", names)
+        self.assertIn("asset_upload_prepare", names)
+        self.assertIn("asset_upload_execute", names)
+
+    def test_removed_direct_upload_calls_fail_without_network(self) -> None:
+        with patch.object(holycrab, "send") as send, \
+                patch.object(holycrab, "open_presigned_upload") as upload:
+            response = holycrab.mcp_dispatch({
+                "jsonrpc": "2.0", "id": 23, "method": "tools/call",
+                "params": {"name": "asset_upload", "arguments": {"file": "unused.jpg"}},
+            })
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn("Unknown MCP tool: asset_upload", response["result"]["content"][0]["text"])
+        send.assert_not_called()
+        upload.assert_not_called()
 
     def test_capability_get_returns_public_schema_without_api_routes(self) -> None:
         response = holycrab.mcp_dispatch(
@@ -101,13 +124,13 @@ class McpProtocolTests(unittest.TestCase):
         content = json.loads(result["content"][0]["text"])
         self.assertNotIn("endpoints", content)
         self.assertIn("requestSchema", content)
-        self.assertEqual(content["capabilitySnapshotVersion"], "2026-08-22")
+        self.assertEqual(content["capabilitySnapshotVersion"], "2026-09-14")
         self.assertIn("1K", content["sizes"])
 
     def test_capabilities_list_identifies_the_versioned_snapshot(self) -> None:
         result = holycrab.mcp_tool_call("capabilities_list", {})
-        self.assertEqual(result["snapshotVersion"], "2026-08-22")
-        self.assertEqual(result["publishedAt"], "2026-08-22")
+        self.assertEqual(result["snapshotVersion"], "2026-09-14")
+        self.assertEqual(result["publishedAt"], "2026-09-14")
         self.assertGreater(len(result["models"]), 0)
 
     def test_generation_create_without_confirmation_only_returns_estimate(self) -> None:
@@ -153,7 +176,7 @@ class McpProtocolTests(unittest.TestCase):
                 }
             )
         self.assertTrue(response["result"]["isError"])
-        self.assertIn("attemptId is required", response["result"]["content"][0]["text"])
+        self.assertIn("Missing required tool argument", response["result"]["content"][0]["text"])
         send.assert_not_called()
 
     def test_same_mcp_attempt_id_cannot_create_twice(self) -> None:
@@ -201,7 +224,7 @@ class McpProtocolTests(unittest.TestCase):
         backend = {
             "code": 0,
             "data": {
-                "uniqId": "task-1",
+                "uniqId": "task1",
                 "step": 2,
                 "imageUrls": ["https://cdn.example/result.jpg"],
                 "provider": "internal-provider",
@@ -214,11 +237,11 @@ class McpProtocolTests(unittest.TestCase):
                     "jsonrpc": "2.0",
                     "id": 9,
                     "method": "tools/call",
-                    "params": {"name": "generation_get", "arguments": {"taskId": "task-1"}},
+                    "params": {"name": "generation_get", "arguments": {"taskId": "task1"}},
                 }
             )
         content = response["result"]["structuredContent"]
-        self.assertEqual(content["uniqId"], "task-1")
+        self.assertEqual(content["uniqId"], "task1")
         self.assertNotIn("provider", content)
         self.assertNotIn("request", content)
 

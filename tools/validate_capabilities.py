@@ -103,7 +103,7 @@ def validate_repository(repo_root: Path) -> list[str]:
 
 
 def main() -> int:
-    repo_root = Path(__file__).resolve().parents[2]
+    repo_root = Path(__file__).resolve().parents[1]
     errors = validate_repository(repo_root)
     if errors:
         for error in errors:

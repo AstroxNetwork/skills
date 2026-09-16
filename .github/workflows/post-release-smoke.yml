@@ -1,0 +1,125 @@
+name: Deployed CLI entry point smoke test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deployed-install:
+    name: Website install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      HOLYCRAB_INSTALL_PREFIX: ${{ runner.temp }}/holycrab-website-prefix
+      HOLYCRAB_CONFIG_DIR: ${{ runner.temp }}/holycrab-website-config
+      HOLYCRAB_INSTALL_AGENTS: none
+      HOLYCRAB_INSTALL_MCP: "0"
+      HOLYCRAB_NO_UPDATE_CHECK: "1"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.10"
+      - name: Verify the deployed entry points before running downloaded content
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os, pathlib, urllib.request
+          version = pathlib.Path('install.sh').read_text().split('VERSION=', 1)[1].splitlines()[0]
+          def fetch(url):
+              with urllib.request.urlopen(url, timeout=30) as response:
+                  data = response.read(10 * 1024 * 1024 + 1)
+              assert len(data) <= 10 * 1024 * 1024, 'Unexpectedly large entry point'
+              return data
+          release = json.loads(fetch('https://api.github.com/repos/AstroxNetwork/skills/releases/latest'))
+          assert release['tag_name'] == version and not release['draft'] and not release['prerelease'], 'Release is not the expected stable version'
+          assets = {asset['name']: asset for asset in release['assets']}
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'website-assets'
+          target.mkdir()
+          for name in ('install.sh', 'install.ps1', 'SHA256SUMS'):
+              website = fetch('https://holycrab.ai/cli/' + name)
+              digest = 'sha256:' + hashlib.sha256(website).hexdigest()
+              assert assets[name].get('digest') == digest, 'Website installer differs from the immutable release: ' + name
+              if name != 'SHA256SUMS':
+                  assert website == pathlib.Path(name).read_bytes(), 'Checkout is not the released source'
+              (target / name).write_bytes(website)
+          print('Website entry points match the immutable GitHub Release.')
+          PY
+      - name: Install on macOS from verified website bytes
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset HOLYCRAB_INSTALL_REF HOLYCRAB_INSTALL_SOURCE_DIR
+          sh "${RUNNER_TEMP}/website-assets/install.sh"
+      - name: Install on PowerShell 5.1 from verified website bytes
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:HOLYCRAB_INSTALL_REF = $null
+          $env:HOLYCRAB_INSTALL_SOURCE_DIR = $null
+          & (Join-Path $env:RUNNER_TEMP "website-assets/install.ps1")
+          if ($LASTEXITCODE -ne 0) { throw "Website installation failed" }
+      - name: Check installed health, help, runtime allowlist and Agent interface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, pathlib, subprocess, sys
+          library = pathlib.Path(os.environ['HOLYCRAB_INSTALL_PREFIX']) / 'lib/holycrab'
+          cli = library / 'holycrab_cli.py'
+          command = [sys.executable, str(cli)]
+          def run(*args, **kwargs):
+              return subprocess.run(command + list(args), text=True, capture_output=True, check=True, timeout=30, **kwargs).stdout
+          version = pathlib.Path('install.sh').read_text().split('VERSION=', 1)[1].splitlines()[0].removeprefix('v')
+          assert run('--version').strip() == 'holycrab ' + version
+          assert json.loads(run('doctor', '--json'))['ok'] is True
+          assert 'uninstall' in run('--help')
+          run('uninstall', '--help')
+          expected = {'holycrab_cli.py', 'installation.json', 'references/capabilities.json', 'vendor/segno-1.6.6-py3-none-any.whl', 'vendor/LICENSE.segno'}
+          files = {p.relative_to(library).as_posix() for p in library.rglob('*') if p.is_file() and '__pycache__' not in p.parts}
+          assert files == expected, 'Non-runtime file found in installed CLI'
+          messages = [
+              {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'website-smoke', 'version': '1'}}},
+              {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
+              {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'},
+              {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {"name": "cli_status", 'arguments': {}}},
+              {'jsonrpc': '2.0', 'id': 4, 'method': 'tools/call', 'params': {"name": "capabilities_list", 'arguments': {}}},
+          ]
+          replies = [json.loads(line) for line in run('mcp', 'serve', input=''.join(json.dumps(m) + '\n' for m in messages)).splitlines()]
+          assert len(replies) == 4 and all('error' not in r for r in replies)
+          assert replies[0]['result']['serverInfo']['version'] == version
+          names = {tool['name'] for tool in replies[1]['result']['tools']}
+          assert len(names) == 20 and "asset_upload" not in names and 'uninstall' not in names
+          assert not any(reply['result'].get('isError') for reply in replies[2:])
+          print('Installed version, health, uninstall help, runtime allowlist and all 20 Agent tool registrations passed. No business API calls were made.')
+          PY
+      - name: Uninstall isolated macOS test installation
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          if test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"; then
+            "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" uninstall --yes --purge
+            test ! -e "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
+            test ! -e "${HOLYCRAB_INSTALL_PREFIX}/lib/holycrab"
+          fi
+      - name: Uninstall isolated Windows test installation within 10 seconds
+        if: always() && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $Launcher = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "bin/holycrab.cmd"
+          if (Test-Path $Launcher) {
+            & $Launcher uninstall --yes --purge
+            if ($LASTEXITCODE -ne 0) { throw "Website uninstall failed" }
+            $Deadline = [DateTime]::UtcNow.AddSeconds(10)
+            while ((Test-Path $Launcher) -and [DateTime]::UtcNow -lt $Deadline) { Start-Sleep -Milliseconds 100 }
+            if ((Test-Path $Launcher) -or (Test-Path (Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib/holycrab"))) { throw "Website cleanup did not complete within 10 seconds" }
+          }

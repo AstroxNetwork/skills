@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).parents[2]
+REPO_ROOT = Path(__file__).parents[1]
 PUBLIC_FILES = (
     REPO_ROOT / "README.md",
     REPO_ROOT / "SECURITY.md",
@@ -18,7 +18,6 @@ PUBLIC_FILES = (
     REPO_ROOT / "holycrab" / "references" / "api.md",
     REPO_ROOT / "holycrab" / "references" / "capabilities.json",
     REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py",
-    REPO_ROOT / "holycrab" / "scripts" / "holycrab_api.py",
 )
 
 
@@ -59,7 +58,7 @@ class PublicBoundaryTests(unittest.TestCase):
     def test_public_docs_describe_a_versioned_snapshot_not_live_capabilities(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         skill = (REPO_ROOT / "holycrab" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("2026-08-22", readme)
+        self.assertIn("2026-09-14", readme)
         self.assertIn("versioned capability snapshot", skill)
         self.assertNotIn("Treat the capability response as current", skill)
 

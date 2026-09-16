@@ -1,0 +1,24 @@
+{
+  "version": "v0.4.3",
+  "realHumanCoreFlow": {
+    "status": "previously-accepted",
+    "operator": "user",
+    "retestWaived": true,
+    "testedAt": null,
+    "confirmedAt": "2026-09-16T16:01:09Z",
+    "notes": "For v0.4.3 only, the user reports prior acceptance and explicitly waives repeating the actual real-person flow. No new live authorization or upload was performed."
+  },
+  "generateMainContract": {
+    "status": "passed",
+    "mode": "local-synced-main",
+    "localMainCommit": "3fb945d2d73dc1e4fa3a780d3cf90a66c3d7adfc",
+    "remoteMainCommit": "3fb945d2d73dc1e4fa3a780d3cf90a66c3d7adfc",
+    "verifiedAt": "2026-09-16T16:01:09Z",
+    "files": {
+      "holycrab/scripts/holycrab_cli.py": "9cbdb353ebefeaa3a8679ed0b62b4550136cd77fcfd4878607d6ac407cfff960",
+      "holycrab/references/capabilities.json": "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308",
+      "tools/validate_generate_contract.py": "a4e45190f1e28fce1aff213f5bfcfc780837519bda0e8eb967e49663408cfbed"
+    },
+    "notes": "User-authorized v0.4.3-only local verification. Local main was fast-forwarded after fetching origin main and checked with ls-remote. Validation used a clean detached copy of that exact local main; the original feature branch was unchanged."
+  }
+}

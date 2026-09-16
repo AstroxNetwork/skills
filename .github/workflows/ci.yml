@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -17,11 +19,15 @@ jobs:
           - os: ubuntu-latest
             python: "3.10"
           - os: ubuntu-latest
-            python: "3.13"
+            python: "3.14"
           - os: macos-latest
-            python: "3.12"
+            python: "3.10"
+          - os: macos-latest
+            python: "3.14"
           - os: windows-latest
-            python: "3.12"
+            python: "3.10"
+          - os: windows-latest
+            python: "3.14"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -30,40 +36,50 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Unit and public-boundary tests (Unix)
         if: runner.os != 'Windows'
-        run: python3 -m unittest discover -s holycrab/tests -v
+        run: python3 -m unittest discover -s tests -v
       - name: Unit and public-boundary tests (Windows)
         if: runner.os == 'Windows'
         run: >-
           python -m unittest -v
-          holycrab.tests.test_capabilities
-          holycrab.tests.test_cli
-          holycrab.tests.test_holycrab_api
-          holycrab.tests.test_mcp
-          holycrab.tests.test_public_boundary
-          holycrab.tests.test_real_human
+          tests.test_capabilities
+          tests.test_cli
+          tests.test_transport_security
+          tests.test_mcp
+          tests.test_public_boundary
+          tests.test_real_human
+          tests.test_safe_live_smoke
+          tests.test_v041
+          tests.test_feedback
+          tests.test_command_matrix
+          tests.test_onboarding
+          tests.test_readable_guidance
+          tests.test_agent_cleanup
+          tests.test_cleanup_contract
+          tests.test_public_guidance
+          tests.test_release_acceptance
       - name: Compile Python entry points (Unix)
         if: runner.os != 'Windows'
-        run: python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py
+        run: python3 -m py_compile holycrab/scripts/holycrab_cli.py tools/validate_capabilities.py tools/validate_generate_contract.py tests/safe_live_smoke.py
       - name: Compile Python entry points (Windows)
         if: runner.os == 'Windows'
-        run: python -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py
+        run: python -m py_compile holycrab/scripts/holycrab_cli.py tools/validate_capabilities.py tools/validate_generate_contract.py tests/safe_live_smoke.py
       - name: Validate the capability snapshot (Unix)
         if: runner.os != 'Windows'
-        run: python3 holycrab/scripts/validate_capabilities.py
+        run: python3 tools/validate_capabilities.py
       - name: Validate the capability snapshot (Windows)
         if: runner.os == 'Windows'
-        run: python holycrab/scripts/validate_capabilities.py
+        run: python tools/validate_capabilities.py
       - name: Check shell entry points
         if: runner.os != 'Windows'
         run: sh -n install.sh bin/holycrab
       - name: Check patch whitespace
         run: git diff --check
       - name: Decode offline QR fixtures independently
-        if: matrix.python == '3.13' && runner.os != 'Windows'
+        if: matrix.python == '3.14' && runner.os == 'Linux'
         run: |
           python3 -m venv "${RUNNER_TEMP}/qr-validator"
-          "${RUNNER_TEMP}/qr-validator/bin/python" -m pip install --only-binary=:all: -r holycrab/tests/requirements-qr-test.txt
-          "${RUNNER_TEMP}/qr-validator/bin/python" holycrab/scripts/validate_qr.py
+          "${RUNNER_TEMP}/qr-validator/bin/python" -m pip install --only-binary=:all: -r tests/requirements-qr-test.txt
+          "${RUNNER_TEMP}/qr-validator/bin/python" tools/validate_qr.py
 
   official-skill-validation:
     name: Official Skill validator
@@ -79,6 +95,31 @@ jobs:
           "${RUNNER_TEMP}/skill-validator/bin/python" -m pip install --disable-pip-version-check PyYAML==6.0.3
           curl -fsSL "https://raw.githubusercontent.com/openai/skills/49f948faa9258a0c61caceaf225e179651397431/skills/.system/skill-creator/scripts/quick_validate.py" -o "${RUNNER_TEMP}/quick_validate.py"
           "${RUNNER_TEMP}/skill-validator/bin/python" "${RUNNER_TEMP}/quick_validate.py" holycrab
+
+  generate-contract:
+    name: Read-only Generate main contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Identify the version for the explicitly authorized v0.4.3 local check
+        id: contract-version
+        run: echo "version=$(sed -n 's/^VERSION=//p' install.sh)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        if: steps.contract-version.outputs.version != 'v0.4.3'
+        with:
+          repository: AstroxNetwork/seedance-2.0
+          ref: main
+          path: generate-contract
+          ssh-key: ${{ secrets.GENERATE_CONTRACT_SSH_KEY }}
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12"
+      - name: Compare models, enums, limits, and request fields
+        if: steps.contract-version.outputs.version != 'v0.4.3'
+        run: python3 tools/validate_generate_contract.py generate-contract
+      - name: Verify the user-approved v0.4.3 synchronized local main evidence
+        if: steps.contract-version.outputs.version == 'v0.4.3'
+        run: python3 tools/verify_release_acceptance.py v0.4.3 --contract-only
 
   install-and-mcp:
     name: Install and MCP (${{ matrix.os }})
@@ -104,9 +145,9 @@ jobs:
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
           test -f "${HOME}/.claude/skills/holycrab/agents/openai.yaml"
-          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.0'
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.4.3'
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json > "${RUNNER_TEMP}/doctor.json"
-          python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["keyConfigured"] is False'
+          python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["checks"]["config"]["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("mcp.json").read_text()); assert data["result"]["serverInfo"]["name"] == "holycrab-local"'
 
@@ -120,12 +161,14 @@ jobs:
           python-version: "3.12"
       - name: Install twice, verify PATH, CLI, and MCP
         shell: powershell
-        run: .\holycrab\tests\test_windows_installer.ps1
+        env:
+          HOLYCRAB_TEST_INSTALL_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: .\tests\test_windows_installer.ps1
 
   release:
     name: Publish release assets
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [quality, official-skill-validation, install-and-mcp, install-windows]
+    needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -140,6 +183,7 @@ jobs:
           grep -Fx "VERSION=$release_version" install.sh
           grep -Fx '$Version = "'"$release_version"'"' install.ps1
           test -f ".github/releases/$release_version.md"
+          python3 tools/verify_release_acceptance.py "$release_version"
           sh -n install.sh
           sha256sum install.sh install.ps1 > SHA256SUMS
       - name: Create the immutable GitHub Release
@@ -155,6 +199,122 @@ jobs:
           fi
           gh release create "$release_version" install.sh install.ps1 SHA256SUMS \
             --verify-tag \
-            --latest \
+            --draft \
             --title "HolyCrab Agent Tools $release_version" \
             --notes-file ".github/releases/$release_version.md"
+      - name: Verify published bytes and GitHub SHA-256 digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="$GITHUB_REF_NAME"
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$release_version" > "${RUNNER_TEMP}/release.json"
+          python3 - "${RUNNER_TEMP}/release.json" <<'PY'
+          import hashlib, json, pathlib, sys
+          release = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assets = {item["name"]: item for item in release.get("assets", [])}
+          for name in ("install.sh", "install.ps1", "SHA256SUMS"):
+              expected = "sha256:" + hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()
+              assert assets.get(name, {}).get("digest") == expected, f"GitHub digest mismatch: {name}"
+          PY
+          mkdir -p "${RUNNER_TEMP}/published"
+          gh release download "$release_version" --dir "${RUNNER_TEMP}/published" \
+            --pattern install.sh --pattern install.ps1 --pattern SHA256SUMS
+          cmp install.sh "${RUNNER_TEMP}/published/install.sh"
+          cmp install.ps1 "${RUNNER_TEMP}/published/install.ps1"
+          cmp SHA256SUMS "${RUNNER_TEMP}/published/SHA256SUMS"
+
+  verify-draft-install:
+    name: Verify draft installation (${{ matrix.os }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.10"
+      - name: Download verified Draft assets without executing them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release download "$GITHUB_REF_NAME" --dir "${RUNNER_TEMP}/draft-assets" \
+            --pattern install.sh --pattern install.ps1 --pattern SHA256SUMS
+          cmp install.sh "${RUNNER_TEMP}/draft-assets/install.sh"
+          cmp install.ps1 "${RUNNER_TEMP}/draft-assets/install.ps1"
+          cd "${RUNNER_TEMP}/draft-assets"
+          python - <<'PY'
+          import hashlib, pathlib
+          expected = dict((name, digest) for digest, name in (line.split() for line in pathlib.Path('SHA256SUMS').read_text().splitlines()))
+          assert set(expected) == {'install.sh', 'install.ps1'}
+          for name, digest in expected.items():
+              assert hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest() == digest, name
+          PY
+      - name: Install Draft bytes on Unix
+        if: runner.os != 'Windows'
+        env:
+          HOLYCRAB_INSTALL_PREFIX: ${{ runner.temp }}/draft-prefix
+          HOLYCRAB_CONFIG_DIR: ${{ runner.temp }}/draft-config
+          HOLYCRAB_INSTALL_AGENTS: none
+          HOLYCRAB_INSTALL_MCP: "0"
+          HOLYCRAB_NO_UPDATE_CHECK: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset HOLYCRAB_INSTALL_REF HOLYCRAB_INSTALL_SOURCE_DIR
+          sh "${RUNNER_TEMP}/draft-assets/install.sh"
+          test "$("${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version)" = "holycrab ${GITHUB_REF_NAME#v}"
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" uninstall --help
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" uninstall --yes --purge
+      - name: Install Draft bytes on native PowerShell 5.1
+        if: runner.os == 'Windows'
+        env:
+          HOLYCRAB_INSTALL_PREFIX: ${{ runner.temp }}/draft-prefix
+          HOLYCRAB_CONFIG_DIR: ${{ runner.temp }}/draft-config
+          HOLYCRAB_INSTALL_AGENTS: none
+          HOLYCRAB_INSTALL_MCP: "0"
+          HOLYCRAB_NO_UPDATE_CHECK: "1"
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:HOLYCRAB_INSTALL_REF = $null
+          $env:HOLYCRAB_INSTALL_SOURCE_DIR = $null
+          & (Join-Path $env:RUNNER_TEMP "draft-assets/install.ps1")
+          if ($LASTEXITCODE -ne 0) { throw "Draft installation failed" }
+          $Launcher = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "bin/holycrab.cmd"
+          if ((& $Launcher --version) -ne ("holycrab " + $env:GITHUB_REF_NAME.Substring(1))) { throw "Draft version mismatch" }
+          $Doctor = & $Launcher doctor --json | ConvertFrom-Json
+          if ($Doctor.ok -ne $true) { throw "Draft health checks failed" }
+          & $Launcher uninstall --help
+          & $Launcher uninstall --yes --purge
+          if ($LASTEXITCODE -ne 0) { throw "Draft uninstall failed" }
+          $Deadline = [DateTime]::UtcNow.AddSeconds(10)
+          while ((Test-Path $Launcher) -and [DateTime]::UtcNow -lt $Deadline) { Start-Sleep -Milliseconds 100 }
+          if ((Test-Path $Launcher) -or (Test-Path (Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib/holycrab"))) { throw "Draft cleanup did not complete within 10 seconds" }
+
+  publish-verified-release:
+    name: Publish verified release as Latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release, verify-draft-install]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Publish only after immutable asset and native installation verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/verify_release_acceptance.py "$GITHUB_REF_NAME"
+          test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = true
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

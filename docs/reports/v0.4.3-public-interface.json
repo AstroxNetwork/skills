@@ -1,0 +1,2266 @@
+{
+  "version": "0.4.3",
+  "commands": [
+    {
+      "command": "setup",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "stdin",
+          "flags": [
+            "--stdin"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "no_verify",
+          "flags": [
+            "--no-verify"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "auth set-key",
+      "compatibilityOnly": true,
+      "arguments": [
+        {
+          "name": "stdin",
+          "flags": [
+            "--stdin"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "no_verify",
+          "flags": [
+            "--no-verify"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "auth status",
+      "compatibilityOnly": false,
+      "arguments": []
+    },
+    {
+      "command": "auth clear-key",
+      "compatibilityOnly": false,
+      "arguments": []
+    },
+    {
+      "command": "models list",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "json",
+          "flags": [
+            "--json"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "models show",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "model",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "credits balance",
+      "compatibilityOnly": false,
+      "arguments": []
+    },
+    {
+      "command": "credits estimate",
+      "compatibilityOnly": true,
+      "arguments": [
+        {
+          "name": "kind",
+          "flags": [
+            "--kind"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": [
+            "video",
+            "image",
+            "audio"
+          ],
+          "type": "string"
+        },
+        {
+          "name": "json",
+          "flags": [
+            "--json"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "generate estimate",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "kind",
+          "flags": [
+            "--kind"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": [
+            "video",
+            "image",
+            "audio"
+          ],
+          "type": "string"
+        },
+        {
+          "name": "json",
+          "flags": [
+            "--json"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "generate create",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "kind",
+          "flags": [
+            "--kind"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": [
+            "video",
+            "image",
+            "audio"
+          ],
+          "type": "string"
+        },
+        {
+          "name": "json",
+          "flags": [
+            "--json"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "yes",
+          "flags": [
+            "--yes"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "attempt_id",
+          "flags": [
+            "--attempt-id"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "generate attempts list",
+      "compatibilityOnly": false,
+      "arguments": []
+    },
+    {
+      "command": "generate attempts get",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "attempt_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "tasks get",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "uniq_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "tasks list",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "page",
+          "flags": [
+            "--page"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "int"
+        },
+        {
+          "name": "page_size",
+          "flags": [
+            "--page-size"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "int"
+        },
+        {
+          "name": "start_date",
+          "flags": [
+            "--start-date"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "end_date",
+          "flags": [
+            "--end-date"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "type",
+          "flags": [
+            "--type"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": [
+            "IMAGE",
+            "VIDEO",
+            "AUDIO",
+            "TEXT"
+          ],
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "tasks wait",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "uniq_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "interval",
+          "flags": [
+            "--interval"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "float"
+        },
+        {
+          "name": "timeout",
+          "flags": [
+            "--timeout"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "command": "download",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "uniq_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "output",
+          "flags": [
+            "--output"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "index",
+          "flags": [
+            "--index"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "int"
+        },
+        {
+          "name": "force",
+          "flags": [
+            "--force"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "real-human start",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "name",
+          "flags": [
+            "--name"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "real-human get",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "authorization_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "real-human wait",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "authorization_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "interval",
+          "flags": [
+            "--interval"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "float"
+        },
+        {
+          "name": "timeout",
+          "flags": [
+            "--timeout"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "command": "real-human groups list",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "page",
+          "flags": [
+            "--page"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "int"
+        },
+        {
+          "name": "page_size",
+          "flags": [
+            "--page-size"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "command": "real-human groups rename",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "group_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "name",
+          "flags": [
+            "--name"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "real-human groups delete",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "group_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "yes",
+          "flags": [
+            "--yes"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "real-human assets list",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "group",
+          "flags": [
+            "--group"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "page",
+          "flags": [
+            "--page"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "int"
+        },
+        {
+          "name": "page_size",
+          "flags": [
+            "--page-size"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "int"
+        }
+      ]
+    },
+    {
+      "command": "real-human assets delete",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "asset_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "group",
+          "flags": [
+            "--group"
+          ],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "yes",
+          "flags": [
+            "--yes"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "assets upload",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "file",
+          "flags": [],
+          "required": true,
+          "nargs": "+",
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "duration_seconds",
+          "flags": [
+            "--duration-seconds"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "int"
+        },
+        {
+          "name": "real_human_group",
+          "flags": [
+            "--real-human-group"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "yes",
+          "flags": [
+            "--yes"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "assets get",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "uniq_id",
+          "flags": [],
+          "required": true,
+          "nargs": null,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "assets wait",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "uniq_id",
+          "flags": [],
+          "required": true,
+          "nargs": "+",
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "interval",
+          "flags": [
+            "--interval"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "float"
+        },
+        {
+          "name": "timeout",
+          "flags": [
+            "--timeout"
+          ],
+          "required": false,
+          "nargs": null,
+          "choices": null,
+          "type": "float"
+        }
+      ]
+    },
+    {
+      "command": "mcp serve",
+      "compatibilityOnly": false,
+      "arguments": []
+    },
+    {
+      "command": "update",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "check",
+          "flags": [
+            "--check"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "yes",
+          "flags": [
+            "--yes"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "doctor",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "json",
+          "flags": [
+            "--json"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "online",
+          "flags": [
+            "--online"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "command": "uninstall",
+      "compatibilityOnly": false,
+      "arguments": [
+        {
+          "name": "purge",
+          "flags": [
+            "--purge"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        },
+        {
+          "name": "yes",
+          "flags": [
+            "--yes"
+          ],
+          "required": false,
+          "nargs": 0,
+          "choices": null,
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "mcpTools": [
+    {
+      "name": "cli_status",
+      "description": "Read local CLI health and cached update status without contacting HolyCrab.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "account_get",
+      "description": "Check the current HolyCrab account and credit balance.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "capabilities_list",
+      "description": "List the public generation capability snapshot bundled with this release.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "capability_get",
+      "description": "Get limits for one public model.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "generation_estimate",
+      "description": "Estimate credit without creating a task.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "video",
+              "image",
+              "audio"
+            ]
+          },
+          "request": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "request"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "generation_create",
+      "description": "Create exactly one billable generation after explicit user confirmation. Supply one stable attemptId per confirmed draw and reuse it only when reconciling a retry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "video",
+              "image",
+              "audio"
+            ]
+          },
+          "request": {
+            "type": "object"
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "attemptId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "description": "Client-generated stable ID for this one confirmed draw."
+          }
+        },
+        "required": [
+          "kind",
+          "request",
+          "confirmed",
+          "attemptId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "generation_get",
+      "description": "Get one generation task by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "taskId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "generation_list",
+      "description": "List tasks for the current HolyCrab user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": "string"
+          },
+          "taskType": {
+            "type": "string",
+            "enum": [
+              "IMAGE",
+              "VIDEO",
+              "AUDIO",
+              "TEXT"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "generation_attempt_list",
+      "description": "List local one-shot generation submission attempts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "generation_attempt_get",
+      "description": "Get one local generation submission attempt.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "attemptId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        },
+        "required": [
+          "attemptId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "real_human_authorization_start",
+      "description": "Create one user-requested authorization. Show its private temporary link and QR image to the person for manual verification. Do not retry automatically or treat verification as consent to paid generation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "real_human_authorization_get",
+      "description": "Query authorization status by ID. Poll this tool, do not recreate the session.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "authorizationId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          }
+        },
+        "required": [
+          "authorizationId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "real_human_groups_list",
+      "description": "List the current account's authorized people, with pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "real_human_group_rename",
+      "description": "Rename one authorized person using the public group ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "groupUniqId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          }
+        },
+        "required": [
+          "groupUniqId",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "real_human_group_delete",
+      "description": "Permanently delete an authorized person, every asset in the group, and upstream records. Set confirmed=true only after the user explicitly approves this exact deletion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "groupUniqId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          },
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "groupUniqId",
+          "confirmed"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "real_human_assets_list",
+      "description": "List assets in one authorized person's group. Only ready assets can be used for generation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "groupUniqId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "groupUniqId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "real_human_asset_delete",
+      "description": "Permanently delete one real-human asset from storage, upstream records, and the database. Set confirmed=true only after the user explicitly approves this exact deletion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "groupUniqId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          },
+          "assetId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          },
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "groupUniqId",
+          "assetId",
+          "confirmed"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "asset_get",
+      "description": "Query one public asset ID. Only UPLOADED_TO_ARK yields ready=true; report failures and do not reupload automatically.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          }
+        },
+        "required": [
+          "assetId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "asset_upload_prepare",
+      "description": "Inspect 1-10 local files and return a short-lived complete preview. This does not upload bytes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "string"
+            }
+          },
+          "groupUniqId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "asset_upload_execute",
+      "description": "Execute one prepared upload plan only after the user confirms the complete target and file list.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "uploadPlanId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{1,64}$"
+          },
+          "confirmed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uploadPlanId",
+          "confirmed"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    }
+  ],
+  "examples": [
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab update --check"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab update"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab update --yes"
+    },
+    {
+      "source": "README.md",
+      "language": "text",
+      "command": "holycrab uninstall"
+    },
+    {
+      "source": "README.md",
+      "language": "text",
+      "command": "holycrab uninstall --yes"
+    },
+    {
+      "source": "README.md",
+      "language": "text",
+      "command": "holycrab uninstall --purge"
+    },
+    {
+      "source": "README.md",
+      "language": "text",
+      "command": "holycrab uninstall --purge --yes"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab setup"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab auth status"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab models list"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab models show dreamina-seedance-2-5-260628"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab credits balance"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab generate estimate --kind image    --json '{\"prompt\":\"A crab astronaut\",\"model\":\"seedream-5-0-lite-260128\",\"size\":\"2K\"}'"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab generate create --kind image    --json '{\"prompt\":\"A crab astronaut\",\"model\":\"seedream-5-0-lite-260128\",\"size\":\"2K\"}'"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type VIDEO"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab tasks get TASK_ID"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab tasks wait TASK_ID --timeout 600"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/a.jpg /absolute/path/b.mp4 --duration-seconds 8"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab real-human start --name \"小林\""
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab real-human wait AUTHORIZATION_ID --timeout 600"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab real-human groups list --page 1 --page-size 20"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab real-human groups rename GROUP_ID --name \"新名称\""
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/a.jpg /absolute/path/b.mp4 --real-human-group GROUP_ID"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab assets wait ASSET_ID --timeout 600"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab real-human assets list --group GROUP_ID"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab real-human assets delete ASSET_ID --group GROUP_ID"
+    },
+    {
+      "source": "README.md",
+      "language": "bash",
+      "command": "holycrab real-human groups delete GROUP_ID"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab setup"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab auth status"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab credits balance"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab models list"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab models show dreamina-seedance-2-5-260628"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab models show MiniMax-H3"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate estimate --kind image    --json '{\"prompt\":\"A tiny red crab reading beside a rainy window\",\"model\":\"seedream-5-0-lite-260128\",\"size\":\"2K\"}'"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate create --kind image    --json '{\"prompt\":\"A tiny red crab reading beside a rainy window\",\"model\":\"seedream-5-0-lite-260128\",\"size\":\"2K\"}'"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate create --kind image --yes    --json '@/absolute/path/image-request.json'"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate estimate --kind video    --json '{\"model\":\"dreamina-seedance-2-5-260628\",\"prompt\":\"A paper boat crosses a neon puddle\",\"duration\":8,\"resolution\":\"720p\",\"ratio\":\"16:9\",\"videoTaskType\":\"reference\"}'"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate estimate --kind video    --json '{\"model\":\"MiniMax-H3\",\"prompt\":\"Morning fog moves through a pine forest\",\"duration\":5,\"resolution\":\"768P\",\"ratio\":\"16:9\"}'"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate estimate --kind audio    --json '{\"textPrompt\":\"A calm narrator welcomes the listener.\",\"audioConfig\":{\"format\":\"mp3\",\"sample_rate\":24000}}'"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/reference.mp4    --duration-seconds 8"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab real-human start --name \"小林\""
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab real-human get AUTHORIZATION_ID"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab real-human wait AUTHORIZATION_ID --interval 5 --timeout 600"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab real-human groups list --page 1 --page-size 20"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab real-human assets list --group GROUP_ID --page 1 --page-size 50"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/front.jpg /absolute/path/profile.mp4 --real-human-group GROUP_ID"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab assets get ASSET_ID"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab assets wait ASSET_ID --timeout 600"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab real-human assets delete ASSET_ID --group GROUP_ID"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab real-human groups delete GROUP_ID"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate estimate --kind video    --json '{\"model\":\"dreamina-seedance-2-5-260628\",\"prompt\":\"参考人物在咖啡店向镜头挥手，保持外观一致\",\"duration\":8,\"resolution\":\"720p\",\"ratio\":\"16:9\",\"videoTaskType\":\"reference\",\"imageAssetIds\":[\"REPLACE_WITH_ASSET_ID\"]}'"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type AUDIO"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab tasks get TASK_ID"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab tasks wait TASK_ID --timeout 600"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab download TASK_ID --output ./result.mp4"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab generate attempts get ATTEMPT_ID"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab tasks list --page 1 --page-size 20"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab update --check"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab update"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab update --yes"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "text",
+      "command": "holycrab uninstall"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "text",
+      "command": "holycrab uninstall --yes"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "text",
+      "command": "holycrab uninstall --purge"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "text",
+      "command": "holycrab uninstall --purge --yes"
+    },
+    {
+      "source": "HolyCrab CLI 使用指南.md",
+      "language": "bash",
+      "command": "holycrab auth clear-key"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/connect-account/index.mdx",
+      "language": "text",
+      "command": "holycrab setup"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/install-macos-linux/index.mdx",
+      "language": "bash",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/install-windows/index.mdx",
+      "language": "powershell",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type VIDEO"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks get TASK_ID"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks wait TASK_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab download TASK_ID --output ./holycrab-result.mp4"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts get ATTEMPT_ID"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab --version"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json --online"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update --check"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall --purge"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/upload-assets/index.mdx",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/front.jpg /absolute/path/motion.mp4"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/upload-assets/index.mdx",
+      "language": "powershell",
+      "command": "holycrab assets upload \"C:\\Users\\Demo\\Pictures\\front.jpg\" \"C:\\Users\\Demo\\Videos\\motion.mp4\""
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/upload-assets/index.mdx",
+      "language": "text",
+      "command": "holycrab assets wait ASSET_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab models list"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab credits balance"
+    },
+    {
+      "source": "website/docs-site/cn/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/connect-account/index.mdx",
+      "language": "text",
+      "command": "holycrab setup"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/install-macos-linux/index.mdx",
+      "language": "bash",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/install-windows/index.mdx",
+      "language": "powershell",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type VIDEO"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks get TASK_ID"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks wait TASK_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab download TASK_ID --output ./holycrab-result.mp4"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts get ATTEMPT_ID"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab --version"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json --online"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update --check"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall --purge"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/upload-assets/index.mdx",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/front.jpg /absolute/path/motion.mp4"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/upload-assets/index.mdx",
+      "language": "powershell",
+      "command": "holycrab assets upload \"C:\\Users\\Demo\\Pictures\\front.jpg\" \"C:\\Users\\Demo\\Videos\\motion.mp4\""
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/upload-assets/index.mdx",
+      "language": "text",
+      "command": "holycrab assets wait ASSET_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab models list"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab credits balance"
+    },
+    {
+      "source": "website/docs-site/en/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/connect-account/index.mdx",
+      "language": "text",
+      "command": "holycrab setup"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/install-macos-linux/index.mdx",
+      "language": "bash",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/install-windows/index.mdx",
+      "language": "powershell",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type VIDEO"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks get TASK_ID"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks wait TASK_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab download TASK_ID --output ./holycrab-result.mp4"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts get ATTEMPT_ID"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab --version"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json --online"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update --check"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall --purge"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/upload-assets/index.mdx",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/front.jpg /absolute/path/motion.mp4"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/upload-assets/index.mdx",
+      "language": "powershell",
+      "command": "holycrab assets upload \"C:\\Users\\Demo\\Pictures\\front.jpg\" \"C:\\Users\\Demo\\Videos\\motion.mp4\""
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/upload-assets/index.mdx",
+      "language": "text",
+      "command": "holycrab assets wait ASSET_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab models list"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab credits balance"
+    },
+    {
+      "source": "website/docs-site/hk/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/connect-account/index.mdx",
+      "language": "text",
+      "command": "holycrab setup"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/install-macos-linux/index.mdx",
+      "language": "bash",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/install-windows/index.mdx",
+      "language": "powershell",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type VIDEO"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks get TASK_ID"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks wait TASK_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab download TASK_ID --output ./holycrab-result.mp4"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts get ATTEMPT_ID"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab --version"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json --online"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update --check"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall --purge"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/upload-assets/index.mdx",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/front.jpg /absolute/path/motion.mp4"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/upload-assets/index.mdx",
+      "language": "powershell",
+      "command": "holycrab assets upload \"C:\\Users\\Demo\\Pictures\\front.jpg\" \"C:\\Users\\Demo\\Videos\\motion.mp4\""
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/upload-assets/index.mdx",
+      "language": "text",
+      "command": "holycrab assets wait ASSET_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab models list"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab credits balance"
+    },
+    {
+      "source": "website/docs-site/ja/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/connect-account/index.mdx",
+      "language": "text",
+      "command": "holycrab setup"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/install-macos-linux/index.mdx",
+      "language": "bash",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/install-windows/index.mdx",
+      "language": "powershell",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type VIDEO"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks get TASK_ID"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks wait TASK_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab download TASK_ID --output ./holycrab-result.mp4"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/tasks-downloads/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts get ATTEMPT_ID"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab --version"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab doctor --json --online"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/troubleshooting/index.mdx",
+      "language": "text",
+      "command": "holycrab generate attempts list"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update --check"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab update"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/update-uninstall/index.mdx",
+      "language": "text",
+      "command": "holycrab uninstall --purge"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/upload-assets/index.mdx",
+      "language": "bash",
+      "command": "holycrab assets upload /absolute/path/front.jpg /absolute/path/motion.mp4"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/upload-assets/index.mdx",
+      "language": "powershell",
+      "command": "holycrab assets upload \"C:\\Users\\Demo\\Pictures\\front.jpg\" \"C:\\Users\\Demo\\Videos\\motion.mp4\""
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/upload-assets/index.mdx",
+      "language": "text",
+      "command": "holycrab assets wait ASSET_ID --timeout 600"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab models list"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab credits balance"
+    },
+    {
+      "source": "website/docs-site/tw/guide/cli/use-with-codex/index.mdx",
+      "language": "text",
+      "command": "holycrab tasks list"
+    }
+  ]
+}

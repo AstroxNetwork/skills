@@ -4,7 +4,7 @@
 >
 > Base URL：`https://abgzfc.holycrab.ai`
 >
-> 更新日期：2026-08-31（真人授权工具合同；模型快照仍为 2026-08-22）
+> 更新日期：2026-09-14（与本版 CLI 能力快照同步）
 >
 > 机器可读快照：[capabilities.json](capabilities.json)
 
@@ -19,6 +19,8 @@
 - [7. 语音生成](#7-语音生成)
 - [8. 推荐调用流程](#8-推荐调用流程)
 - [9. 真人授权与真人素材](#9-真人授权与真人素材)
+- [10. CLI 安全层](#10-cli-安全层)
+- [11. 变更说明](#11-变更说明)
 
 ## 1. 通用约定
 
@@ -88,7 +90,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 
 ## 3. 任务查询
 
-### 3.1 查询当前 API Key 的任务列表
+### 3.1 查询当前 HolyCrab 用户的任务列表
 
 `GET /api/tasks`
 
@@ -100,6 +102,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 | `pageSize` | Query | integer | 否 | 默认 `20`，最大 `100` |
 | `startDate` | Query | string | 否 | 与 `endDate` 成对使用，格式 `yyyy-MM-dd` |
 | `endDate` | Query | string | 否 | 与 `startDate` 成对使用，格式 `yyyy-MM-dd` |
+| `taskType` | Query | string | 否 | `IMAGE`、`VIDEO`、`AUDIO` 或 `TEXT` |
 
 返回：`records: TaskVO[]`、`total: integer`。
 
@@ -120,7 +123,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 | `error` | string \| null | 失败原因 |
 | `videoUrl` | string \| null | 视频输出 URL |
 | `imageUrls` | string[] \| null | 图片输出 URL 列表 |
-| `audioIds` | string[] \| null | 音频输出 ID 列表 |
+| `audioIds` | string \| null | 后端保存的 JSON 数组字符串；CLI 解析为 `audioUrls: string[]` |
 | `cdnUrl` | string \| null | 可用时的 CDN 输出 URL |
 
 ---
@@ -374,6 +377,8 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/minimax-generation' \
 | `prompt` | string | 是 | 提示词 |
 | `model` | string | 是 | `seedream-5-0-pro-260628`、`seedream-5-0-lite-260128`、`seedream-4-5-251128` |
 | `size` | string | 否 | 模型支持的分辨率档位或 `宽x高` |
+| `aspectRatio` | string | 否 | `auto`、`21:9`、`16:9`、`3:2`、`4:3`、`1:1`、`3:4`、`2:3`、`9:16`；作为 UI 元数据保存 |
+| `resolution` | string | 否 | `1k`、`2k`、`3k`、`4k`；必须为所选模型支持的档位，作为 UI 元数据保存 |
 | `imageUrls` | string[] | 否 | 公开可访问的 HTTPS 参考图片 URL |
 | `outputFormat` | string | 否 | 支持时为 `jpeg` 或 `png` |
 
@@ -387,7 +392,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/minimax-generation' \
 | Seedream 5.0 Lite | 14 | 2K、3K、4K | 3,686,400–16,777,216 |
 | Seedream 4.5 | 14 | 2K、4K | 3,686,400–16,777,216 |
 
-- 自定义宽高必须是 16 的倍数，比例范围 1:16–16:1。
+- Seedream 5.0 Pro 自定义宽高必须是 16 的倍数；Lite 和 4.5 没有此限制。三者比例范围均为 1:16–16:1。
 - 参考图支持 `jpeg`、`png`、`webp`、`bmp`、`tiff`、`gif`、`heic`、`heif`。
 - 单张参考图最大 30 MB，宽高都必须大于 14 px，总像素不超过 36,000,000。
 - `outputFormat` 仅适用于 Seedream 5.0 Pro / Lite；可选 `jpeg`、`png`。Seedream 4.5 不使用该字段；省略或无效值时使用 `jpeg`。
@@ -499,7 +504,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/audio-generation' \
 
 ## 9. 真人授权与真人素材
 
-本节对应 `v0.4.0` 工具能力，需要配套 API 和官方回调页已部署。工具不替本人完成验证；真人授权也不代替生成任务的积分确认。所有账户操作使用现有 API Key，公共 ID 为 1–64 位字母或数字。
+本节对应 `v0.4.3` 工具能力，需要配套 API 和官方回调页已部署。工具不替本人完成验证；真人授权也不代替素材上传确认或生成任务的积分确认。所有账户操作使用现有 API Key，公共 ID 为 1–64 位字母或数字。
 
 ### 9.1 发起授权
 
@@ -540,8 +545,9 @@ CLI `real-human wait` 默认间隔 5 秒、超时 600 秒；间隔必须为有�
 1. 检查指定人物分组可访问。
 2. 复用 `GET /api/user-assets/pre-signed-download-url`，PUT 图片或视频到返回的对象存储地址；不向对象存储转发 API Key。
 3. 使用 multipart 调用 `POST /api/real-human-groups/{groupUniqId}/assets/upload`；字段为 `name`、`object_key`、`content_type`，可选 `duration_seconds`。
-4. 返回 `assetUniqId`、`groupUniqId` 和 `ready: false`。登记完成不代表审核或同步完成。
-5. 调用 `GET /api/user-assets/{uniqId}`。工具仅在 `step: UPLOADED_TO_ARK` 时返回 `ready: true`，`FAILED` 时返回公开 `error`。CLI `assets wait` 使用相同的间隔、超时和退出码规则。
+4. CLI/MCP 在真正上传前先生成 30 分钟有效的本地计划，列出目标人物及全部文件；一次确认后才按顺序执行。计划不保存 Key、上传地址或文件内容，执行前重新核对文件。
+5. 返回 `assetUniqId`、`groupUniqId` 和 `ready: false`。登记完成不代表审核或同步完成。
+6. 调用 `GET /api/user-assets/{uniqId}`。工具仅在 `step: UPLOADED_TO_ARK` 时返回 `ready: true`，`FAILED` 时返回公开 `error`。CLI `assets wait` 可接收多个 ID，并使用相同的间隔、超时和退出码规则。
 
 公开素材字段：`uniqId`、`name`、`assetType`、`step`、`status`、`error`、`duration`、`url`、`createTime`、`updateTime`、`ready`；不返回上游素材 ID。就绪后把公开 `uniqId` 放入现有视频请求的 `imageAssetIds` 或 `videoAssetIds`，仍需先查模型能力和预估积分。
 
@@ -559,9 +565,27 @@ CLI 删除前查询并显示目标。交互模式要求确认；`--yes` 只可�
 
 PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送一次，随后通过列表或详情查询实际状态，不自动重试。工具只接受公开 `groupUniqId` 和素材 `uniqId`；不支持授权撤销或自动留存清理。
 
-创建授权或登记素材时，连接中断、网关 502/504、HTTP 200 无效响应都可能无法确认操作结果。保留已知 ID并查询，不自动重新创建、重新上传或回退到普通素材分组。普通 `assets upload` 不传人物分组时继续走原有上传流程。
+创建授权或登记素材时，连接中断、网关 502/504、HTTP 200 无效响应都可能无法确认操作结果。保留已知 ID并查询，不自动重新创建、重新上传或回退到普通素材分组。真人批量最多 10 个文件；图片小于 30 MiB、视频不超过 50 MiB，音频禁止。首个失败或不明确结果会停止整批，并分别返回已上传、失败或不明、未执行清单。
 
-## 10. 变更说明
+## 10. CLI 安全层
+
+- 默认结果格式由 stdout 是否为交互终端决定：交互时显示摘要，重定向或管道时保留完整 JSON。`doctor --json`、`models list --json`、`setup --stdin` 强制保留 JSON；生成命令的 `--json` 是请求输入，不是输出格式开关。MCP `content` 和 `structuredContent` 格式不变，Agent 规则只用于生成用户语言的解释。
+- `setup` 在管道、脚本或 `--stdin` 模式输出一个 JSON 结果，保留公开账号字段及 `configured`、`valid`、`savedKeyVerified`、`credentialSource` 和 `onboarding`。`auth set-key` 仅保留隐藏兼容，并共用相同实现。直接在终端运行时显示简短的账号状态和下一步，不显示内部规则；保存成功不代表环境变量覆盖后的活动账号有效。
+- `doctor`、`auth status`、MCP `cli_status` / `account_get` 追加统一 `onboarding`，包括 `state`、`instruction`、`command`、`businessUses`、三个 `examples`、`question` 和 `agentInstruction`。状态为 `CONNECT_ACCOUNT / CONFIGURED / VERIFY_ACCOUNT / READY`。普通离线自检和 `cli_status` 在有 Key 时返回 `CONFIGURED`，`command` 为 `null`，仅表示 Key 已配置，不判断账号有效性，也不要求重复验证；没有 Key 时仍引导 `setup`。只有实时账号验证成功才返回 `READY`，异常成功响应不能证明账号有效。
+- Agent 仅在安装或首次连接对话中、账号验证成功后介绍业务场景一次，并使用用户当前语言。示例不构成上传、授权、付费或删除许可；费用估算留在实际执行流程，不要求用户在需求中提及。
+- 测试安装通过 `HOLYCRAB_INSTALL_REF` 指定完整提交号，默认下载引用仍为版本标签；下载引用不改变版本号校验。正式更新清除该变量，保留 GitHub Release、SHA-256 和严格版本校验。
+- `estimate` 与 `create` 共用能力校验器；已知非法模型、分辨率、时长、素材组合和字段会在请求前拒绝。
+- 生成提交只在收到合法任务 ID 时记为 `created`；明确 4xx 业务拒绝记为 `failed`；408、5xx、断网、异常 2xx 和缺少任务 ID 都记为 `unknown`，不会重试。用 `generate attempts list|get` 或 MCP `generation_attempt_list|get` 查询本地记录。
+- 授权、素材、估算、任务及需要恢复的 attempt 结果包含 `nextAction: {code, instruction, command}`。缺少文件、输出位置或请求时 `command` 为 `null`，Agent 应询问用户，不应拼接占位命令。即时查询无需额外建议。轮询仅在状态变化和结束时输出。
+- CLI 过程提示仅在交互终端写入 stderr；JSON stdout 和 MCP 消息不含过程文本。`Ctrl+C` 返回 130：只读等待停止本机轮询；写入开始后保留已知 ID，生成 attempt 记为 `unknown`，上传计划保留已执行边界和批次记录，不自动重试。下载残片会被清理，已有文件保留。
+- MCP 上传仅提供 `asset_upload_prepare` 和 `asset_upload_execute`：前者只检查并预览，后者必须接收 `uploadPlanId + confirmed: true`。
+- 下载只接受无内嵌凭据、无 fragment、非本机/内网地址的 HTTPS；每次重定向重新校验，限制跳转和总大小，先写私有临时文件再原子落盘，默认不覆盖现有文件。
+- 任务接口原始字符串 `audioIds` 由 CLI 解析为 `audioUrls`，音频结果可由 `holycrab download` 下载。
+- 普通 `doctor` 只看本地状态和版本缓存；`doctor --online` 额外刷新版本并验证 API Key。更新只接受更高的稳定语义版本，需用户运行 `holycrab update`，不会静默安装。
+- `holycrab uninstall [--purge] [--yes]` 是纯本地生命周期命令，不对应后端 API 或 MCP 工具。默认保留凭据与任务记录；`--purge` 只删除已知本地状态，不撤销服务端 API Key。命令只移除安装清单证明属于当前 CLI 的文件、PATH 和 MCP 登记，修改过或无法确认归属的内容保留并提示。
+  安装清单的 `agentRegistrations` 仅记录 Codex/Claude Code 的实际客户端路径、用户级登记命令/参数和 `managed` 归属，不包含凭据。卸载优先使用记录路径，并核对完整命令/参数；其他名称、不同命令、额外参数或非安装器管理的登记不删除。Claude 只删除 `--scope user` 的登记。客户端不可用或检查失败时明确报告 `MCP cleanup pending`，程序卸载仍可继续但不报告全量清理完成；匹配登记删除失败则在删除程序前终止。旧清单仍须通过完整命令/参数核对，不靠字符串包含关系判断。
+
+## 11. 变更说明
 
 本公开版本包含：
 

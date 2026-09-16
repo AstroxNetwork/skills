@@ -68,7 +68,7 @@ PowerShell 安装器会同时更新当前会话和用户级 PATH。如果看到 
 holycrab doctor --json
 ```
 
-看到 `"ok": true` 就说明本地文件齐了。`"keyConfigured": false` 很正常，因为还没配置 API Key。
+看到 `"ok": true` 就说明本地文件齐了。`checks.config.keyConfigured` 为 `false` 很正常，因为还没配置 API Key。需要连网复核版本、Key 和 MCP 登记时运行 `holycrab doctor --json --online`。
 
 覆盖安装或升级时直接重新运行安装命令，不需要先卸载；本机保存的 Key 和任务记录不会被安装器删除。完整卸载命令见仓库 README。
 
@@ -83,13 +83,27 @@ holycrab doctor --json
 holycrab setup
 ```
 
-终端会隐藏你粘贴的内容。CLI 验证成功后，把 Key 保存在本机。也可以用含义更明确的 `holycrab auth set-key` 完成相同操作：
+终端会隐藏你粘贴的内容。CLI 验证成功后，把 Key 保存在本机。macOS/Linux 的默认配置文件位置如下（这是路径说明，不是命令）：
 
 ```text
 ~/.config/holycrab/config.json
 ```
 
-这个文件只有当前电脑用户可读写。不要把 Key 发到聊天里，也不要写进提示词。
+macOS/Linux 上这个文件只有当前电脑用户可读写；Windows 使用当前 Windows 用户的 DPAPI 加密，旧版明文会在首次读取后自动迁移。不要把 Key 发到聊天里，也不要写进提示词。
+
+### 连接账号后向 Agent 提出需求
+
+`v0.4.3` 会在连接成功后介绍可用场景，并询问你想先完成哪项工作。例如：
+
+> 帮我把这些产品照片制作成电商商品主图，突出产品卖点，风格简洁。
+>
+> 把这几张产品图片做成一段适合社交媒体投放的广告视频，重点展示产品的使用场景。
+>
+> 把这段产品介绍制作成自然、清晰的中文配音，用于产品宣传视频。
+
+告诉 Codex 或 Claude Code 你的用途、选用的素材和期望效果即可，不需要先学习命令。Agent 会确认方案和费用，再等待你的执行确认；上传素材另行确认。真人授权后还需要选择文件、上传并等待素材可用。
+
+普通 `doctor` 只检查本地环境，有 Key 时显示“API Key 已配置”，不会重复提示账号未验证。`auth status` 和 `doctor --online` 才联网检查账号是否有效。完整场景介绍不会在每次查询或更新时重复出现。
 
 如果终端原来设置过 `HOLYCRAB_API_KEY`，它会优先于刚保存的 Key。CLI 会显示提醒；运行下面这条命令即可切回本地配置：
 
@@ -112,7 +126,7 @@ holycrab models show dreamina-seedance-2-5-260628
 holycrab models show MiniMax-H3
 ```
 
-先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.4.0` 的模型快照版本仍是 `2026-08-22`。
+先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.4.3` 的模型快照版本为 `2026-09-14`。`estimate` 和 `create` 共用同一套本地校验，已知非法组合不会发到服务端。
 
 ## 4. 第一次生成图片
 
@@ -120,14 +134,14 @@ holycrab models show MiniMax-H3
 
 ```bash
 holycrab generate estimate --kind image \
-  --json '{"prompt":"A tiny red crab reading beside a rainy window","model":"seedream-5-0-lite-260128","size":"2k"}'
+  --json '{"prompt":"A tiny red crab reading beside a rainy window","model":"seedream-5-0-lite-260128","size":"2K"}'
 ```
 
 确认模型、尺寸和积分后，运行创建命令：
 
 ```bash
 holycrab generate create --kind image \
-  --json '{"prompt":"A tiny red crab reading beside a rainy window","model":"seedream-5-0-lite-260128","size":"2k"}'
+  --json '{"prompt":"A tiny red crab reading beside a rainy window","model":"seedream-5-0-lite-260128","size":"2K"}'
 ```
 
 CLI 会再显示估算并问：
@@ -176,17 +190,26 @@ holycrab generate estimate --kind audio \
 
 ```bash
 holycrab assets upload /absolute/path/reference.mp4 \
-  --content-type video/mp4 \
   --duration-seconds 8
 ```
 
-CLI 会自动完成预签名上传和 multipart 素材登记；不需要另外编写上传脚本。
+CLI 先显示解析后的真实路径、名称、类型、大小和已知时长，再只询问一次。确认后才会按列表顺序完成预签名上传和 multipart 素材登记；不需要另外编写上传脚本。最多 10 个文件，任一文件本地校验失败时整批不会产生上传请求，确认后文件被替换或修改也会终止。
 
 上传成功后只保留返回的素材 ID。临时上传地址不会显示在终端或 Agent 回复里。
 
 ### 真人素材：先扫码授权，再上传
 
-本节对应 `v0.4.0`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
+本节对应 `v0.4.3`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
+
+固定七步：
+
+1. 先运行 `real-human groups list`，决定复用已有分组还是新授权。
+2. 新授权只创建一次，核对人物名称、有效期、私密链接和二维码。
+3. 由本人在手机完成验证并点击最终确认；Agent 不能代做。
+4. 始终查询同一个 `AUTHORIZATION_ID`，不因等待或断网重复创建。
+5. 成功后核对人物分组名称和 `group.uniqId`，再准备上传。
+6. 上传前查看目标人物和全部文件，只确认一次；授权成功本身不是上传确认。
+7. 等全部素材 `ready: true` 后，把素材 ID 放进生成请求，先估积分，再另行确认付费生成。
 
 先创建一次授权，名称用于区分人物，不要求输入证件姓名：
 
@@ -205,23 +228,35 @@ holycrab real-human wait AUTHORIZATION_ID --interval 5 --timeout 600
 
 状态含义：`CREATED` 等待本人操作，`SUCCEEDED` 授权成功，`FAILED` 验证失败，`EXPIRED` 会话过期。成功返回的 `group.uniqId` 就是后续上传使用的 `GROUP_ID`。等待超时返回退出码 2，保留授权 ID 后可继续查；失败或过期返回退出码 1，不会自动重新授权。
 
+输入 API Key 后，终端会提示正在验证；成功后显示账号连接结果和主要用途，不再重复输出 JSON 和完整对话示例。授权、上传和等待结果会分段显示必要信息及下一步。需要完整自检数据时运行 `holycrab doctor --json`；脚本、管道调用和 MCP 保留结构化数据，不输出过程噪声。无法直接给出命令时，Agent 会先询问文件、保存位置或具体要求。
+
+安装进度分为 5 个阶段；重复安装和更新不会重复首次使用介绍。上传前请核对目标和完整文件清单，确认后才执行。结果会分别列出已上传、失败或不明确、未执行的文件；已上传不代表已经处理完成。提交结果不明确时，先查询已有记录，不要直接重新提交。
+
+`Ctrl+C` 返回退出码 130，只停止本机等待，不取消线上任务或授权。写入已经开始时，保留已知 ID 和上传批次清单，先查询结果，不重复提交。下载中断会清除临时残片，不破坏已有文件。更新或卸载中断后，按提示检查本机状态，不能假定操作已完成或已全部恢复。
+
+| 状态 | 含义 | 下一步 |
+| --- | --- | --- |
+| `CREATED` | 等本人扫码、验证并最终确认 | `holycrab real-human wait AUTHORIZATION_ID --timeout 600` |
+| `SUCCEEDED` | 人物分组已创建，尚未创建或上传素材 | 选择对应人物的文件，预览清单并确认上传到该分组 |
+| `FAILED` | 本次没有完成 | 解释原因，先问用户是否重试，再新建授权 |
+| `EXPIRED` | 私密链接已过期 | 先征得同意，再新建授权 |
+| wait 超时 | 只是暂时没等到 | 保留 ID，运行 `holycrab real-human get AUTHORIZATION_ID` |
+| 素材处理中 | 文件已登记但尚未就绪 | `holycrab assets wait ASSET_ID [ASSET_ID ...] --timeout 600` |
+| `UPLOADED_TO_ARK` / `ready: true` | 素材可以进入生成请求 | 说明生成需求，按下文完整示例估算费用，再确认 |
+| 素材 `FAILED` | 线上处理失败 | 显示公开错误，禁止自动重传 |
+| 上传结果不明确 | 不知道线上是否已登记 | 保留资产 ID/分组 ID并查询，禁止重复上传 |
+
 已经授权过的人可以直接查列表。列表支持分页，遇到同名人物先确认分组，不要猜：
 
 ```bash
 holycrab real-human groups list --page 1 --page-size 20
 holycrab real-human assets list --group GROUP_ID --page 1 --page-size 50
-holycrab assets upload /absolute/path/reference.jpg --real-human-group GROUP_ID
+holycrab assets upload /absolute/path/front.jpg /absolute/path/profile.mp4 --real-human-group GROUP_ID
 holycrab assets get ASSET_ID
 holycrab assets wait ASSET_ID --timeout 600
 ```
 
 `ASSET_ID` 使用上传返回的 `assetUniqId`，或列表中的 `uniqId`。真人分组支持图片和视频；上传视频时可加 `--duration-seconds 8`。省略 `--real-human-group` 会走普通素材流程，不能用来绕过真人验证。
-
-人物名称可以修改：
-
-```bash
-holycrab real-human groups rename GROUP_ID --name "新名称"
-```
 
 删除不可恢复。删除人物会同时删除该组全部素材和上游人物分组；删除单个素材会清理存储、上游记录和数据库记录。命令会先显示目标并询问确认：
 
@@ -233,6 +268,8 @@ holycrab real-human groups delete GROUP_ID
 脚本或 Agent 只有在用户明确要求删除该具体对象后才能加 `--yes`。MCP 的 `real_human_group_delete` 和 `real_human_asset_delete` 同样要求 `confirmed: true`。授权成功、素材上传成功或确认生成都不能替代删除确认。删除结果遇到超时、断线、5xx 或异常响应时不要再次提交，先重新查询人物或素材列表确认实际状态。
 
 只有 `step: UPLOADED_TO_ARK`、`ready: true` 才能生成。素材返回 `FAILED` 时先看 `error`，不要自动重传。上传登记遇到连接中断、502/504 或无效响应时，保存提示里的素材 ID、分组 ID，先查单个素材或分组列表，不能把它当作“肯定没上传”。
+
+真人素材只接受 JPG/JPEG、PNG、WEBP、GIF、HEIC、MP4、MOV；图片必须小于 30 MiB，视频不得超过 50 MiB，音频直接拒绝。尺寸、比例、帧率、2–15 秒时长及 H.264/H.265、AAC/MP3 等编码限制仍由线上处理确认；本地预检通过不是“保证可用”。批量执行遇到首个失败或结果不明确就停止，并分别列出 `uploaded`、`failedOrUnknown`、`notAttempted`。
 
 素材就绪后，将公开 ID 放入原有视频请求，不传人物分组 ID或上游素材 ID：
 
@@ -249,10 +286,13 @@ holycrab generate estimate --kind video \
 
 ```bash
 holycrab tasks list
+holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type AUDIO
 holycrab tasks get TASK_ID
 holycrab tasks wait TASK_ID --timeout 600
 holycrab download TASK_ID --output ./result.mp4
 ```
+
+日期筛选必须成对提供；列表是“当前 HolyCrab 用户下的任务”，不是“只有当前 API Key 创建的任务”。音频任务的原始 `audioIds` JSON 字符串会统一解析为 `audioUrls`，同样可用 `download` 下载。下载默认不覆盖已有文件，确实要替换时加 `--force`。
 
 `step=2` 表示完成，`step=3` 表示失败。等待超时只代表“暂时没等到”，CLI 不会偷偷再生成一次。
 
@@ -267,6 +307,16 @@ holycrab download TASK_ID --output ./result.mp4
 ```
 
 本地防重只阻止同一个 attempt 被网络重试两次，不会阻止你主动再抽一次。
+
+断网、超时、HTTP 408/5xx、异常成功响应、或 2xx 没有合法任务 ID 时，attempt 会记为 `unknown`，绝不自动再次 POST：
+
+```bash
+holycrab generate attempts list
+holycrab generate attempts get ATTEMPT_ID
+holycrab tasks list --page 1 --page-size 20
+```
+
+最近任务里查不到，也不能证明线上没有创建。换电脑、删除本地记录或绕开 CLI 时，本地防重无法提供全局绝对保证。
 
 ## 9. 在 Codex 或 Claude Code 里使用
 
@@ -283,7 +333,7 @@ claude mcp get holycrab
 用 HolyCrab 查一下现在的视频模型。我要做 8 秒、16:9 的雨夜街景，先给我模型建议和积分估算，不要直接生成。
 ```
 
-Agent 应该按这个顺序工作：查能力 → 组参数 → 估积分 → 等你确认 → 为这次抽卡创建一个稳定 attempt ID → 提交一次 → 返回任务 ID → 查结果。网络重试必须沿用同一个 ID；你明确再抽一次时才换新 ID。
+Agent 应该按这个顺序工作：查能力 → 组参数 → 估积分 → 等你确认 → 为本次生成创建一个稳定 attempt ID → 提交一次 → 返回任务 ID → 查结果。网络中断后保留 ID 并查询记录，不重新提交；只有你明确同意创建另一个付费任务时，才使用新 ID。
 
 真人场景可以这样说：
 
@@ -293,7 +343,36 @@ Agent 应该按这个顺序工作：查能力 → 组参数 → 估积分 → �
 
 MCP 发起工具会返回二维码图片和临时链接；Agent 用短查询检查授权与素材，不会长期阻塞整个 MCP 服务。若当前客户端不能展示图片，仍可使用链接或本机 `qrPath`。
 
-## 10. 常见问题
+## 10. 更新与启动自检
+
+每次启动会检查 Python 3.10+、CLI/能力清单/Skill/二维码依赖、安装清单、配置与 attempt 是否可安全读取；提示写入 stderr，不污染 JSON 或 MCP stdout。联网版本检查每 24 小时最多一次、正常命令最多等待 2 秒，失败不影响业务命令，也不会静默更新。
+
+```bash
+holycrab update --check
+holycrab update
+holycrab update --yes
+```
+
+只接受版本更高、非 Draft、非 prerelease 的严格语义版本。更新器校验 GitHub Release 的 SHA-256 `digest`，安装器再校验内部文件；更新后的 `doctor` 不通过会恢复旧托管文件和原配置。`v0.4.0` 没有更新命令，需要重新运行正式安装命令升级至 `v0.4.3`。受管或离线环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
+
+## 11. 安全卸载
+
+交互式卸载会先显示程序、MCP、Skill、PATH 和本地数据的处理方式，只询问一次：
+
+```text
+holycrab uninstall
+holycrab uninstall --yes
+holycrab uninstall --purge
+holycrab uninstall --purge --yes
+```
+
+默认模式只移除当前安装器管理的 CLI、真实命令仍指向当前安装位置的 MCP 登记，以及没有被修改的 Skill 文件。API Key、attempt、上传计划和真人授权临时记录保留在本机，重新安装后可以继续使用。脚本环境只有在用户已经看过完整预览并明确同意时才能加 `--yes`。
+
+`--purge` 会清理 HolyCrab 已知的本地凭据和记录，但不会调用 HolyCrab API，也不会删除云端任务、素材或授权。需要让 API Key 彻底失效时，仍须前往 [API Key 页面](https://generate.holycrab.ai/user-tokens)撤销。修改过的 Skill、额外文件、其他 MCP 和共享 `.local/bin` 中的其他程序不会删除；旧安装缺少 PATH 所有权记录时，命令会保留 PATH 并显示人工处理提示。
+
+卸载是本机用户操作，不提供 MCP 工具。Agent 必须先用用户当前语言说明默认卸载与 `--purge` 的区别，并获得对应模式的明确授权。
+
+## 12. 常见问题
 
 `holycrab: command not found`
 
@@ -313,7 +392,7 @@ holycrab auth clear-key
 
 这只删除本机保存的 Key。需要彻底撤销时，还要去 HolyCrab 网页禁用该 Key。
 
-## 11. 隐私、条款与支持
+## 13. 隐私、条款与支持
 
 HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政策和服务条款。
 
