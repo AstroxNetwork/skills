@@ -27,10 +27,37 @@ function Write-HolyCrabProgress([string]$Message) {
     }
 }
 
+function Format-HolyCrabResult([hashtable]$Python, [string]$CliPath, [object]$Value, [string]$Mode, [string]$Upgrading = "0") {
+    $SummaryHelper = @'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("holycrab_installer", sys.argv[1])
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+value = json.loads(sys.stdin.read().lstrip("\ufeff"))
+if sys.argv[3] == "doctor":
+    print(cli.format_terminal_result(value))
+else:
+    print(cli.format_onboarding(value, installed=True, upgrading=sys.argv[2] == "1"))
+'@
+    # PS 5.1 does not reliably preserve Python -c quoting. Use a private file.
+    $HelperPath = Join-Path $TempDir "summary.py"
+    [IO.File]::WriteAllText($HelperPath, $SummaryHelper, [Text.UTF8Encoding]::new($false))
+    $Arguments = @($Python.Arguments) + @("-X", "utf8", $HelperPath, $CliPath, $Upgrading, $Mode)
+    $PreviousOutputEncoding = $OutputEncoding
+    try {
+        $OutputEncoding = [Text.UTF8Encoding]::new($false)
+        $Result = $Value | ConvertTo-Json -Depth 12 -Compress | & $Python.Executable @Arguments
+        if ($LASTEXITCODE -ne 0) { throw "Could not prepare the installation summary" }
+        return $Result -join [Environment]::NewLine
+    } finally {
+        $OutputEncoding = $PreviousOutputEncoding
+    }
+}
+
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "84389174d9c41510c6000dd729318ce5a0a37e2d2e219bdb4a244640dd99d50d" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "add3d53fb7a3e7e566e6977d7d44a4b03becfaa8412eec2d908b6218a71c3aba" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
-    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "b5e52ba0aa5ede2e5c6a99491805f232cc4cc5ff6e158c4c27c81336ce149b23" },
+    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "dc9ce397718b1e2e1368a9f7ccbb8be75c0e40fcfef4eb6e5b841eb8ff1058b2" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
     @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" }
@@ -55,14 +82,15 @@ function Find-HolyCrabPython {
 }
 
 function Copy-ReleaseFile([hashtable]$File) {
-    Write-HolyCrabProgress "Downloading or copying $($File.Relative)..."
+    if ($File.Name -eq "holycrab_cli.py") {
+        Write-HolyCrabProgress "[2/5] Downloading and verifying installation files..."
+    }
     $Destination = Join-Path $TempDir $File.Name
     if ($SourceDir) {
         Copy-Item -LiteralPath (Join-Path $SourceDir $File.Relative) -Destination $Destination
     } else {
         $Url = "https://raw.githubusercontent.com/$Repository/$SourceRef/$($File.Relative)"
         Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Destination
-        Write-HolyCrabProgress "Verifying SHA-256 for $($File.Relative)..."
         $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Destination).Hash.ToLowerInvariant()
         if ($Actual -ne $File.Sha256) {
             throw "SHA-256 verification failed for $($File.Relative); installation stopped."
@@ -130,7 +158,7 @@ cli.register_installer_mcp(agent, client or None, server[0], server[1:], previou
     }
 }
 
-Write-HolyCrabProgress "Checking Python and installation settings..."
+Write-HolyCrabProgress "[1/5] Checking Python and installation settings..."
 $Python = Find-HolyCrabPython
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 try {
@@ -162,7 +190,7 @@ try {
     if (Test-Path -LiteralPath (Join-Path $HOME ".claude\skills\holycrab")) {
         Copy-Item -LiteralPath (Join-Path $HOME ".claude\skills\holycrab") -Destination (Join-Path $BackupDir "claude-skill") -Recurse
     }
-    Write-HolyCrabProgress "Installing verified program files..."
+    Write-HolyCrabProgress "[3/5] Installing verified program files and configuring PATH..."
     $InstallStarted = $true
     New-Item -ItemType Directory -Force -Path $BinDir, (Join-Path $LibDir "references"), (Join-Path $LibDir "vendor") | Out-Null
     $CliPath = Join-Path $LibDir "holycrab_cli.py"
@@ -177,7 +205,6 @@ try {
     $LauncherContent = "@echo off`r`nchcp 65001 >nul`r`nset `"PYTHONUTF8=1`"`r`nset `"PYTHONIOENCODING=utf-8`"`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`nset `"_HOLYCRAB_EXIT_CODE=%ERRORLEVEL%`"`r`nif exist `"%~dp0..\lib\holycrab\holycrab_cli.py`" exit /b %_HOLYCRAB_EXIT_CODE%`r`n(goto) 2>nul & del /f /q `"%~f0`" >nul 2>&1`r`n"
     [IO.File]::WriteAllText($Launcher, $LauncherContent, [Text.UTF8Encoding]::new($false))
 
-    Write-HolyCrabProgress "Configuring current-session and user PATH..."
     $PathResult = Add-HolyCrabPath $BinDir $PreviousPathManaged
     $PathRegistration = $PathResult.Registration
     $PathAddedThisRun = $PathResult.AddedThisRun
@@ -214,7 +241,7 @@ try {
     }
     [IO.File]::WriteAllText((Join-Path $LibDir "installation.json"), ($Manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
 
-    Write-HolyCrabProgress "Installing Skills for the selected Agents..."
+    Write-HolyCrabProgress "[4/5] Configuring the selected Agents..."
     if (",$InstallAgents," -like "*,codex,*") {
         Install-HolyCrabSkill (Join-Path $HOME ".agents\skills\holycrab") @{
             Skill = $Downloaded["SKILL.md"]; Capabilities = $Downloaded["capabilities.json"]; OpenAI = $Downloaded["openai.yaml"]
@@ -227,12 +254,11 @@ try {
     }
 
     if ($InstallMcp -eq "1") {
-        Write-HolyCrabProgress "Checking and registering HolyCrab in the selected Agents..."
         if (",$InstallAgents," -like "*,codex,*") { Register-HolyCrabMcp "codex" $Python $CliPath }
         if (",$InstallAgents," -like "*,claude,*") { Register-HolyCrabMcp "claude" $Python $CliPath }
     }
 
-    Write-HolyCrabProgress "Verifying the installed CLI version and local health..."
+    Write-HolyCrabProgress "[5/5] Verifying the installed CLI version and local health..."
     $PreviousNoUpdate = $env:HOLYCRAB_NO_UPDATE_CHECK
     $env:HOLYCRAB_NO_UPDATE_CHECK = "1"
     try {
@@ -242,20 +268,22 @@ try {
         }
         $Doctor = & $Launcher doctor --json | ConvertFrom-Json
         if ($LASTEXITCODE -ne 0 -or -not $Doctor.ok) {
-            Write-Warning ("HolyCrab doctor report: " + ($Doctor | ConvertTo-Json -Depth 8 -Compress))
+            Write-Warning (Format-HolyCrabResult $Python $CliPath $Doctor "doctor")
             throw "holycrab doctor failed after installation"
         }
     } finally {
         $env:HOLYCRAB_NO_UPDATE_CHECK = $PreviousNoUpdate
     }
+    $Upgrading = if (Test-Path -LiteralPath (Join-Path $BackupDir "lib")) { "1" } else { "0" }
+    $Summary = Format-HolyCrabResult $Python $CliPath $Doctor.onboarding "onboarding" $Upgrading
     $InstallComplete = $true
-    Write-Host "HolyCrab CLI, local MCP, and Skill are installed."
-    Write-Host "Command: $Launcher"
-    Write-Host "PATH is active in this PowerShell session and saved for future sessions."
-    Write-Host $Doctor.onboarding.instruction
-    if ($Doctor.onboarding.command) { Write-Host ("Next: " + $Doctor.onboarding.command) }
-    Write-Host ("Available workflows after account verification: " + ($Doctor.onboarding.businessUses -join "; ") + ".")
-    Write-Host ("For Agents: " + $Doctor.onboarding.agentInstruction)
+    Write-Host ""
+    Write-Host ($Summary -join [Environment]::NewLine)
+    Write-Host ""
+    Write-Host "Installed command:"
+    Write-Host "  $Launcher"
+    Write-Host ""
+    Write-Host "PATH is ready in this PowerShell session and future sessions."
 } finally {
     if ($InstallStarted -and -not $InstallComplete) {
         Remove-Item -LiteralPath $LibDir -Recurse -Force -ErrorAction SilentlyContinue

@@ -52,6 +52,7 @@ jobs:
           holycrab.tests.test_feedback
           holycrab.tests.test_command_matrix
           holycrab.tests.test_onboarding
+          holycrab.tests.test_readable_guidance
           holycrab.tests.test_agent_cleanup
       - name: Compile Python entry points (Unix)
         if: runner.os != 'Windows'

@@ -150,14 +150,19 @@ class CommandMatrixTests(unittest.TestCase):
                     cli.save_attempts({"fixture": {"attemptId": "fixture", "state": "unknown"}})
                     (self.root / "result.jpg").unlink(missing_ok=True)
                     self.context(stack)
-                    output, errors = io.StringIO(), TerminalBuffer() if terminal else io.StringIO()
+                    output, errors = (TerminalBuffer(), TerminalBuffer()) if terminal else (io.StringIO(), io.StringIO())
                     stack.enter_context(redirect_stdout(output)); stack.enter_context(redirect_stderr(errors))
                     stack.enter_context(patch.object(cli.sys, "argv", ["holycrab", *self.arguments(command)]))
                     self.assertEqual(cli.main(), 0, output.getvalue() + errors.getvalue())
-                    if command not in {"setup", "auth set-key", "auth clear-key", "uninstall"}:
+                    json_output = not terminal or command in {"models list", "doctor", "mcp serve"}
+                    if json_output and command not in {"auth clear-key", "uninstall"}:
                         values = json_documents(output.getvalue())
                         self.assertTrue(values)
                         self.check_actions(values)
+                    elif terminal:
+                        self.assertTrue(output.getvalue())
+                        self.assertNotIn('"nextAction"', output.getvalue())
+                        self.assertNotIn("agentInstruction", output.getvalue())
                     if not terminal:
                         self.assertEqual(errors.getvalue(), "")
                     self.assertNotIn("hc_test_input_only", output.getvalue() + errors.getvalue())
@@ -178,8 +183,8 @@ class CommandMatrixTests(unittest.TestCase):
         local_faults = {"models list": "load_capabilities", "models show": "load_capabilities",
             "generate attempts list": "load_attempts", "generate attempts get": "load_attempts",
             "auth clear-key": "save_config"}
-        for command in COMMANDS:
-            with self.subTest(command=command), ExitStack() as stack:
+        for terminal, command in ((terminal, command) for terminal in (False, True) for command in COMMANDS):
+            with self.subTest(command=command, terminal=terminal), ExitStack() as stack:
                 self.context(stack, failure=True)
                 if command in local_faults:
                     stack.enter_context(patch.object(cli, local_faults[command], side_effect=OSError("fixture failure")))
@@ -187,7 +192,7 @@ class CommandMatrixTests(unittest.TestCase):
                     stack.enter_context(patch.object(cli, "remove_managed_mcp_registrations", side_effect=RuntimeError("MCP cleanup failed; program preserved")))
                 if command == "mcp serve":
                     stack.enter_context(patch.object(cli.sys, "stdin", io.StringIO('{broken}\n')))
-                output, errors = io.StringIO(), TerminalBuffer()
+                output, errors = (TerminalBuffer(), TerminalBuffer()) if terminal else (io.StringIO(), io.StringIO())
                 stack.enter_context(redirect_stdout(output)); stack.enter_context(redirect_stderr(errors))
                 stack.enter_context(patch.object(cli.sys, "argv", ["holycrab", *self.arguments(command)]))
                 code = cli.main()

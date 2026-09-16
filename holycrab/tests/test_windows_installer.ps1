@@ -13,8 +13,14 @@ $env:HOLYCRAB_INSTALL_MCP = "0"
 $env:HOLYCRAB_INSTALL_AGENTS = "none"
 $env:HOLYCRAB_NO_UPDATE_CHECK = "1"
 
-& (Join-Path $RepoRoot "install.ps1")
-& (Join-Path $RepoRoot "install.ps1")
+$InstallSummary = & (Join-Path $RepoRoot "install.ps1") 6>&1 | Out-String
+if ($InstallSummary -notmatch "HolyCrab 0.4.3 installed") { throw "Installation summary omitted the version" }
+if ($InstallSummary -notmatch "Next: connect your account") { throw "Installation summary omitted account setup" }
+if ($InstallSummary -notmatch "Create product listing images") { throw "Installation summary omitted business uses" }
+if ($InstallSummary -match "For Agents:|Available workflows after account verification:") { throw "Installation exposed internal Agent instructions" }
+$RepeatSummary = & (Join-Path $RepoRoot "install.ps1") 6>&1 | Out-String
+if ($RepeatSummary -notmatch "HolyCrab 0.4.3 installed") { throw "Repeat installation did not complete" }
+if ($RepeatSummary -match "Create product listing images|What would you like") { throw "Repeat installation repeated first-use guidance" }
 
 $BinDir = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "bin"
 $Launcher = Join-Path $BinDir "holycrab.cmd"

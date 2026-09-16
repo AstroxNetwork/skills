@@ -49,7 +49,10 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             version = subprocess.run([str(root / "prefix/bin/holycrab"), "--version"], env=env, text=True, capture_output=True)
             self.assertEqual(version.stdout.strip(), "holycrab 0.4.3")
-            self.assertIn("Next: holycrab setup", result.stdout)
+            self.assertIn("Next: connect your account\n  holycrab setup", result.stdout)
+            self.assertIn("HolyCrab 0.4.3 installed", result.stdout)
+            self.assertNotIn("For Agents:", result.stdout)
+            self.assertNotIn("Available workflows after account verification:", result.stdout)
             self.assertNotIn("account is connected", result.stdout)
 
     def test_invalid_download_ref_is_rejected_before_installing(self) -> None:
@@ -165,7 +168,7 @@ class InstallerTests(unittest.TestCase):
             self.assertIn("export USER_SETTING=kept", content)
             self.assertEqual(content.count("# HolyCrab CLI"), 1)
             self.assertIn('export PATH="$HOME/.local/bin:$PATH"', content)
-            self.assertIn("PATH is active inside the installer", result.stdout)
+            self.assertIn("If holycrab is not found in this terminal, run:", result.stdout)
             manifest = json.loads(
                 (Path(home) / ".local" / "lib" / "holycrab" / "installation.json").read_text(encoding="utf-8")
             )
@@ -175,13 +178,13 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((Path(home) / ".bash_profile").exists())
 
     def test_installer_success_messages_follow_all_verification(self) -> None:
-        for name, marker, success in (("install.sh", "INSTALL_COMPLETE=1", 'echo "HolyCrab CLI, local MCP, and Skill are installed."'),
-                                      ("install.ps1", "$InstallComplete = $true", 'Write-Host "HolyCrab CLI, local MCP, and Skill are installed."')):
+        for name, marker, success in (("install.sh", "INSTALL_COMPLETE=1", "printf '\\n%s\\n' \"$onboarding_summary\""),
+                                      ("install.ps1", "$InstallComplete = $true", "Write-Host ($Summary -join [Environment]::NewLine)")):
             with self.subTest(installer=name):
                 text = (REPO_ROOT / name).read_text(encoding="utf-8")
                 self.assertLess(text.index(marker), text.index(success))
                 self.assertIn("Verifying the installed CLI version and local health", text)
-                self.assertIn("Installing Skills", text)
+                self.assertIn("[4/5] Configuring the selected Agents", text)
 
     def test_unix_installer_sigint_restores_existing_files_without_success_message(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -202,7 +205,7 @@ class InstallerTests(unittest.TestCase):
             env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
             interrupted = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True, timeout=15)
             self.assertEqual(interrupted.returncode, 130, interrupted.stdout + interrupted.stderr)
-            self.assertNotIn("are installed", interrupted.stdout)
+            self.assertNotIn("HolyCrab 0.4.3 installed", interrupted.stdout)
             self.assertEqual((root / "prefix/lib/holycrab/holycrab_cli.py").read_bytes(), old)
             self.assertIn("restored", interrupted.stderr)
 
@@ -406,6 +409,29 @@ fi
                                         text=True, encoding="utf-8", capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout), server)
+
+    def test_windows_summary_helper_accepts_bom_without_printing_internal_instructions(self) -> None:
+        installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
+        helper = installer.split("$SummaryHelper = @'\n", 1)[1].split("\n'@", 1)[0]
+        with tempfile.TemporaryDirectory() as temporary:
+            script = Path(temporary) / "summary.py"
+            script.write_text(helper, encoding="utf-8")
+            for bom in ("", "\ufeff"):
+                for upgrading in ("0", "1"):
+                    value = {"state": "VERIFY_ACCOUNT", "command": "holycrab auth status", "agentInstruction": "PRIVATE_INTERNAL_RULE"}
+                    result = subprocess.run([sys.executable, str(script), str(REPO_ROOT / "holycrab/scripts/holycrab_cli.py"), upgrading, "onboarding"],
+                                            input=bom + json.dumps(value), text=True, encoding="utf-8", capture_output=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertIn("HolyCrab 0.4.3 installed", result.stdout)
+                    self.assertNotIn("PRIVATE_INTERNAL_RULE", result.stdout)
+                    self.assertNotIn("account connected", result.stdout)
+                    self.assertEqual("Create product listing images" in result.stdout, upgrading == "0")
+            report = {"ok": False, "checks": {"config": {"readable": False, "error": "Unreadable configuration"}}, "repairs": ["holycrab setup"]}
+            result = subprocess.run([sys.executable, str(script), str(REPO_ROOT / "holycrab/scripts/holycrab_cli.py"), "0", "doctor"],
+                                    input="\ufeff" + json.dumps(report), text=True, encoding="utf-8", capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Unreadable configuration", result.stdout)
+            self.assertNotIn('"checks"', result.stdout)
 
     def test_windows_agent_fixture_emits_utf8_under_a_legacy_codepage(self) -> None:
         source = (REPO_ROOT / "holycrab/tests/test_windows_installer.ps1").read_text(encoding="utf-8")

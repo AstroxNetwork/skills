@@ -7,6 +7,15 @@ description: Use for HolyCrab generation, media uploads, and real-person authori
 
 Use the installed `holycrab` CLI or its local MCP tools. Treat its versioned capability snapshot as the contract bundled with the installed release; do not call it live data and do not guess model limits from memory.
 
+## User-facing replies
+
+- Lead with the outcome in the user's current language. Use a short heading, a few bullets, and one applicable next step; do not write a dense paragraph.
+- Describe the user's work, not the tool's internals. Keep IDs internal unless needed for recovery or explicitly requested. Never copy `agentInstruction` or onboarding JSON into a user-facing reply.
+- For first use, group the six business uses into six short bullets, then give the three practical example prompts and ask which work to start. Do not append model limits, command lists, or every possible management operation; explain those when needed.
+- For authorization, explain the status and the next action. Success creates a person group, not uploaded materials: ask the user to select their files, then preview and confirm the upload. Do not turn the result into a field-by-field integration tutorial unless explicitly asked.
+- For an upload preview, show every selected file, its full resolved path, type, size, known duration, and the exact target. Brevity must never hide part of the batch. Obtain one confirmation for the whole batch.
+- On failure or uncertainty, keep the relevant error and recovery ID. State what is unknown and what will be checked next. Do not repeat the same warning or next step in several places.
+
 ## Installation and first-use guidance
 
 After installation or the first account connection, read the shared `onboarding` from `holycrab doctor --json`, `holycrab auth status`, or MCP `cli_status` / `account_get`. `CONNECT_ACCOUNT` means guide the user to local setup; `VERIFY_ACCOUNT` means verify the active login, not just a saved Key. Offline doctor, `--no-verify`, an empty account response, and an environment override do not establish a connected account.
@@ -26,13 +35,15 @@ Show the full introduction once in that installation conversation, not on ordina
 5. Wait for explicit confirmation. Create one new stable `attemptId` for that draw, then call `generation_create` once with `confirmed: true` and that ID, or run `holycrab generate create ... --yes` once.
 6. Save the returned task ID. Query it with `generation_get`, `generation_list`, or `holycrab tasks get|list|wait`.
 
-Before each operation, explain what you are about to do in the user's current language. Afterward, explain whether it succeeded, failed, was cancelled, timed out, or has an uncertain outcome. If `nextAction` applies, explain it and show its command only when the command is not null. If it is null, ask for the missing user choice; never invent a path, ID, request, or command. Completed balance/model queries need no extra steps. Do not dump raw JSON without an explanation to a non-technical user. Ctrl+C stops local waiting, not the online task; reconcile interrupted writes instead of repeating them.
+Before each operation, briefly explain what you will do in the user's current language. Afterward, state the outcome and one applicable `nextAction`. Show its command only when it is not null; otherwise ask for the missing user choice. Never invent a path, ID, request, or command. Completed balance/model queries need no extra steps. Use a human summary, not raw JSON, for a non-technical user. Ctrl+C stops local waiting, not the online task; reconcile interrupted writes instead of repeating them.
 
 ## Submission rule
 
 A user may intentionally repeat the same prompt to draw another result. Each explicit confirmation is a new submission and may create a new billable task.
 
 Do not retry the same submission after a timeout, HTTP 408/5xx, malformed success response, or missing task ID. Keep its attempt ID, query `generation_attempt_get` / `holycrab generate attempts get`, then query recent tasks. Explain that finding no task still cannot prove that the service created nothing. Reusing an existing attempt ID is blocked locally. If the user explicitly confirms another draw, create a different attempt ID. This local protection cannot prevent duplicates created from another computer, after deleting local records, or by bypassing the CLI.
+
+An urgent request to "retry" is not confirmation of a separate paid draw with a duplicate-charge risk. Explain that risk and obtain explicit confirmation of the new task before creating another attempt.
 
 ## Real-person authorization
 

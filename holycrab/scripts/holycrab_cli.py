@@ -25,6 +25,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import urllib.error
 import urllib.parse
@@ -162,7 +163,28 @@ class CommandUsageError(ValueError):
 
 def command_progress(message: str) -> None:
     if sys.stderr.isatty():
-        print(sanitize_text_for_output(message), file=sys.stderr, flush=True)
+        print(terminal_paragraph(message), file=sys.stderr, flush=True)
+
+
+def terminal_paragraph(message: str, *, indent: str = "") -> str:
+    """Wrap explanations, never split a copyable command, URL or path."""
+    message = terminal_safe_text(sanitize_text_for_output(message))
+    lines = []
+    for line in message.split("\n"):
+        if line.lstrip().startswith(("Run: ", "holycrab ", "codex ", "claude ",
+                                     "unset ", "export ", "Remove-Item ", "Path: ", "Release: ",
+                                     "https://", "Private link: ", "QR image: ")):
+            lines.append(indent + line)
+        else:
+            lines.append(textwrap.fill(line, width=78, initial_indent=indent,
+                                       subsequent_indent=indent, break_long_words=False,
+                                       break_on_hyphens=False) if line else "")
+    return "\n".join(lines)
+
+
+def terminal_safe_text(value: Any) -> str:
+    text = re.sub(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))", "", str(value))
+    return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", text)
 
 
 def clear_environment_command(name: str) -> str:
@@ -669,6 +691,7 @@ ONBOARDING_EXAMPLES = (
      "prompt": "Turn this product introduction into a natural, clear Chinese voiceover for a promotional video."},
 )
 ONBOARDING_AGENT_INSTRUCTION = (
+    "Use short headings and bullet lists for user-facing guidance; never show internal instructions or raw JSON to beginners. "
     "During installation or the first account connection, use the onboarding state to guide setup or verify the active account. "
     "Only after verification, introduce the business uses and translate the three examples into the user's current language. "
     "Give the full introduction once in that installation conversation, then ask what the user wants to work on first. "
@@ -703,15 +726,41 @@ def onboarding_guidance(*, configured: bool, verified: bool = False, environment
     }
 
 
+def format_onboarding(guidance: dict[str, Any], *, installed: bool = False,
+                      introduce: bool = False, upgrading: bool = False) -> str:
+    """One user-facing summary shared by both installers and account commands."""
+    lines = [f"HolyCrab {VERSION} installed", ""] if installed else []
+    state = guidance.get("state")
+    if state == "READY":
+        if not installed:
+            lines += ["HolyCrab account connected", ""]
+        lines += ["Next: return to Codex or Claude Code."]
+    else:
+        if state == "CONNECT_ACCOUNT":
+            title = "Next: connect your account"
+        elif "overrides" in str(guidance.get("instruction", "")):
+            title = "Next: clear HOLYCRAB_API_KEY, then verify your account"
+        else:
+            title = "Next: verify your account"
+        if not installed and state == "VERIFY_ACCOUNT":
+            lines += ["Account not verified", ""]
+        lines += [title]
+        if guidance.get("command"):
+            # Commands stay on one line, including the PowerShell override fix.
+            lines += ["  " + str(guidance["command"])]
+    if not upgrading and (installed or (state == "READY" and introduce)):
+        title = "Ask Codex or Claude Code to:" if state == "READY" else "After verification, ask Codex or Claude Code to:"
+        lines += ["", title, "  - Create product listing images",
+                  "  - Make advertising videos", "  - Produce product voiceovers"]
+        if state == "READY":
+            lines += ["", str(guidance["question"])]
+    if installed or state != "READY":
+        lines += ["", "Do not share your API Key in chat."]
+    return "\n".join(lines)
+
+
 def show_onboarding(guidance: dict[str, Any], *, introduce: bool = False) -> None:
-    command_progress(guidance["instruction"])
-    if guidance["command"]:
-        command_progress("Next: " + guidance["command"])
-    if guidance["state"] == "READY" and introduce:
-        command_progress("Business uses: " + "; ".join(guidance["businessUses"]) + ".")
-        for example in guidance["examples"]:
-            command_progress(example["title"] + ": " + example["prompt"])
-        command_progress(guidance["question"])
+    command_progress("\n" + format_onboarding(guidance, introduce=introduce))
 
 
 def public_account_response(response: Any) -> Any:
@@ -761,8 +810,333 @@ def print_json(value: Any) -> None:
     print(json.dumps(sanitize_for_output(value), ensure_ascii=False, indent=2))
 
 
-def print_response(status: int, response: Any) -> int:
-    print_json({"httpStatus": status, "response": response})
+TERMINAL_ACTION_COPY = {
+    "WAIT_FOR_AUTHORIZATION": "Have the person complete verification and confirm on their phone.\nKeep this authorization; do not create another one.",
+    "UPLOAD_ASSETS": "No materials were created by this authorization.\nSelect this person's files, preview them, and confirm an upload.\nPaid generation needs separate confirmation.",
+    "SELECT_FILES_TO_UPLOAD": "No materials have been uploaded to this person group.\nSelect this person's files, preview them, and confirm an upload.",
+    "QUERY_RECENT_TASKS": "Do not submit this attempt again.\nNo matching result does not prove that no task was created.",
+    "REVIEW_ESTIMATE": "Review the request and cost before confirming a paid task.",
+    "WAIT_FOR_TASK": "Wait for this same task. Do not submit it again.",
+    "WAIT_FOR_ASSET": "Upload registered; processing is still running.\nDo not upload the file again.",
+    "WAIT_FOR_ASSETS": "Uploads registered; wait until all materials are ready.",
+    "CONTINUE_QUERYING": "Continue checking the same ID. Nothing was resubmitted.",
+    "ASK_BEFORE_AUTHORIZATION": "No authorized people were found.\nAsk Codex to start authorization for the intended person.",
+    "ASK_BEFORE_NEW_AUTHORIZATION": "Ask before starting a new authorization.",
+    "ESTIMATE_GENERATION": "Tell Codex how you want to use this material.\nReview the proposed work and cost before confirming generation.",
+    "CHOOSE_DOWNLOAD_DESTINATION": "Choose where to save the completed result.",
+    "REVIEW_TASK_FAILURE": "Review the error before deciding whether to create a new task.",
+    "DO_NOT_REUPLOAD_AUTOMATICALLY": "Review the processing error and choose what to do next.\nDo not upload the file again automatically.",
+    "QUERY_ASSET": "Keep this material ID and check its status.\nDo not upload the file again.",
+    "QUERY_GROUP_ASSETS": "Check this person's materials before continuing.\nDo not upload these files again automatically.",
+    "REVIEW_ASSETS": "Review existing materials before continuing.\nDo not upload these files again automatically.",
+    "QUERY_EXISTING_RECORDS": "Review existing records before continuing.\nDo not repeat this operation automatically.",
+    "QUERY_TASK": "Check this same task. Do not submit it again.",
+    "FIX_REQUEST": "Correct the rejected request, then confirm a new task.",
+    "CHECK_INSTALLATION": "Check local health; reinstall if the command no longer works.\nRollback has not been confirmed.",
+    "CHECK_LOCAL_CLEANUP": "Cleanup may be incomplete. Check local health or reinstall.\nSome files or registrations may already have been removed.",
+}
+
+
+def terminal_next_action(action: Any) -> list[str]:
+    if not isinstance(action, dict):
+        return []
+    instruction = TERMINAL_ACTION_COPY.get(action.get("code"), action.get("instruction"))
+    lines = ["", "Next:"]
+    if instruction:
+        lines += terminal_paragraph(str(instruction), indent="  ").splitlines()
+    if isinstance(action.get("command"), str) and action["command"]:
+        lines += ["  " + action["command"]]
+    return lines
+
+
+def terminal_scalar(value: Any) -> str:
+    if value is None:
+        return "Not provided"
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    # Preserve spaces inside copyable paths; remove terminal controls, not data.
+    return terminal_safe_text(value).replace("\n", " ").replace("\t", " ")
+
+
+def terminal_label(key: str) -> str:
+    labels = {"uniqId": "ID", "taskId": "Task ID", "attemptId": "Attempt ID",
+              "authorizationId": "Authorization ID", "groupUniqId": "Person group ID",
+              "assetUniqId": "Material ID", "frozenCredit": "Credits", "textResult": "Text",
+              "size": "Size", "bytes": "Bytes", "path": "Path", "step": "Status",
+              "id": "ID", "output": "Path", "file": "Path", "h5Link": "Private link",
+              "qrPath": "QR image", "taskType": "Type", "assetType": "Type"}
+    return labels.get(key, re.sub(r"([a-z])([A-Z])", r"\1 \2", key).replace("_", " ").capitalize())
+
+
+def terminal_check_failed(check: Any) -> bool:
+    if not isinstance(check, dict):
+        return False
+    failure_fields = {"ok", "readable", "valid", "exists", "formatValid", "versionMatches", "hashMatches"}
+    return any((key in failure_fields and value is False) or terminal_check_failed(value)
+               for key, value in check.items())
+
+
+def terminal_fields(value: Any, *, indent: str = "") -> list[str]:
+    """Preserve result details without JSON punctuation or internal Agent prose."""
+    if isinstance(value, list):
+        if not value:
+            return [indent + "None"]
+        lines = []
+        for index, item in enumerate(value, 1):
+            if isinstance(item, (dict, list)):
+                lines += [indent + f"{index}."] + terminal_fields(item, indent=indent + "  ")
+            else:
+                lines += terminal_paragraph("- " + terminal_scalar(item), indent=indent).splitlines()
+        return lines
+    if not isinstance(value, dict):
+        return terminal_paragraph(terminal_scalar(value), indent=indent).splitlines()
+    lines = []
+    for key, item in value.items():
+        if key in {"nextAction", "onboarding", "agentInstruction"}:
+            continue
+        if item == []:
+            continue
+        label = terminal_label(key)
+        if key == "step" and type(item) is int:
+            item = {0: "Queued", 1: "Processing", 2: "Completed", 3: "Failed"}.get(item, item)
+        if isinstance(item, (dict, list)):
+            lines += [indent + label + ":"] + terminal_fields(item, indent=indent + "  ")
+        else:
+            text = label + ": " + terminal_scalar(item)
+            if key in {"path", "file", "output", "qrPath", "h5Link", "releasePage"}:
+                lines += [indent + text]
+            else:
+                lines += terminal_paragraph(text, indent=indent).splitlines()
+    lines += [indent + line if line else "" for line in terminal_next_action(value.get("nextAction"))]
+    return lines
+
+
+def terminal_status(value: Any) -> str:
+    statuses = {0: "Queued", 1: "Processing", 2: "Completed", 3: "Failed",
+                "UPLOADED": "Processing", "UPLOADING_TO_ARK": "Processing",
+                "GETTING_UPLOADED_RESULT": "Processing", "UPLOADED_TO_ARK": "Ready",
+                "CREATED": "Created", "SUCCEEDED": "Succeeded",
+                "FAILED": "Failed", "EXPIRED": "Expired", "unknown": "Unknown",
+                "prepared": "Prepared", "submitting": "Submitting", "created": "Created",
+                "failed": "Failed", "uploaded": "Registered (not yet ready)"}
+    return statuses.get(value, terminal_scalar(value)) if type(value) in (str, int) else "Not provided"
+
+
+def terminal_table(title: str, columns: tuple[str, ...], rows: list[list[Any]]) -> list[str]:
+    cells = [[terminal_scalar(cell) for cell in row] for row in rows]
+    widths = [max(len(columns[i]), *(len(row[i]) for row in cells)) for i in range(len(columns))]
+    return [title, "", "  ".join(columns[i].ljust(widths[i]) for i in range(len(columns))).rstrip(),
+            *["  ".join(row[i].ljust(widths[i]) for i in range(len(columns))).rstrip() for row in cells]]
+
+
+def terminal_record_list(value: dict[str, Any], view: str) -> list[str]:
+    source = value.get("records", value.get("attempts", []))
+    if not isinstance(source, list):
+        return ["Records could not be read. Check the same query again."]
+    records = [item for item in source if isinstance(item, dict)]
+    unreadable = len(source) - len(records)
+    titles = {"tasks": ("Tasks", "No tasks on this page"),
+              "people": ("Authorized people", "No authorized people on this page"),
+              "materials": ("Materials", "No materials on this page"),
+              "attempts": ("Submission attempts", "No submission attempts")}
+    title, empty = titles[view]
+    if not records:
+        lines = [title if unreadable else empty]
+    elif view == "people":
+        lines = terminal_table(title, ("Person ID", "Name", "Materials"), [
+            [item.get("uniqId"), textwrap.shorten(terminal_scalar(item.get("name")), width=28, placeholder="..."), item.get("assetCount")]
+            for item in records])
+    else:
+        lines = terminal_table(title, ("ID", "Status", "Type" if view != "attempts" else "Task ID"), [
+            [item.get("attemptId") or item.get("uniqId") or item.get("taskId"),
+             terminal_status(item.get("state", item.get("step", item.get("status")))),
+             item.get("taskId") if view == "attempts" else item.get("taskType", item.get("assetType"))]
+            for item in records])
+    if unreadable:
+        lines += [f"Unreadable records: {unreadable}"]
+    if value.get("current") is not None and value.get("pages") is not None:
+        lines += ["", f"Page {value['current']} of {value['pages']} | Total: {value.get('total', 'Not provided')}"]
+    elif "total" in value:
+        lines += ["", "Total: " + terminal_scalar(value["total"])]
+    if view == "attempts" and any(item.get("state") in {"prepared", "submitting", "unknown"} for item in records):
+        lines += ["", "Do not submit an existing attempt again.",
+                  "No matching task does not prove that no task was created."]
+    return lines + terminal_next_action(value.get("nextAction"))
+
+
+def terminal_failed_checks(value: dict[str, Any], *, indent: str = "") -> list[str]:
+    lines = []
+    for key, item in value.items():
+        if isinstance(item, dict) and terminal_check_failed(item):
+            lines += [indent + terminal_scalar(key) + ":"] + terminal_failed_checks(item, indent=indent + "  ")
+        elif item is False or key in {"error", "path", "version", "expectedVersion"}:
+            lines += [indent + terminal_label(key) + ": " + terminal_scalar(item)]
+    return lines
+
+
+def terminal_upload_result(value: dict[str, Any]) -> list[str]:
+    failed = value.get("failedOrUnknown")
+    lines = ["Upload summary", f"  Uploaded: {len(value['uploaded'])}",
+             f"  Failed or unknown: {int(failed is not None)}",
+             f"  Not attempted: {len(value['notAttempted'])}"]
+    sections = [("Registered (wait for processing)", value["uploaded"]),
+                ("Failed or unknown", [failed] if failed else []), ("Not attempted", value["notAttempted"])]
+    for title, items in sections:
+        if not items:
+            continue
+        lines += ["", title + ":"]
+        for item in items:
+            lines += terminal_fields({key: item[key] for key in
+                                     ("file", "assetUniqId", "groupUniqId", "state", "phase", "error", "warning")
+                                     if key in item}, indent="  ")
+    if value.get("warning"):
+        lines += terminal_paragraph("Warning: " + str(value["warning"])).splitlines()
+    return lines + terminal_next_action(value.get("nextAction"))
+
+
+def terminal_capability(value: dict[str, Any]) -> list[str]:
+    lines = ["Model capabilities (installed snapshot)"]
+    for key, item in value.items():
+        if key in {"requestSchema", "capabilitySnapshotPublishedAt"}:
+            continue
+        if isinstance(item, list) and all(isinstance(entry, (str, int)) for entry in item):
+            text = ", ".join(terminal_scalar(entry) for entry in item)
+        elif isinstance(item, dict):
+            text = "; ".join(terminal_label(name) + ": " + terminal_scalar(limit) for name, limit in item.items())
+        else:
+            text = terminal_scalar(item)
+        lines += terminal_paragraph(terminal_label(key) + ": " + text).splitlines()
+    return lines
+
+
+def format_terminal_result(value: Any, *, introduce_onboarding: bool = False, view: str | None = None) -> str:
+    value = sanitize_for_output(value)
+    if view == "models" and isinstance(value, list) and value:
+        return "\n".join(terminal_table("Models", ("Model ID", "Type", "Name"), [
+            [item.get("id"), item.get("kind"), item.get("label")] for item in value]))
+    if not isinstance(value, dict):
+        return "\n".join(terminal_fields(value))
+    if "httpStatus" in value and "response" in value:
+        response = value["response"]
+        if not response_ok(value["httpStatus"], response):
+            return f"Request failed (HTTP {value['httpStatus']})\n" + "\n".join(terminal_fields(response))
+        value = response.get("data", response) if isinstance(response, dict) else response
+        return format_terminal_result(value, view=view)
+    if "checks" in value and "ok" in value:
+        lines = ["Local checks passed" if value["ok"] else "Local checks need attention",
+                 f"Version: {value.get('version', VERSION)}"]
+        for name, check in value["checks"].items():
+            failed = terminal_check_failed(check)
+            lines += [f"  {terminal_label(name)}: {'Needs attention' if failed else 'Checked'}"]
+            if failed:
+                lines += terminal_failed_checks(check, indent="    ")
+        if value.get("repairs"):
+            lines += ["", "Repair:"] + ["  " + str(command) for command in value["repairs"]]
+        if value.get("update", {}).get("error"):
+            lines += ["", "Version check:"] + terminal_fields(value["update"], indent="  ")
+        elif value.get("update", {}).get("updateAvailable"):
+            lines += ["", "Update available: " + str(value["update"].get("latestVersion")), "  holycrab update"]
+        if isinstance(value.get("onboarding"), dict):
+            lines += ["", format_onboarding(value["onboarding"])]
+        return "\n".join(lines)
+    if isinstance(value.get("onboarding"), dict):
+        account_failed = value.get("valid") is False and value.get("configured") and value.get("httpStatus")
+        lines = ([f"Account check failed (HTTP {value['httpStatus']})"] if account_failed else
+                 [format_onboarding(value["onboarding"], introduce=introduce_onboarding)])
+        account = value.get("account", value)
+        if isinstance(account, dict):
+            details = {key: account[key] for key in PUBLIC_ACCOUNT_FIELDS if key in account}
+            if details:
+                lines += [""] + terminal_fields(details)
+        if value.get("nextAction") and (account_failed or
+                value["nextAction"].get("command") != value["onboarding"].get("command")):
+            lines += terminal_next_action(value["nextAction"])
+        return "\n".join(lines)
+    if isinstance(value.get("files"), list) and "uploadPlanId" in value:
+        target = value.get("target", {})
+        person = target.get("name") or "Personal materials"
+        lines = ["Upload preview", "", "Target: " + terminal_scalar(person)]
+        if target.get("uniqId"):
+            lines += ["Person group ID: " + terminal_scalar(target["uniqId"])]
+        for index, item in enumerate(value["files"], 1):
+            lines += ["", f"{index}. {terminal_scalar(item.get('name'))}", "   Path: " + terminal_scalar(item.get("path")),
+                      f"   Type: {terminal_scalar(item.get('mediaType'))} ({terminal_scalar(item.get('contentType'))})",
+                      f"   Size: {terminal_scalar(item.get('size'))} bytes"]
+            if item.get("durationSeconds") is not None:
+                lines += [f"   Duration: {terminal_scalar(item['durationSeconds'])} seconds"]
+        lines += ["", "Format, dimensions, frame rate, duration and codecs are still checked online.",
+                  "Local checks do not guarantee acceptance.", "Confirm only if all files and the target are correct."]
+        return "\n".join(lines)
+    if view in {"tasks", "people", "materials", "attempts"} or "attempts" in value:
+        return "\n".join(terminal_record_list(value, view or "attempts"))
+    if "uploaded" in value and "notAttempted" in value:
+        return "\n".join(terminal_upload_result(value))
+    if "updateAvailable" in value:
+        title = ("Version check failed" if value.get("error") else "Update available" if value["updateAvailable"] else
+                 "No newer stable release" if value.get("latestVersion") else "Version status unavailable")
+        lines = [title, "Current version: " + VERSION]
+        lines += terminal_fields({key: value[key] for key in ("latestVersion", "releasePage", "error") if value.get(key)})
+        if value["updateAvailable"]:
+            lines += ["", "Next:", "  holycrab update"]
+        return "\n".join(lines)
+    if "id" in value and "requestSchema" in value:
+        return "\n".join(terminal_capability(value))
+    if "output" in value and "bytes" in value:
+        return "\n".join(["Download completed", *terminal_fields(value)])
+    if "authorizationId" in value and value.get("status"):
+        titles = {"CREATED": "Authorization created", "SUCCEEDED": "Authorization succeeded",
+                  "FAILED": "Authorization failed", "EXPIRED": "Authorization expired"}
+        lines = [titles.get(value["status"], "Authorization status")]
+        group = value.get("group", {})
+        details = {"name": group.get("name", value.get("name")), "authorizationId": value["authorizationId"]}
+        if group.get("uniqId"):
+            details["groupUniqId"] = group["uniqId"]
+        details.update({key: value[key] for key in ("h5Link", "qrPath", "expiresAt", "warning") if key in value})
+        lines += terminal_fields({key: item for key, item in details.items() if item is not None})
+        if value.get("h5Link"):
+            lines += ["Keep the verification link and QR private."]
+        return "\n".join(lines + terminal_next_action(value.get("nextAction")))
+    if "attemptId" in value and "state" in value:
+        titles = {"created": "Task created", "failed": "Submission rejected", "unknown": "Submission outcome unknown",
+                  "submitting": "Submission not yet confirmed", "prepared": "Submission not yet confirmed"}
+        lines = [titles.get(value["state"], "Submission status")]
+        lines += terminal_fields({key: value[key] for key in
+                                 ("attemptId", "taskId", "kind", "httpStatus", "note") if key in value})
+        if value["state"] == "failed" and value.get("message"):
+            lines += terminal_paragraph("Error: " + value["message"]).splitlines()
+        return "\n".join(lines + terminal_next_action(value.get("nextAction")))
+    if "kind" in value and "estimate" in value:
+        return "\n".join(["Credit estimate (no task created)", *terminal_fields({"kind": value["kind"]}),
+                          *terminal_fields(value["estimate"]), *terminal_next_action(value.get("nextAction"))])
+    if "uniqId" in value and "step" in value:
+        lines = ["Material status" if "ready" in value else "Task status"]
+        details = {key: value[key] for key in
+                   ("uniqId", "name", "taskType", "assetType", "model", "progress", "duration", "resolution",
+                    "ratio", "generateAudio", "frozenCredit", "textResult", "error") if key in value}
+        details["step"] = terminal_status(value["step"])
+        lines += terminal_fields(details)
+        if "ready" not in value:
+            outputs = task_output_urls(value)
+            if outputs:
+                lines += [f"Outputs: {len(outputs)}"]
+        return "\n".join(lines + terminal_next_action(value.get("nextAction")))
+    lines = ["Wait timed out", ""] if value.get("timedOut") else []
+    if view:
+        lines += [view, ""]
+    lines += terminal_fields({key: item for key, item in value.items() if key != "timedOut"})
+    return "\n".join(lines)
+
+
+def print_result(value: Any, *, force_json: bool = False, introduce_onboarding: bool = False,
+                 view: str | None = None) -> None:
+    if force_json or not sys.stdout.isatty():
+        print_json(value)
+    else:
+        print(format_terminal_result(value, introduce_onboarding=introduce_onboarding, view=view), flush=True)
+
+
+def print_response(status: int, response: Any, *, view: str | None = None) -> int:
+    print_result({"httpStatus": status, "response": response}, view=view)
     return 0 if response_ok(status, response) else 1
 
 
@@ -1298,7 +1672,7 @@ def command_set_key(args: argparse.Namespace) -> int:
     save_config(config)
     command_progress("HolyCrab API Key saved locally with user-only permissions.")
     overridden = bool(os.environ.get("HOLYCRAB_API_KEY"))
-    if overridden:
+    if overridden and not sys.stdout.isatty():
         command_progress("Warning: HOLYCRAB_API_KEY is still set and overrides the saved login.")
         command_progress("Run: " + clear_environment_command("HOLYCRAB_API_KEY"))
     verified = valid_account_payload(account)
@@ -1306,10 +1680,9 @@ def command_set_key(args: argparse.Namespace) -> int:
     result = public_account_data(account) if isinstance(account, dict) else {}
     result.update({"configured": True, "valid": verified and not overridden, "savedKeyVerified": verified,
                    "credentialSource": "environment" if overridden else "local config", "onboarding": guidance})
-    print_json(result)
-    if args.no_verify:
-        command_progress("API Key saved without verification.")
-    show_onboarding(guidance, introduce=not previously_configured)
+    print_result(result, force_json=args.stdin, introduce_onboarding=not previously_configured)
+    if not sys.stdout.isatty() and not args.stdin:
+        show_onboarding(guidance, introduce=not previously_configured)
     return 0
 
 
@@ -1319,7 +1692,7 @@ def command_auth_status(args: argparse.Namespace) -> int:
         else "local config" if load_config().get("apiKey") else None
     )
     if not source:
-        print_json({"configured": False, "valid": False, "next": "Run `holycrab setup`.",
+        print_result({"configured": False, "valid": False, "next": "Run `holycrab setup`.",
                     "onboarding": onboarding_guidance(configured=False),
                     "nextAction": next_action("CONNECT_ACCOUNT", "Configure your API Key locally; never send it in chat.", "holycrab setup")})
         return 1
@@ -1327,11 +1700,11 @@ def command_auth_status(args: argparse.Namespace) -> int:
     status, response = send("GET", "/api/user/me")
     account = response_data(status, response) if response_ok(status, response) else None
     if not valid_account_payload(account):
-        print_json({"configured": True, "valid": False, "credentialSource": source, "httpStatus": status,
+        print_result({"configured": True, "valid": False, "credentialSource": source, "httpStatus": status,
                     "onboarding": onboarding_guidance(configured=True),
                     "nextAction": next_action("CHECK_API_KEY", "Check that the API Key is enabled on the account page, then configure the correct Key locally.", "holycrab setup")})
         return 1
-    print_json({"configured": True, "valid": True, "credentialSource": source, "account": public_account_data(account),
+    print_result({"configured": True, "valid": True, "credentialSource": source, "account": public_account_data(account),
                 "onboarding": onboarding_guidance(configured=True, verified=True)})
     return 0
 
@@ -1341,31 +1714,33 @@ def command_clear_key(args: argparse.Namespace) -> int:
     config.pop("apiKey", None)
     config.pop("apiKeyDpapi", None)
     save_config(config)
-    print("Saved HolyCrab API Key cleared. Environment variables were not changed; the online API Key was not revoked.")
+    print("Saved API Key cleared from this computer.\n"
+          "Environment variables were not changed.\n"
+          "The online API Key was not revoked.")
     return 0
 
 
 def command_models_list(args: argparse.Namespace) -> int:
     models = all_models()
     brief = [{"id": item["id"], "label": item.get("label"), "kind": item["kind"]} for item in models]
-    print_json(capability_snapshot() if args.json else brief)
+    print_result(capability_snapshot() if args.json else brief, force_json=args.json, view="models")
     return 0
 
 
 def command_models_show(args: argparse.Namespace) -> int:
-    print_json(find_model(args.model))
+    print_result(find_model(args.model))
     return 0
 
 
 def command_credits_balance(args: argparse.Namespace) -> int:
     command_progress("Checking your HolyCrab credit balance...")
     status, response = send("GET", "/api/user/me")
-    return print_response(status, public_account_response(response))
+    return print_response(status, public_account_response(response), view="Credit balance")
 
 
 def command_generation_estimate(args: argparse.Namespace) -> int:
     command_progress(f"Estimating credits for this {args.kind} request; no task will be created...")
-    print_json(estimate_generation(args.kind, parse_json_argument(args.json)))
+    print_result(estimate_generation(args.kind, parse_json_argument(args.json)))
     return 0
 
 
@@ -1375,7 +1750,9 @@ def command_generation_create(args: argparse.Namespace) -> int:
     if not args.yes:
         command_progress("Estimating credits before confirmation; no task has been submitted...")
         approved_estimate = create_generation(args.kind, payload, confirmed=False)
-        print_json(approved_estimate)
+        print_result(approved_estimate)
+        if sys.stdout.isatty():
+            print("\nRequest to confirm:\n" + "\n".join(terminal_fields(normalize_generation_request(args.kind, payload))), flush=True)
         if not sys.stdin.isatty():
             print("Not submitted. Re-run with --yes only after the user confirms the estimate.", file=sys.stderr)
             return 2
@@ -1391,19 +1768,20 @@ def command_generation_create(args: argparse.Namespace) -> int:
         approved_estimate=approved_estimate,
         progress=command_progress,
     )
-    print_json(result)
-    command_progress("Task created. Next: " + result["nextAction"]["command"] if result.get("state") == "created"
-                     else "Task submission did not return a confirmed creation. Follow the returned nextAction; do not retry automatically.")
+    print_result(result)
+    if not sys.stdout.isatty():
+        command_progress("Task created. Next: " + result["nextAction"]["command"] if result.get("state") == "created"
+                         else "Creation not confirmed. Query existing tasks; do not resubmit.")
     return 0 if result.get("state") == "created" else 1
 
 
 def command_attempts_list(args: argparse.Namespace) -> int:
-    print_json({"attempts": attempt_records()})
+    print_result({"attempts": attempt_records()})
     return 0
 
 
 def command_attempts_get(args: argparse.Namespace) -> int:
-    print_json(attempt_record(args.attempt_id))
+    print_result(attempt_record(args.attempt_id))
     return 0
 
 
@@ -1419,7 +1797,7 @@ def command_task_list(args: argparse.Namespace) -> int:
     status, response = send(
         "GET", "/api/tasks", query=query
     )
-    return print_response(status, public_task_response(response))
+    return print_response(status, public_task_response(response), view="tasks")
 
 
 def poll_task(uniq_id: str, timeout: float, interval: float, *, emit: bool = False) -> tuple[int, Any]:
@@ -1452,11 +1830,13 @@ def command_poll_task(args: argparse.Namespace) -> int:
     command_progress(f"Waiting for task {args.uniq_id}, up to {args.timeout:g} seconds. Ctrl+C stops only this local wait...")
     code, latest = poll_task(args.uniq_id, args.timeout, args.interval, emit=True)
     if code == 2:
-        print_json({"timedOut": True, "taskId": args.uniq_id,
+        print_result({"timedOut": True, "taskId": args.uniq_id,
                     "nextAction": next_action("CONTINUE_QUERYING", "The local wait timed out; the task was not resubmitted. Query this same task again.", f"holycrab tasks get {args.uniq_id}")})
-        print("Polling timed out; the task was not resubmitted.", file=sys.stderr)
+        if not sys.stdout.isatty():
+            print("Polling timed out; the task was not resubmitted.", file=sys.stderr)
     else:
-        command_progress("Task wait finished: completed." if code == 0 else "Task wait finished without a successful result. Review the returned status and error.")
+        if not sys.stdout.isatty():
+            command_progress("Task wait finished: completed." if code == 0 else "Task wait finished without a successful result. Review the returned status and error.")
     return code
 
 
@@ -1547,7 +1927,7 @@ def command_download(args: argparse.Namespace) -> int:
     total = 0
     last_progress = time.monotonic()
     try:
-        command_progress(f"Downloading output {args.index + 1} to {destination}...")
+        command_progress(f"Downloading output {args.index + 1}...\nPath: {destination}")
         with open_download(url) as remote, os.fdopen(descriptor, "wb") as local:
             descriptor = -1
             content_length = remote.headers.get("Content-Length") if getattr(remote, "headers", None) else None
@@ -1580,8 +1960,9 @@ def command_download(args: argparse.Namespace) -> int:
             partial.unlink()
         except FileNotFoundError:
             pass
-    print_json({"taskId": args.uniq_id, "output": str(destination), "bytes": total})
-    command_progress(f"Download completed: {destination} ({total} bytes).")
+    print_result({"taskId": args.uniq_id, "output": str(destination), "bytes": total})
+    if not sys.stdout.isatty():
+        command_progress(f"Download completed: {destination} ({total} bytes).")
     return 0
 
 
@@ -2043,13 +2424,15 @@ def poll_resource(identifier: str, timeout: float, interval: float, *, authoriza
         data = get_authorization(identifier) if authorization else get_asset(identifier)
         state = data.get("status") if authorization else data.get("step")
         if state != previous_state:
-            print_json(data)
+            print_result(data)
             previous_state = state
         if state == ("SUCCEEDED" if authorization else "UPLOADED_TO_ARK"):
-            command_progress("Authorization completed; select files to upload next." if authorization else "Asset is ready.")
+            if not sys.stdout.isatty():
+                command_progress("Authorization completed; select files to upload next." if authorization else "Asset is ready.")
             return 0
         if state in ({"FAILED", "EXPIRED"} if authorization else {"FAILED", "DELETING"}):
-            command_progress("Waiting ended without success. Review the returned status and nextAction.")
+            if not sys.stdout.isatty():
+                command_progress("Waiting ended without success. Review the returned status and nextAction.")
             return 1
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -2058,21 +2441,22 @@ def poll_resource(identifier: str, timeout: float, interval: float, *, authoriza
                 "The wait timed out; this does not mean failure. Keep the same ID and query again. Nothing was resubmitted.",
                 (f"holycrab real-human get {identifier}" if authorization else f"holycrab assets get {identifier}"),
             )
-            print_json({"timedOut": True, "id": identifier, "lastStatus": state, "nextAction": timeout_action})
-            print("Polling timed out; keep the ID and query again. Nothing was resubmitted.", file=sys.stderr)
+            print_result({"timedOut": True, "id": identifier, "lastStatus": state, "nextAction": timeout_action})
+            if not sys.stdout.isatty():
+                print("Polling timed out; keep the ID and query again. Nothing was resubmitted.", file=sys.stderr)
             return 2
         time.sleep(min(interval, remaining))
 
 
 def command_real_human_start(args: argparse.Namespace) -> int:
     command_progress("Creating one real-human authorization. Do not repeat this request if the result is unclear.")
-    print_json(create_authorization(args.name))
+    print_result(create_authorization(args.name))
     return 0
 
 
 def command_real_human_get(args: argparse.Namespace) -> int:
     command_progress("Checking the existing authorization...")
-    print_json(get_authorization(args.authorization_id))
+    print_result(get_authorization(args.authorization_id))
     return 0
 
 
@@ -2084,13 +2468,13 @@ def command_real_human_wait(args: argparse.Namespace) -> int:
 
 def command_real_human_groups(args: argparse.Namespace) -> int:
     command_progress("Listing authorized people...")
-    print_json(list_real_human_groups(args.page, args.page_size))
+    print_result(list_real_human_groups(args.page, args.page_size), view="people")
     return 0
 
 
 def command_real_human_group_rename(args: argparse.Namespace) -> int:
     command_progress("Renaming the selected authorized person...")
-    print_json(rename_real_human_group(args.group_id, args.name))
+    print_result(rename_real_human_group(args.group_id, args.name), view="Person renamed")
     return 0
 
 
@@ -2109,18 +2493,18 @@ def deletion_confirmed(prompt: str, yes: bool) -> bool:
 def command_real_human_group_delete(args: argparse.Namespace) -> int:
     command_progress("Checking the person and assets selected for deletion...")
     target = find_real_human_group(args.group_id)
-    print_json({"warning": "Permanent deletion removes this person, all group assets, and upstream records.",
+    print_result({"warning": "Permanent deletion removes this person, all group assets, and upstream records.",
                 "target": public_fields(target, ("uniqId", "name", "assetCount"))})
     if not deletion_confirmed("Permanently delete this person and every group asset? [y/N] ", args.yes):
         return 2
     command_progress("Deleting the confirmed person and group assets...")
-    print_json(delete_real_human_group(args.group_id, True, target))
+    print_result(delete_real_human_group(args.group_id, True, target), view="Person deleted")
     return 0
 
 
 def command_real_human_assets(args: argparse.Namespace) -> int:
     command_progress("Listing assets for the selected authorized person...")
-    print_json(list_real_human_assets(args.group, args.page, args.page_size))
+    print_result(list_real_human_assets(args.group, args.page, args.page_size), view="materials")
     return 0
 
 
@@ -2128,20 +2512,20 @@ def command_real_human_asset_delete(args: argparse.Namespace) -> int:
     command_progress("Checking the real-human asset selected for deletion...")
     group = find_real_human_group(args.group)
     asset = get_asset(args.asset_id)
-    print_json({"warning": "Permanent deletion removes this asset's storage, upstream record, and database record.",
+    print_result({"warning": "Permanent deletion removes this asset's storage, upstream record, and database record.",
                 "target": {"groupUniqId": group.get("uniqId"), "groupName": group.get("name"),
                            "groupAssetCount": group.get("assetCount"),
                            **public_fields(asset, ("uniqId", "name", "assetType"))}})
     if not deletion_confirmed("Permanently delete this real-human asset? [y/N] ", args.yes):
         return 2
     command_progress("Deleting the confirmed real-human asset...")
-    print_json(delete_real_human_asset(args.group, args.asset_id, True, group, asset))
+    print_result(delete_real_human_asset(args.group, args.asset_id, True, group, asset), view="Material deleted")
     return 0
 
 
 def command_asset_get(args: argparse.Namespace) -> int:
     command_progress("Checking the existing asset...")
-    print_json(get_asset(args.uniq_id))
+    print_result(get_asset(args.uniq_id))
     return 0
 
 
@@ -2499,7 +2883,7 @@ def command_upload_asset(args: argparse.Namespace) -> int:
     command_progress("Checking files and preparing the complete upload preview...")
     preview = prepare_upload_plan(args.file, group_uniq_id=args.real_human_group,
                                   duration_seconds=args.duration_seconds)
-    print_json(preview)
+    print_result(preview)
     if not args.yes:
         if not sys.stdin.isatty():
             print("No files were uploaded. Re-run with --yes only after the user confirms the complete preview.", file=sys.stderr)
@@ -2513,8 +2897,9 @@ def command_upload_asset(args: argparse.Namespace) -> int:
             print("Cancelled; no files were uploaded.", file=sys.stderr)
             return 2
     result = execute_upload_plan(preview["uploadPlanId"], confirmed=True, progress=command_progress)
-    print_json(result)
-    command_progress(f"Upload ended: {len(result['uploaded'])} uploaded, {int(result['failedOrUnknown'] is not None)} failed or unknown, {len(result['notAttempted'])} not attempted.")
+    print_result(result)
+    if not sys.stdout.isatty():
+        command_progress(f"Upload ended: {len(result['uploaded'])} uploaded, {int(result['failedOrUnknown'] is not None)} failed or unknown, {len(result['notAttempted'])} not attempted.")
     return 0 if result["failedOrUnknown"] is None else 1
 
 
@@ -2605,8 +2990,9 @@ def cached_update_notice() -> str | None:
     update = read_update_state().get("update")
     if isinstance(update, dict) and update.get("updateAvailable"):
         return (
-            f"HolyCrab CLI {VERSION} is installed; {update.get('latestVersion')} is available. "
-            f"Release: {update.get('releasePage')}. Run `holycrab update`."
+            f"HolyCrab update available: {VERSION} -> {update.get('latestVersion')}\n"
+            f"Release: {update.get('releasePage')}\n"
+            "Next:\n  holycrab update"
         )
     return None
 
@@ -2714,10 +3100,10 @@ def command_update(args: argparse.Namespace) -> int:
     command_progress("Checking GitHub for a stable HolyCrab update...")
     update = check_for_update(force=True, timeout=30.0)
     if update.get("error"):
-        print_json(update)
-        print("Version check failed. Current installation was not changed. Run `holycrab update --check` when connectivity is restored.", file=sys.stderr)
+        print_result(update)
+        print("Current installation was not changed.\nNext:\n  holycrab update --check", file=sys.stderr)
         return 1
-    print_json({key: value for key, value in update.items() if key != "release"})
+    print_result({key: value for key, value in update.items() if key != "release"})
     if not update.get("updateAvailable") or args.check:
         return 0
     state = read_update_state()
@@ -3286,9 +3672,11 @@ def perform_uninstall(args: argparse.Namespace) -> int:
     manifest, prefix, library, launcher = validated_uninstall_manifest()
     config = _normalized_path(config_dir())
     print("HolyCrab uninstall preview:")
+    print("\nRemove:")
     print(f"- Remove program: {library}")
     print(f"- Remove launcher: {launcher}")
     print("- Remove installer-managed HolyCrab MCP registrations and unchanged Skill files")
+    print("\nPATH/profile:")
     registration = manifest.get("pathRegistration")
     if not isinstance(registration, dict):
         print("- Keep PATH/profile entry: this installation has no ownership record")
@@ -3300,6 +3688,7 @@ def perform_uninstall(args: argparse.Namespace) -> int:
         print(f"- Remove installer-managed PATH/profile entry for: {prefix / 'bin'}")
     else:
         print("- Keep PATH/profile entry: the installer did not add it")
+    print("\nLocal data:")
     if args.purge:
         print(f"- Purge known local credentials and records: {config}")
     else:
@@ -3343,7 +3732,6 @@ def perform_uninstall(args: argparse.Namespace) -> int:
                 shutil.rmtree(library)
         except OSError:
             pass
-        print("HolyCrab program cleanup is scheduled. It will finish after this process exits, normally within 10 seconds; check the program paths if files remain.")
     else:
         try:
             launcher.unlink()
@@ -3375,19 +3763,24 @@ def perform_uninstall(args: argparse.Namespace) -> int:
             print("HolyCrab program files were removed, but local data purge was incomplete.", file=sys.stderr)
             return 1
 
+    print("")
     if args.purge:
         print("Known local HolyCrab credentials and records were purged.")
-        print(f"Revoke the API Key separately if it must stop working: {PUBLIC_ACCOUNT_URL}")
+        print(f"Revoke the API Key separately if it must stop working:\n  {PUBLIC_ACCOUNT_URL}")
     else:
-        print(f"Local HolyCrab credentials and records were preserved at {config}.")
+        print(f"Local HolyCrab credentials and records were preserved at:\n  {config}")
+    if warnings:
+        print("\nNotes:")
     for warning in warnings:
         informational = warning.startswith("Info:") or warning == "PATH registration was kept because the installer did not add it" or (
             warning.startswith("PATH registration was kept because") and warning.endswith("contains other programs")
         )
-        print(warning if warning.startswith("Info:") else f"{'Info' if informational else 'Warning'}: {warning}")
+        message = warning if warning.startswith("Info:") else f"{'Info' if informational else 'Warning'}: {warning}"
+        print(terminal_paragraph(message))
     pending = any(warning.startswith("MCP cleanup pending") for warning in warnings)
     if os.name == "nt":
         print("HolyCrab uninstall cleanup is scheduled; exit this process to finish program removal.")
+        print("Normally completes within 10 seconds. Check the program paths if files remain.")
         if pending:
             print("Agent registration cleanup is incomplete; follow the pending cleanup instructions above.")
     elif pending:
@@ -3581,7 +3974,7 @@ def command_doctor(args: argparse.Namespace) -> int:
     if args.online:
         command_progress("Checking local health, refreshing version status, validating the API Key, and checking selected MCP registrations...")
     report = local_health_report(online=args.online)
-    print_json(report)
+    print_result(report, force_json=args.json)
     return 0 if report["ok"] else 1
 
 
@@ -3775,6 +4168,7 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
         negotiated = requested if requested in SUPPORTED_INITIALIZE_PROTOCOLS else LATEST_INITIALIZE_PROTOCOL
         notice = cached_update_notice()
         instructions = (
+            "Present user-facing results with short headings and lists, not raw JSON or long paragraphs. "
             "Before an operation explain what you will do in the user's current language. Afterward explain the result and the returned nextAction when one applies; do not invent extra steps for completed queries. "
             "Never treat authorization as upload consent or generation consent. Never retry an unknown mutation."
         )
@@ -4028,20 +4422,20 @@ def startup_maintenance(raw_args: list[str]) -> None:
 
 def command_failure_feedback(args: argparse.Namespace) -> None:
     if args.func in {command_set_key, command_auth_status, command_credits_balance}:
-        command_progress("Check connectivity and that the API Key is enabled. Configure credentials locally with `holycrab setup`; never send a Key in chat.")
+        command_progress("Check your connection and whether the API Key is enabled.\nNext:\n  holycrab setup\nDo not share your API Key in chat.")
     elif args.func in {command_task_get, command_poll_task, command_download}:
         identifier = args.uniq_id
         command = f"holycrab tasks get {identifier}" if re.fullmatch(r"[A-Za-z0-9]{1,64}", identifier) else "holycrab tasks list"
-        command_progress(f"Check the existing task with `{command}`. Do not submit a replacement task because a query or download failed.")
+        command_progress(f"Check this existing task; do not submit a replacement.\nNext:\n  {command}")
     elif args.func in {command_generation_create, command_upload_asset, command_real_human_start,
                         command_real_human_group_rename, command_real_human_group_delete, command_real_human_asset_delete}:
-        command_progress("Review the returned status and existing records before deciding what to do. Do not automatically repeat a write request with an uncertain result.")
+        command_progress("Review the result and existing records before deciding.\nDo not automatically repeat a write with an uncertain result.")
     elif args.func in {command_generation_estimate, command_task_list, command_real_human_get,
                         command_real_human_wait, command_real_human_groups, command_real_human_assets,
                         command_asset_get, command_asset_wait}:
-        command_progress("Check connectivity and credentials, then query the same records again. No new task, authorization, or upload is needed to resume a read-only check.")
+        command_progress("Check your connection and credentials, then query the same records.\nDo not create a new task, authorization or upload to resume a query.")
     elif args.func in {command_doctor, command_update}:
-        command_progress("Review the reported checks. Run `holycrab doctor --json` to inspect local health; reinstall only if repair is needed.")
+        command_progress("Review the checks; reinstall only if a repair is needed.\nNext:\n  holycrab doctor")
 
 
 def main() -> int:
@@ -4067,12 +4461,13 @@ def main() -> int:
             cleanup_upload_plans()
         startup_maintenance(raw_args)
         code = args.func(args)
-        if code == 1:
+        if code == 1 and not (sys.stdout.isatty() and args.func in
+                             {command_auth_status, command_generation_create, command_doctor, command_update}):
             command_failure_feedback(args)
         return code
     except CommandInterrupted as error:
-        print_json(error.result)
-        print("Stopped after an operation began. The outcome may be uncertain; follow the returned nextAction and do not retry automatically.", file=sys.stderr)
+        print_result(error.result)
+        print("Stopped after the operation began. Review its state; do not retry automatically.", file=sys.stderr)
         return 130
     except KeyboardInterrupt:
         print("Stopped. Ctrl+C ended this local operation; it does not cancel an existing online task or authorization.", file=sys.stderr)

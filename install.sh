@@ -24,10 +24,10 @@ PATH_REG_PROFILE=
 PATH_REG_ADDED=0
 PATH_REG_ADDED_THIS_RUN=0
 PREVIOUS_PATH_PROFILE=
-SHA256_HOLYCRAB_CLI=84389174d9c41510c6000dd729318ce5a0a37e2d2e219bdb4a244640dd99d50d
+SHA256_HOLYCRAB_CLI=add3d53fb7a3e7e566e6977d7d44a4b03becfaa8412eec2d908b6218a71c3aba
 SHA256_CAPABILITIES=75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
-SHA256_SKILL=b5e52ba0aa5ede2e5c6a99491805f232cc4cc5ff6e158c4c27c81336ce149b23
+SHA256_SKILL=dc9ce397718b1e2e1368a9f7ccbb8be75c0e40fcfef4eb6e5b841eb8ff1058b2
 SHA256_OPENAI_YAML=64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7
 SHA256_SEGNO=28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7
 SHA256_SEGNO_LICENSE=de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935
@@ -36,7 +36,7 @@ progress() {
   if [ -t 2 ]; then printf '%s\n' "$1" >&2; fi
 }
 
-progress "Checking Python and installation settings..."
+progress "[1/5] Checking Python and installation settings..."
 
 command -v python3 >/dev/null 2>&1 || {
   echo "Python 3.10 or newer is required for HolyCrab." >&2
@@ -77,7 +77,7 @@ persist_path() {
     PATH_REG_KIND=shell-profile
     PATH_REG_PROFILE=$PREVIOUS_PATH_PROFILE
     PATH_REG_ADDED=1
-    echo "PATH is already saved in $PREVIOUS_PATH_PROFILE."
+    progress "PATH is already saved in $PREVIOUS_PATH_PROFILE."
     return
   fi
   PATH_REG_ADDED=0
@@ -103,13 +103,13 @@ persist_path() {
   PATH_REG_PROFILE=$profile
   path_line='export PATH="$HOME/.local/bin:$PATH"'
   if [ -f "$profile" ] && grep -F "$path_line" "$profile" >/dev/null 2>&1; then
-    echo "PATH is already saved in $profile."
+    progress "PATH is already saved in $profile."
     return
   fi
   if printf '\n# HolyCrab CLI\n%s\n' "$path_line" >> "$profile"; then
     PATH_REG_ADDED=1
     PATH_REG_ADDED_THIS_RUN=1
-    echo "PATH saved in $profile."
+    progress "PATH saved in $profile."
   else
     echo "Warning: could not update $profile; add this directory to PATH: $BIN_DIR" >&2
   fi
@@ -170,7 +170,9 @@ fetch() {
   fetch_relative=$1
   fetch_destination=$2
   fetch_sha256=$3
-  progress "Downloading or copying $fetch_relative..."
+  if [ "$fetch_relative" = "holycrab/scripts/holycrab_cli.py" ]; then
+    progress "[2/5] Downloading and verifying installation files..."
+  fi
   if [ -n "$SOURCE_DIR" ]; then
     cp "$SOURCE_DIR/$fetch_relative" "$fetch_destination"
   else
@@ -179,7 +181,6 @@ fetch() {
       exit 1
     }
     curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/$SOURCE_REF/$fetch_relative" -o "$fetch_destination"
-    progress "Verifying SHA-256 for $fetch_relative..."
     verify_sha256 "$fetch_destination" "$fetch_sha256" "$fetch_relative"
   fi
 }
@@ -227,7 +228,7 @@ fetch "holycrab/SKILL.md" "$TEMP_DIR/SKILL.md" "$SHA256_SKILL"
 fetch "holycrab/agents/openai.yaml" "$TEMP_DIR/openai.yaml" "$SHA256_OPENAI_YAML"
 fetch "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl" "$TEMP_DIR/segno.whl" "$SHA256_SEGNO"
 fetch "holycrab/scripts/vendor/LICENSE.segno" "$TEMP_DIR/LICENSE.segno" "$SHA256_SEGNO_LICENSE"
-progress "Installing verified program files..."
+progress "[3/5] Installing verified program files and configuring PATH..."
 INSTALL_STARTED=1
 mkdir -p "$BIN_DIR" "$LIB_DIR/references" "$LIB_DIR/vendor"
 install -m 755 "$TEMP_DIR/holycrab_cli.py" "$LIB_DIR/holycrab_cli.py"
@@ -236,7 +237,6 @@ install -m 755 "$TEMP_DIR/holycrab" "$BIN_DIR/holycrab"
 install -m 644 "$TEMP_DIR/segno.whl" "$LIB_DIR/vendor/segno-1.6.6-py3-none-any.whl"
 install -m 644 "$TEMP_DIR/LICENSE.segno" "$LIB_DIR/vendor/LICENSE.segno"
 
-progress "Configuring PATH..."
 persist_path
 
 python3 - "$LIB_DIR/installation.json" "$PREFIX" "$INSTALL_AGENTS" "$INSTALL_MCP" \
@@ -298,7 +298,7 @@ install_skill() {
   install -m 644 "$TEMP_DIR/openai.yaml" "$skill_destination/agents/openai.yaml"
 }
 
-progress "Installing Skills for the selected Agents..."
+progress "[4/5] Configuring the selected Agents..."
 case ",$INSTALL_AGENTS," in
   *,codex,*) install_skill "$HOME/.agents/skills/holycrab" ;;
 esac
@@ -319,7 +319,6 @@ PY
 }
 
 if [ "$INSTALL_MCP" = "1" ]; then
-  progress "Checking and registering HolyCrab in the selected Agents..."
   case ",$INSTALL_AGENTS," in
     *,codex,*)
         if ! repair_or_add_mcp codex; then
@@ -336,7 +335,7 @@ if [ "$INSTALL_MCP" = "1" ]; then
   esac
 fi
 
-progress "Verifying the installed CLI version and local health..."
+progress "[5/5] Verifying the installed CLI version and local health..."
 PATH="$BIN_DIR:$PATH"
 export PATH
 installed_version=$(HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" --version)
@@ -345,19 +344,24 @@ if [ "$installed_version" != "holycrab ${VERSION#v}" ]; then
   exit 1
 fi
 doctor_report=$(HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" doctor --json) || {
+  printf '%s\n' "$doctor_report" | python3 -c '
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("holycrab_installer", sys.argv[1])
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+print(cli.format_terminal_result(json.load(sys.stdin)))
+' "$LIB_DIR/holycrab_cli.py" >&2 || true
   echo "Installed files failed HolyCrab doctor; installation stopped." >&2
   exit 1
 }
+onboarding_summary=$(printf '%s\n' "$doctor_report" | python3 -c '
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("holycrab_installer", sys.argv[1])
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+print(cli.format_onboarding(json.load(sys.stdin)["onboarding"], installed=True, upgrading=sys.argv[2] == "1"))
+' "$LIB_DIR/holycrab_cli.py" "$HAD_LIB")
 INSTALL_COMPLETE=1
-echo "HolyCrab CLI, local MCP, and Skill are installed."
-echo "Command: $BIN_DIR/holycrab"
-echo "PATH is active inside the installer. If this command was piped to sh, run: export PATH=\"$BIN_DIR:\$PATH\""
-printf '%s\n' "$doctor_report" | python3 -c '
-import json, sys
-guide = json.load(sys.stdin)["onboarding"]
-print(guide["instruction"])
-if guide["command"]:
-    print("Next: " + guide["command"])
-print("Available workflows after account verification: " + "; ".join(guide["businessUses"]) + ".")
-print("For Agents: " + guide["agentInstruction"])
-'
+printf '\n%s\n' "$onboarding_summary"
+printf '\nInstalled command:\n  %s\n' "$BIN_DIR/holycrab"
+printf '\nIf holycrab is not found in this terminal, run:\n  export PATH="%s:$PATH"\n' "$BIN_DIR"
