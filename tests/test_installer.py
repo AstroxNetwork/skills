@@ -68,6 +68,16 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('needs: [release, verify-draft-install]', workflow)
         self.assertNotIn('--clobber', workflow)
 
+    def test_native_draft_download_has_scoped_push_access_without_new_secrets(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        job = workflow.split('  verify-draft-install:\n', 1)[1].split('  publish-verified-release:\n', 1)[0]
+        self.assertIn('    permissions:\n      contents: write', job)
+        self.assertIn('persist-credentials: false', job)
+        self.assertIn('GH_TOKEN: ${{ github.token }}', job)
+        self.assertNotIn('secrets.', job)
+        self.assertNotIn('gh release upload', job)
+        self.assertNotIn('gh release edit', job)
+
     RELEASE_FILES = {
         "SHA256_HOLYCRAB_CLI": REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py",
         "SHA256_CAPABILITIES": REPO_ROOT / "holycrab" / "references" / "capabilities.json",
