@@ -3638,10 +3638,13 @@ def build_parser() -> argparse.ArgumentParser:
     models_show.add_argument("model")
     models_show.set_defaults(func=command_models_show)
 
-    credits = sub.add_parser("credits", help="Check balance or estimate a request")
-    credits_sub = credits.add_subparsers(dest="credits_command", required=True)
-    credits_sub.add_parser("balance").set_defaults(func=command_credits_balance)
-    estimate = credits_sub.add_parser("estimate")
+    credits = sub.add_parser("credits", help="Check the current credit balance")
+    credits_sub = credits.add_subparsers(dest="credits_command", required=True, metavar="{balance}")
+    credits_sub.add_parser("balance", help="Show the current credit balance").set_defaults(func=command_credits_balance)
+    # Keep old scripts working without advertising a second estimate workflow.
+    estimate = credits_sub.add_parser(
+        "estimate", description="Compatibility alias. Use 'holycrab generate estimate' for credit estimates."
+    )
     estimate.add_argument("--kind", required=True, choices=["video", "image", "audio"])
     add_json_argument(estimate)
     estimate.set_defaults(func=command_generation_estimate)

@@ -24,7 +24,7 @@ function Write-HolyCrabProgress([string]$Message) {
 }
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "c31679819eb5e918345a7fbfe0a37f0ffaa08b30f02e5ff2a515cccbd27c4d13" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "29bf63c44bfa1cb1468f2a9725661f9824c3ae25cdefb8cf144fd08bae64713e" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
     @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "19393b95c3958ab83cb9467d986a0badf657cf60ccf49b62aa539cbc3a03c499" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },

@@ -108,6 +108,43 @@ class FeedbackTests(unittest.TestCase):
         json.loads(output)
         self.assertEqual(errors, "")
 
+    def test_credits_help_only_advertises_balance(self) -> None:
+        for argv in (["--help"], ["credits", "--help"]):
+            with self.subTest(argv=argv), patch.object(cli.sys, "argv", ["holycrab", *argv]), \
+                    redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit) as stopped:
+                cli.main()
+            self.assertEqual(stopped.exception.code, 0)
+            text = output.getvalue()
+            if argv == ["--help"]:
+                self.assertNotIn("Check balance or estimate a request", text)
+            else:
+                self.assertIn("balance", text)
+                self.assertNotIn("estimate", text.lower())
+
+    def test_legacy_credits_estimate_returns_the_same_result_as_generate_estimate(self) -> None:
+        outputs = []
+        for parent in ("credits", "generate"):
+            with self.subTest(parent=parent), patch.object(cli, "send", return_value=ok({"frozenCredit": 5})) as send:
+                code, output, errors = self.invoke(
+                    [parent, "estimate", "--kind", "image", "--json", json.dumps(self.request())],
+                    terminal=False,
+                )
+            self.assertEqual(code, 0)
+            self.assertEqual(errors, "")
+            self.assertEqual(send.call_count, 1)
+            self.assertEqual(send.call_args.args[:2], ("POST", "/api/tasks/image-generation/freeze-credit"))
+            outputs.append(json.loads(output))
+        self.assertEqual(outputs[0], outputs[1])
+
+    def test_legacy_credits_estimate_help_points_to_the_canonical_command(self) -> None:
+        with patch.object(cli.sys, "argv", ["holycrab", "credits", "estimate", "--help"]), \
+                redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit) as stopped:
+            cli.main()
+        self.assertEqual(stopped.exception.code, 0)
+        self.assertIn("holycrab generate estimate", output.getvalue())
+
     def test_help_version_and_invalid_arguments_do_not_run_maintenance(self) -> None:
         for argv, expected in ((["--help"], 0), (["--version"], 0), (["tasks", "get"], 2)):
             with self.subTest(argv=argv), patch.object(cli.sys, "argv", ["holycrab", *argv]), \

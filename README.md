@@ -67,6 +67,8 @@ holycrab auth status
 
 ## 常用命令
 
+积分估算统一使用 `holycrab generate estimate`。`holycrab credits estimate` 仅作为旧脚本的兼容入口保留，不再列入推荐帮助。
+
 ```bash
 holycrab models list
 holycrab models show dreamina-seedance-2-5-260628
