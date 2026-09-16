@@ -15,8 +15,6 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
-      HOLYCRAB_INSTALL_PREFIX: ${{ runner.temp }}/holycrab-website-prefix
-      HOLYCRAB_CONFIG_DIR: ${{ runner.temp }}/holycrab-website-config
       HOLYCRAB_INSTALL_AGENTS: none
       HOLYCRAB_INSTALL_MCP: "0"
       HOLYCRAB_NO_UPDATE_CHECK: "1"
@@ -25,6 +23,16 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.10"
+      - name: Set isolated test directories after the runner is available
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write('HOLYCRAB_INSTALL_PREFIX=' + str(root / 'holycrab-website-prefix') + '\n')
+              env.write('HOLYCRAB_CONFIG_DIR=' + str(root / 'holycrab-website-config') + '\n')
+          PY
       - name: Verify the deployed entry points before running downloaded content
         shell: bash
         run: |

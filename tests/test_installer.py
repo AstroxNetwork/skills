@@ -47,6 +47,27 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn('HOLYCRAB_API_KEY', workflow)
         self.assertNotIn('contents: write', workflow)
 
+    def test_post_release_smoke_does_not_use_runner_context_in_job_env(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
+        job_env = workflow.split('    env:\n', 1)[1].split('    steps:\n', 1)[0]
+        self.assertNotIn('${{ runner.temp }}', job_env)
+        self.assertIn('GITHUB_ENV', workflow)
+
+    def test_draft_verification_lists_releases_instead_of_published_tag_endpoint(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertNotIn('releases/tags/$release_version', workflow)
+        self.assertIn('select(.tag_name == $version)', workflow)
+        self.assertIn('release.get("draft") is True', workflow)
+
+    def test_v043_resume_reuses_draft_without_overwriting_and_keeps_required_checks(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn('workflow_dispatch:', workflow)
+        self.assertIn('options: [v0.4.3]', workflow)
+        self.assertIn('Existing v0.4.3 Draft assets will only be verified, never overwritten', workflow)
+        self.assertIn('needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]', workflow)
+        self.assertIn('needs: [release, verify-draft-install]', workflow)
+        self.assertNotIn('--clobber', workflow)
+
     RELEASE_FILES = {
         "SHA256_HOLYCRAB_CLI": REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py",
         "SHA256_CAPABILITIES": REPO_ROOT / "holycrab" / "references" / "capabilities.json",
@@ -526,7 +547,7 @@ fi
             "needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]",
             "if: startsWith(github.ref, 'refs/tags/v')",
             "contents: write",
-            'release_version="$GITHUB_REF_NAME"',
+            'release_version="$RELEASE_VERSION"',
             'grep -Fx "VERSION=$release_version" install.sh',
             'test -f ".github/releases/$release_version.md"',
             "sha256sum install.sh install.ps1 > SHA256SUMS",
@@ -554,7 +575,7 @@ fi
         self.assertIn("verify-draft-install:", workflow)
         self.assertIn("needs: [release, verify-draft-install]", workflow)
         self.assertIn("verify_release_acceptance.py", workflow)
-        self.assertIn('gh release edit "$GITHUB_REF_NAME" --draft=false --latest', workflow)
+        self.assertIn('gh release edit "$RELEASE_VERSION" --draft=false --latest', workflow)
 
     def test_local_generate_exception_is_scoped_to_user_approved_v043(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
