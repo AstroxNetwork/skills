@@ -5,6 +5,13 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Verify and resume the existing immutable v0.4.3 Draft after the tag-endpoint fix
+        required: true
+        type: choice
+        options: [v0.4.3]
 
 permissions:
   contents: read
@@ -167,18 +174,20 @@ jobs:
 
   release:
     name: Publish release assets
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.3')
     needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]
     permissions:
       contents: write
     runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ inputs.release_tag || github.ref_name }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Prepare immutable release assets
         shell: bash
         run: |
           set -euo pipefail
-          release_version="$GITHUB_REF_NAME"
+          release_version="$RELEASE_VERSION"
           grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$release_version"
           grep -Fx "VERSION=$release_version" install.sh
           grep -Fx '$Version = "'"$release_version"'"' install.ps1
@@ -189,10 +198,18 @@ jobs:
       - name: Create the immutable GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RESUME_EXISTING_DRAFT: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
         run: |
           set -euo pipefail
-          release_version="$GITHUB_REF_NAME"
+          release_version="$RELEASE_VERSION"
+          if [ "$RESUME_EXISTING_DRAFT" = "true" ]; then
+            test "$release_version" = v0.4.3
+            test "$(gh release view "$release_version" --json isDraft --jq .isDraft)" = true
+            test "$(gh release view "$release_version" --json isPrerelease --jq .isPrerelease)" = false
+            echo "Existing v0.4.3 Draft assets will only be verified, never overwritten."
+            exit 0
+          fi
           if gh release view "$release_version" >/dev/null 2>&1; then
             echo "Release $release_version already exists; refusing to overwrite published assets." >&2
             exit 1
@@ -208,11 +225,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          release_version="$GITHUB_REF_NAME"
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$release_version" > "${RUNNER_TEMP}/release.json"
+          release_version="$RELEASE_VERSION"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            | jq --arg version "$release_version" '[.[] | select(.tag_name == $version)] | if length == 1 then .[0] else error("Expected exactly one Draft Release") end' \
+            > "${RUNNER_TEMP}/release.json"
           python3 - "${RUNNER_TEMP}/release.json" <<'PY'
           import hashlib, json, pathlib, sys
           release = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert release.get("draft") is True and release.get("prerelease") is False
           assets = {item["name"]: item for item in release.get("assets", [])}
           for name in ("install.sh", "install.ps1", "SHA256SUMS"):
               expected = "sha256:" + hashlib.sha256(pathlib.Path(name).read_bytes()).hexdigest()
@@ -227,13 +247,15 @@ jobs:
 
   verify-draft-install:
     name: Verify draft installation (${{ matrix.os }})
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.3')
     needs: [release]
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_VERSION: ${{ inputs.release_tag || github.ref_name }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
@@ -245,7 +267,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release download "$GITHUB_REF_NAME" --dir "${RUNNER_TEMP}/draft-assets" \
+          gh release download "$RELEASE_VERSION" --dir "${RUNNER_TEMP}/draft-assets" \
             --pattern install.sh --pattern install.ps1 --pattern SHA256SUMS
           cmp install.sh "${RUNNER_TEMP}/draft-assets/install.sh"
           cmp install.ps1 "${RUNNER_TEMP}/draft-assets/install.ps1"
@@ -270,7 +292,7 @@ jobs:
           set -euo pipefail
           unset HOLYCRAB_INSTALL_REF HOLYCRAB_INSTALL_SOURCE_DIR
           sh "${RUNNER_TEMP}/draft-assets/install.sh"
-          test "$("${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version)" = "holycrab ${GITHUB_REF_NAME#v}"
+          test "$("${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version)" = "holycrab ${RELEASE_VERSION#v}"
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" uninstall --help
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" uninstall --yes --purge
@@ -290,7 +312,7 @@ jobs:
           & (Join-Path $env:RUNNER_TEMP "draft-assets/install.ps1")
           if ($LASTEXITCODE -ne 0) { throw "Draft installation failed" }
           $Launcher = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "bin/holycrab.cmd"
-          if ((& $Launcher --version) -ne ("holycrab " + $env:GITHUB_REF_NAME.Substring(1))) { throw "Draft version mismatch" }
+          if ((& $Launcher --version) -ne ("holycrab " + $env:RELEASE_VERSION.Substring(1))) { throw "Draft version mismatch" }
           $Doctor = & $Launcher doctor --json | ConvertFrom-Json
           if ($Doctor.ok -ne $true) { throw "Draft health checks failed" }
           & $Launcher uninstall --help
@@ -302,11 +324,13 @@ jobs:
 
   publish-verified-release:
     name: Publish verified release as Latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.3')
     needs: [release, verify-draft-install]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      RELEASE_VERSION: ${{ inputs.release_tag || github.ref_name }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Publish only after immutable asset and native installation verification
@@ -315,6 +339,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 tools/verify_release_acceptance.py "$GITHUB_REF_NAME"
-          test "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft)" = true
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          python3 tools/verify_release_acceptance.py "$RELEASE_VERSION"
+          test "$(gh release view "$RELEASE_VERSION" --json isDraft --jq .isDraft)" = true
+          gh release edit "$RELEASE_VERSION" --draft=false --latest
