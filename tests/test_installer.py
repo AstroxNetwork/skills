@@ -526,6 +526,14 @@ fi
         self.assertIn("verify_release_acceptance.py", workflow)
         self.assertIn('gh release edit "$GITHUB_REF_NAME" --draft=false --latest', workflow)
 
+    def test_local_generate_exception_is_scoped_to_user_approved_v043(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("steps.contract-version.outputs.version == 'v0.4.3'", workflow)
+        self.assertIn("steps.contract-version.outputs.version != 'v0.4.3'", workflow)
+        self.assertIn("secrets.GENERATE_CONTRACT_SSH_KEY", workflow)
+        self.assertIn("repository: AstroxNetwork/seedance-2.0", workflow)
+        self.assertIn("verify_release_acceptance.py v0.4.3 --contract-only", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
