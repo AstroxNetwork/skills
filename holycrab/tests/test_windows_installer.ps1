@@ -102,18 +102,14 @@ $FakeCodexPython = @'
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 
+# Model the actual client's UTF-8 JSON output, not Python's legacy Windows codepage.
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 arguments = sys.argv[1:]
 state = Path(os.environ["FAKE_CODEX_STATE"])
 if arguments[:3] == ["mcp", "get", "holycrab"]:
-    with open(os.environ["FAKE_CODEX_LOG"], "a", encoding="utf-8") as log:
-        for candidate in Path(tempfile.gettempdir()).glob("holycrab-install.*/backup/lib/installation.json"):
-            value = json.loads(candidate.read_text(encoding="utf-8-sig"))
-            log.write("fixture previous: " + json.dumps({key: value.get(key) for key in ("prefix", "agents", "mcp", "agentRegistrations")}) + "\n")
-        if state.exists():
-            log.write("fixture current: " + state.read_text(encoding="utf-8-sig") + "\n")
     if state.exists():
         print(state.read_text(encoding="utf-8"))
         raise SystemExit(0)

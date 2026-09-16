@@ -407,6 +407,23 @@ fi
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout), server)
 
+    def test_windows_agent_fixture_emits_utf8_under_a_legacy_codepage(self) -> None:
+        source = (REPO_ROOT / "holycrab/tests/test_windows_installer.ps1").read_text(encoding="utf-8")
+        program = source.split("$FakeCodexPython = @'\n", 1)[1].split("\n'@", 1)[0]
+        value = {"transport": {"type": "stdio", "command": "C:/old/python.exe",
+                               "args": ["-X", "utf8", "C:/中文用户/holycrab_cli.py", "mcp", "serve"]}}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            script, state = root / "codex.py", root / "state.json"
+            script.write_text(program, encoding="utf-8")
+            state.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+            env = {**os.environ, "PYTHONIOENCODING": "cp1252", "FAKE_CODEX_STATE": str(state),
+                   "FAKE_CODEX_LOG": str(root / "actions.log")}
+            result = subprocess.run([sys.executable, str(script), "mcp", "get", "holycrab", "--json"],
+                                    env=env, text=True, encoding="utf-8", capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), value)
+
     def test_docs_explain_supported_systems_update_and_uninstall(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("Python 3.10+", readme)
