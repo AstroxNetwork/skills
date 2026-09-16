@@ -46,7 +46,8 @@ class LocalAuthenticationTests(unittest.TestCase):
         with patch.dict(os.environ, {"HOLYCRAB_BASE_URL": "https://other.example"}), patch.object(
             holycrab, "credential"
         ) as credential:
-            with self.assertRaisesRegex(SystemExit, "unset HOLYCRAB_BASE_URL"):
+            repair = "Remove-Item Env:HOLYCRAB_BASE_URL" if os.name == "nt" else "unset HOLYCRAB_BASE_URL"
+            with self.assertRaisesRegex(SystemExit, repair):
                 holycrab.send("GET", "/api/user/me")
         credential.assert_not_called()
 
@@ -56,7 +57,8 @@ class LocalAuthenticationTests(unittest.TestCase):
 
     def test_capability_manifest_path_cannot_be_overridden(self) -> None:
         with patch.dict(os.environ, {"HOLYCRAB_CAPABILITIES_PATH": "/tmp/forged.json"}):
-            with self.assertRaisesRegex(SystemExit, "unset HOLYCRAB_CAPABILITIES_PATH"):
+            repair = "Remove-Item Env:HOLYCRAB_CAPABILITIES_PATH" if os.name == "nt" else "unset HOLYCRAB_CAPABILITIES_PATH"
+            with self.assertRaisesRegex(SystemExit, repair):
                 holycrab.capabilities_path()
 
     def test_environment_api_key_overrides_saved_key(self) -> None:
@@ -102,7 +104,8 @@ class LocalAuthenticationTests(unittest.TestCase):
         ), redirect_stdout(output):
             self.assertEqual(holycrab.command_set_key(args), 0)
         self.assertEqual(holycrab.load_config()["apiKey"], "new-saved-secret")
-        self.assertIn("unset HOLYCRAB_API_KEY", output.getvalue())
+        repair = "Remove-Item Env:HOLYCRAB_API_KEY" if os.name == "nt" else "unset HOLYCRAB_API_KEY"
+        self.assertIn(repair, output.getvalue())
         self.assertNotIn("old-environment-secret", output.getvalue())
         self.assertNotIn("new-saved-secret", output.getvalue())
 

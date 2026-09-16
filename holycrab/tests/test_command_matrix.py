@@ -117,6 +117,9 @@ class CommandMatrixTests(unittest.TestCase):
             "local_health_report": {"return_value": {"ok": not failure, "version": cli.VERSION, "checks": {}, "repairs": []}},
             "check_for_update": {"return_value": {"updateAvailable": False, **({"error": "fixture failure"} if failure else {})}},
             "validated_uninstall_manifest": {"return_value": ({"agents": [], "mcp": False}, self.root / "prefix", self.root / "prefix/lib/holycrab", self.root / "prefix/bin/holycrab")},
+            # Unit feedback tests do not launch a detached native cleaner. Its
+            # actual self-delete and timing remain covered by Windows PS 5.1 CI.
+            "schedule_windows_program_cleanup": {},
         }.items():
             stack.enter_context(patch.object(cli, name, **kwargs))
         stack.enter_context(patch.object(cli.getpass, "getpass", return_value="hc_test_input_only"))
