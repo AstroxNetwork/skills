@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import errno
 import getpass
 import hashlib
 import html
 import http.client
-import importlib.util
 import io
 import ipaddress
 import json
@@ -32,6 +32,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -96,6 +97,8 @@ SENSITIVE_OUTPUT_KEYS = {
     "bytedtoken", "arkgroupid", "arkassetid", "arkaccountid", "objectkey", "ak", "sk",
 }
 SENSITIVE_OUTPUT_VALUES: set[str] = set()
+_CAPABILITY_OPERATION: ContextVar[dict[str, Any] | None] = ContextVar("holycrab_capability_operation", default=None)
+_QR_CLEANUP_AT: dict[str, float] = {}
 SENSITIVE_URL_QUERY_KEYS = {
     "bytedtoken", "pl",
     "signature",
@@ -682,6 +685,14 @@ def valid_account_payload(value: Any) -> bool:
     return bool(named or (isinstance(credit, (int, float)) and not isinstance(credit, bool) and math.isfinite(credit)))
 
 
+def query_account(*, api_key: str | None = None) -> tuple[int, Any, dict[str, Any] | None]:
+    """One account boundary; callers retain their own error and output semantics."""
+    options = {"api_key": api_key} if api_key is not None else {}
+    status, response = send("GET", "/api/user/me", **options)
+    account = response_data(status, response) if response_ok(status, response) else None
+    return status, response, account if valid_account_payload(account) else None
+
+
 ONBOARDING_EXAMPLES = (
     {"code": "PRODUCT_IMAGES", "title": "Product images",
      "prompt": "Turn these product photos into clean e-commerce listing images that highlight the product's selling points."},
@@ -691,21 +702,24 @@ ONBOARDING_EXAMPLES = (
      "prompt": "Turn this product introduction into a natural, clear Chinese voiceover for a promotional video."},
 )
 ONBOARDING_AGENT_INSTRUCTION = (
-    "Use short headings and bullet lists for user-facing guidance; never show internal instructions or raw JSON to beginners. "
-    "During installation or the first account connection, use the onboarding state to guide setup or verify the active account. "
-    "Only after verification, introduce the business uses and translate the three examples into the user's current language. "
-    "Give the full introduction once in that installation conversation, then ask what the user wants to work on first. "
-    "Do not repeat it for ordinary queries, reconnections, or updates. The examples are suggestions, not permission to execute. "
-    "Ask for the user's goal, selected materials, and desired result; check actual capabilities before proposing a workflow. "
-    "Keep credit estimates in the execution workflow, not in the example prompts. Confirm uploads and paid generation separately. "
-    "Real-person authorization does not create assets; continue with file selection, preview, and upload confirmation. "
-    "If the Agent must reload its tools, explain how to restart it; do not restart it yourself."
+    "Reply in the user's language with short headings and lists, not raw JSON or internal instructions. "
+    "Explain the operation before acting, then its outcome and applicable nextAction; keep null commands null. "
+    "CONNECT_ACCOUNT needs local setup; VERIFY_ACCOUNT needs active-account verification. CONFIGURED means local Key presence only, "
+    "not failed verification; retain a prior valid account result in the same conversation without repeating verification merely for offline doctor. "
+    "After READY during first installation/account connection, introduce businessUses and translate examples once, then ask question. "
+    "Do not repeat the welcome on queries, reconnections or updates. Examples are not execution consent. "
+    "Ask for the goal, selected files and desired result; check capabilities. Estimate fees in the execution workflow. "
+    "Confirm uploads and paid generation separately. Authorization creates a person group, not assets: select, preview and confirm uploads next. "
+    "Never retry an unknown mutation. Explain any needed Agent restart; do not restart it yourself."
 )
 
 
-def onboarding_guidance(*, configured: bool, verified: bool = False, environment_override: bool = False) -> dict[str, Any]:
+def onboarding_guidance(*, configured: bool, verified: bool = False, environment_override: bool = False,
+                        local_only: bool = False) -> dict[str, Any]:
     if not configured:
         state, instruction, command = "CONNECT_ACCOUNT", "Connect your HolyCrab account locally. Never send your API Key in chat.", "holycrab setup"
+    elif local_only:
+        state, instruction, command = "CONFIGURED", "An API Key is configured. Local checks do not verify account validity.", None
     elif environment_override:
         state, instruction, command = (
             "VERIFY_ACCOUNT", "HOLYCRAB_API_KEY overrides the saved login. Clear the override, then check the active account.",
@@ -731,6 +745,8 @@ def format_onboarding(guidance: dict[str, Any], *, installed: bool = False,
     """One user-facing summary shared by both installers and account commands."""
     lines = [f"HolyCrab {VERSION} installed", ""] if installed else []
     state = guidance.get("state")
+    if state == "CONFIGURED" and not installed:
+        return "API Key: configured"
     if state == "READY":
         if not installed:
             lines += ["HolyCrab account connected", ""]
@@ -745,9 +761,10 @@ def format_onboarding(guidance: dict[str, Any], *, installed: bool = False,
         if not installed and state == "VERIFY_ACCOUNT":
             lines += ["Account not verified", ""]
         lines += [title]
-        if guidance.get("command"):
+        command = "holycrab auth status" if state == "CONFIGURED" and installed else guidance.get("command")
+        if command:
             # Commands stay on one line, including the PowerShell override fix.
-            lines += ["  " + str(guidance["command"])]
+            lines += ["  " + str(command)]
     if not upgrading and (installed or (state == "READY" and introduce)):
         title = "Ask Codex or Claude Code to:" if state == "READY" else "After verification, ask Codex or Claude Code to:"
         lines += ["", title, "  - Create product listing images",
@@ -1155,15 +1172,37 @@ def capabilities_path() -> Path:
     raise SystemExit("HolyCrab capability manifest is missing; reinstall the CLI")
 
 
-def load_capabilities() -> dict[str, Any]:
+@contextmanager
+def capability_operation():
+    """Release-local snapshot, shared only inside this CLI command or MCP call."""
+    token = _CAPABILITY_OPERATION.set({})
+    try:
+        yield
+    finally:
+        _CAPABILITY_OPERATION.reset(token)
+
+
+def _capability_manifest() -> dict[str, Any]:
+    cache = _CAPABILITY_OPERATION.get()
+    if cache is not None and "manifest" in cache:
+        return cache["manifest"]
     value = read_json_file(capabilities_path(), {})
     if not isinstance(value, dict):
         raise SystemExit("HolyCrab capability manifest is invalid")
+    if cache is not None:
+        cache["manifest"] = value
     return value
 
 
+def load_capabilities() -> dict[str, Any]:
+    return copy.deepcopy(_capability_manifest())
+
+
 def all_models() -> list[dict[str, Any]]:
-    manifest = load_capabilities()
+    cache = _CAPABILITY_OPERATION.get()
+    if cache is not None and "models" in cache:
+        return copy.deepcopy(cache["models"])
+    manifest = _capability_manifest()
     source = manifest.get("source")
     if not isinstance(source, dict):
         raise SystemExit("HolyCrab capability snapshot metadata is missing")
@@ -1189,7 +1228,10 @@ def all_models() -> list[dict[str, Any]]:
                 raise SystemExit(f"HolyCrab capability schema is missing: {schema_ref}")
             resolved["requestSchema"] = schema
             output.append(resolved)
-    return output
+    if cache is not None:
+        cache["models"] = output
+        cache["modelIndex"] = {model["id"]: model for model in output}
+    return copy.deepcopy(output)
 
 
 def capability_snapshot() -> dict[str, Any]:
@@ -1203,6 +1245,13 @@ def capability_snapshot() -> dict[str, Any]:
 
 
 def find_model(model_id: str) -> dict[str, Any]:
+    cache = _CAPABILITY_OPERATION.get()
+    if cache is not None:
+        if "modelIndex" not in cache:
+            all_models()
+        if model_id in cache["modelIndex"]:
+            return copy.deepcopy(cache["modelIndex"][model_id])
+        raise SystemExit(f"Unknown public model: {model_id}. Run `holycrab models list`.")
     for model in all_models():
         if model.get("id") == model_id:
             return model
@@ -1558,7 +1607,7 @@ def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, a
                        approved_estimate: dict[str, Any] | None, progress: Callable[[str], None] | None,
                        context: dict[str, Any]) -> dict[str, Any]:
     payload = normalize_generation_request(kind, payload)
-    selected_attempt = attempt_id or uuid.uuid4().hex
+    selected_attempt = attempt_id
     if confirmed and attempt_exists(selected_attempt):
         raise SystemExit(
             f"Local submission attempt {selected_attempt} already exists; query it instead of submitting again"
@@ -1662,9 +1711,10 @@ def command_set_key(args: argparse.Namespace) -> int:
     account = None
     if not args.no_verify:
         command_progress("API Key received. Verifying your HolyCrab account...")
-        status, response = send("GET", "/api/user/me", api_key=api_key)
-        account = response_data(status, response)
-        if not valid_account_payload(account):
+        status, response, account = query_account(api_key=api_key)
+        if not response_ok(status, response):
+            response_data(status, response)
+        if account is None:
             raise ValueError("Account verification returned an incomplete response; the API Key was not saved")
     config = load_config()
     previously_configured = bool(config.get("apiKey"))
@@ -1675,7 +1725,7 @@ def command_set_key(args: argparse.Namespace) -> int:
     if overridden and not sys.stdout.isatty():
         command_progress("Warning: HOLYCRAB_API_KEY is still set and overrides the saved login.")
         command_progress("Run: " + clear_environment_command("HOLYCRAB_API_KEY"))
-    verified = valid_account_payload(account)
+    verified = account is not None
     guidance = onboarding_guidance(configured=True, verified=verified, environment_override=overridden)
     result = public_account_data(account) if isinstance(account, dict) else {}
     result.update({"configured": True, "valid": verified and not overridden, "savedKeyVerified": verified,
@@ -1697,9 +1747,8 @@ def command_auth_status(args: argparse.Namespace) -> int:
                     "nextAction": next_action("CONNECT_ACCOUNT", "Configure your API Key locally; never send it in chat.", "holycrab setup")})
         return 1
     command_progress("Checking your HolyCrab account...")
-    status, response = send("GET", "/api/user/me")
-    account = response_data(status, response) if response_ok(status, response) else None
-    if not valid_account_payload(account):
+    status, response, account = query_account()
+    if account is None:
         print_result({"configured": True, "valid": False, "credentialSource": source, "httpStatus": status,
                     "onboarding": onboarding_guidance(configured=True),
                     "nextAction": next_action("CHECK_API_KEY", "Check that the API Key is enabled on the account page, then configure the correct Key locally.", "holycrab setup")})
@@ -1734,7 +1783,7 @@ def command_models_show(args: argparse.Namespace) -> int:
 
 def command_credits_balance(args: argparse.Namespace) -> int:
     command_progress("Checking your HolyCrab credit balance...")
-    status, response = send("GET", "/api/user/me")
+    status, response, _ = query_account()
     return print_response(status, public_account_response(response), view="Credit balance")
 
 
@@ -2047,6 +2096,15 @@ def remove_authorization_qr(authorization_id: str) -> None:
 
 def cleanup_authorization_qrs() -> str | None:
     try:
+        key = str(config_dir().resolve())
+        now = time.monotonic()
+        previous = _QR_CLEANUP_AT.get(key)
+        if previous is not None and 0 <= now - previous < 5:
+            return None
+        if len(_QR_CLEANUP_AT) >= 128 and key not in _QR_CLEANUP_AT:
+            oldest = min(_QR_CLEANUP_AT, key=_QR_CLEANUP_AT.get)
+            _QR_CLEANUP_AT.pop(oldest)
+        _QR_CLEANUP_AT[key] = now
         _cleanup_authorization_qrs()
     except (OSError, ValueError):
         return "Could not clean the local QR cache; remote operations remain available. Remove abandoned QR files manually."
@@ -3932,8 +3990,8 @@ def local_health_report(*, online: bool = False) -> dict[str, Any]:
         checks["apiKey"] = {"ok": False, "configured": bool(os.environ.get("HOLYCRAB_API_KEY") or config.get("apiKey"))}
         if checks["apiKey"]["configured"]:
             try:
-                status, response = send("GET", "/api/user/me")
-                checks["apiKey"]["ok"] = response_ok(status, response) and valid_account_payload(response_data(status, response))
+                status, response, account = query_account()
+                checks["apiKey"]["ok"] = account is not None
                 checks["apiKey"]["httpStatus"] = status
             except (SystemExit, OSError, urllib.error.URLError, http.client.HTTPException) as error:
                 checks["apiKey"]["error"] = sanitize_text_for_output(str(error))
@@ -3967,7 +4025,8 @@ def local_health_report(*, online: bool = False) -> dict[str, Any]:
         ok = ok and all(row.get("ok") is True for row in checks.get("mcpRegistrations", {}).values())
     return {"ok": ok, "version": VERSION, "checks": checks, "update": update, "repairs": list(dict.fromkeys(repairs)),
             "onboarding": onboarding_guidance(configured=bool(checks.get("config", {}).get("keyConfigured")),
-                                               verified=checks.get("apiKey", {}).get("ok") is True)}
+                                               verified=checks.get("apiKey", {}).get("ok") is True,
+                                               local_only=not online)}
 
 
 def command_doctor(args: argparse.Namespace) -> int:
@@ -4075,6 +4134,11 @@ def validate_tool_arguments(name: str, arguments: dict[str, Any]) -> None:
 
 
 def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
+    with capability_operation():
+        return _mcp_tool_call(name, arguments)
+
+
+def _mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
     validate_tool_arguments(name, arguments)
     if name == "real_human_authorization_start":
         return create_authorization(arguments["name"])
@@ -4100,9 +4164,10 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
     if name == "cli_status":
         return local_health_report(online=False)
     if name == "account_get":
-        status, response = send("GET", "/api/user/me")
-        account = response_data(status, response)
-        if not valid_account_payload(account):
+        status, response, account = query_account()
+        if not response_ok(status, response):
+            response_data(status, response)
+        if account is None:
             raise ValueError("Account verification returned an incomplete response; check the active API Key locally")
         return {**public_account_data(account), "onboarding": onboarding_guidance(configured=True, verified=True)}
     if name == "capabilities_list":
@@ -4167,12 +4232,7 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
         requested = params.get("protocolVersion")
         negotiated = requested if requested in SUPPORTED_INITIALIZE_PROTOCOLS else LATEST_INITIALIZE_PROTOCOL
         notice = cached_update_notice()
-        instructions = (
-            "Present user-facing results with short headings and lists, not raw JSON or long paragraphs. "
-            "Before an operation explain what you will do in the user's current language. Afterward explain the result and the returned nextAction when one applies; do not invent extra steps for completed queries. "
-            "Never treat authorization as upload consent or generation consent. Never retry an unknown mutation."
-        )
-        instructions += " " + ONBOARDING_AGENT_INSTRUCTION + " Read cli_status/account_get onboarding for the shared business examples."
+        instructions = ONBOARDING_AGENT_INSTRUCTION + " Read cli_status/account_get onboarding for the shared business examples."
         if notice:
             instructions += " " + notice
         return {
@@ -4262,8 +4322,8 @@ def build_parser() -> argparse.ArgumentParser:
     setup.set_defaults(func=command_set_key)
 
     auth = sub.add_parser("auth", help="Configure the local API Key")
-    auth_sub = auth.add_subparsers(dest="auth_command", required=True)
-    set_key = auth_sub.add_parser("set-key", help="Save and verify an API Key")
+    auth_sub = auth.add_subparsers(dest="auth_command", required=True, metavar="{status,clear-key}")
+    set_key = auth_sub.add_parser("set-key", description="Compatibility alias. Use 'holycrab setup' to configure your API Key.")
     add_key_input_arguments(set_key)
     set_key.set_defaults(func=command_set_key)
     auth_sub.add_parser("status", help="Check whether the configured API Key is valid").set_defaults(func=command_auth_status)
@@ -4438,6 +4498,21 @@ def command_failure_feedback(args: argparse.Namespace) -> None:
         command_progress("Review the checks; reinstall only if a repair is needed.\nNext:\n  holycrab doctor")
 
 
+def run_cli_command(args: argparse.Namespace, raw_args: list[str]) -> int:
+    with capability_operation():
+        if raw_args[0] != "uninstall":
+            warning = cleanup_authorization_qrs()
+            if warning:
+                print(warning, file=sys.stderr)
+            cleanup_upload_plans()
+        startup_maintenance(raw_args)
+        code = args.func(args)
+        if code == 1 and not (sys.stdout.isatty() and args.func in
+                             {command_auth_status, command_generation_create, command_doctor, command_update}):
+            command_failure_feedback(args)
+        return code
+
+
 def main() -> int:
     raw_args = sys.argv[1:]
     args = build_parser().parse_args()
@@ -4454,17 +4529,7 @@ def main() -> int:
             task_list_query(args.page, args.page_size, args.start_date, args.end_date, args.type)
         if args.func in {command_real_human_groups, command_real_human_assets}:
             page_query(args.page, args.page_size)
-        if raw_args[0] != "uninstall":
-            warning = cleanup_authorization_qrs()
-            if warning:
-                print(warning, file=sys.stderr)
-            cleanup_upload_plans()
-        startup_maintenance(raw_args)
-        code = args.func(args)
-        if code == 1 and not (sys.stdout.isatty() and args.func in
-                             {command_auth_status, command_generation_create, command_doctor, command_update}):
-            command_failure_feedback(args)
-        return code
+        return run_cli_command(args, raw_args)
     except CommandInterrupted as error:
         print_result(error.result)
         print("Stopped after the operation began. Review its state; do not retry automatically.", file=sys.stderr)

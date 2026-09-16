@@ -83,7 +83,7 @@ holycrab doctor --json
 holycrab setup
 ```
 
-终端会隐藏你粘贴的内容。CLI 验证成功后，把 Key 保存在本机。也可以用含义更明确的 `holycrab auth set-key` 完成相同操作：
+终端会隐藏你粘贴的内容。CLI 验证成功后，把 Key 保存在本机。macOS/Linux 的默认配置文件位置如下（这是路径说明，不是命令）：
 
 ```text
 ~/.config/holycrab/config.json
@@ -103,7 +103,7 @@ macOS/Linux 上这个文件只有当前电脑用户可读写；Windows 使用当
 
 告诉 Codex 或 Claude Code 你的用途、选用的素材和期望效果即可，不需要先学习命令。Agent 会确认方案和费用，再等待你的执行确认；上传素材另行确认。真人授权后还需要选择文件、上传并等待素材可用。
 
-普通 `doctor` 只检查本地环境，不会验证账号；保存 Key 后仍需确认有效。完整场景介绍不会在每次查询或更新时重复出现。
+普通 `doctor` 只检查本地环境，有 Key 时显示“API Key 已配置”，不会重复提示账号未验证。`auth status` 和 `doctor --online` 才联网检查账号是否有效。完整场景介绍不会在每次查询或更新时重复出现。
 
 如果终端原来设置过 `HOLYCRAB_API_KEY`，它会优先于刚保存的 Key。CLI 会显示提醒；运行下面这条命令即可切回本地配置：
 
@@ -126,7 +126,7 @@ holycrab models show dreamina-seedance-2-5-260628
 holycrab models show MiniMax-H3
 ```
 
-先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.4.1` 的模型快照版本为 `2026-09-14`。`estimate` 和 `create` 共用同一套本地校验，已知非法组合不会发到服务端。
+先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.4.3` 的模型快照版本为 `2026-09-14`。`estimate` 和 `create` 共用同一套本地校验，已知非法组合不会发到服务端。
 
 ## 4. 第一次生成图片
 
@@ -134,14 +134,14 @@ holycrab models show MiniMax-H3
 
 ```bash
 holycrab generate estimate --kind image \
-  --json '{"prompt":"A tiny red crab reading beside a rainy window","model":"seedream-5-0-lite-260128","size":"2k"}'
+  --json '{"prompt":"A tiny red crab reading beside a rainy window","model":"seedream-5-0-lite-260128","size":"2K"}'
 ```
 
 确认模型、尺寸和积分后，运行创建命令：
 
 ```bash
 holycrab generate create --kind image \
-  --json '{"prompt":"A tiny red crab reading beside a rainy window","model":"seedream-5-0-lite-260128","size":"2k"}'
+  --json '{"prompt":"A tiny red crab reading beside a rainy window","model":"seedream-5-0-lite-260128","size":"2K"}'
 ```
 
 CLI 会再显示估算并问：
@@ -199,7 +199,7 @@ CLI 先显示解析后的真实路径、名称、类型、大小和已知时长�
 
 ### 真人素材：先扫码授权，再上传
 
-本节对应 `v0.4.1`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
+本节对应 `v0.4.3`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
 
 固定七步：
 
@@ -242,7 +242,7 @@ holycrab real-human wait AUTHORIZATION_ID --interval 5 --timeout 600
 | `EXPIRED` | 私密链接已过期 | 先征得同意，再新建授权 |
 | wait 超时 | 只是暂时没等到 | 保留 ID，运行 `holycrab real-human get AUTHORIZATION_ID` |
 | 素材处理中 | 文件已登记但尚未就绪 | `holycrab assets wait ASSET_ID [ASSET_ID ...] --timeout 600` |
-| `UPLOADED_TO_ARK` / `ready: true` | 素材可以进入生成请求 | 先运行 `holycrab generate estimate ...` |
+| `UPLOADED_TO_ARK` / `ready: true` | 素材可以进入生成请求 | 说明生成需求，按下文完整示例估算费用，再确认 |
 | 素材 `FAILED` | 线上处理失败 | 显示公开错误，禁止自动重传 |
 | 上传结果不明确 | 不知道线上是否已登记 | 保留资产 ID/分组 ID并查询，禁止重复上传 |
 
@@ -253,7 +253,7 @@ holycrab real-human groups list --page 1 --page-size 20
 holycrab real-human assets list --group GROUP_ID --page 1 --page-size 50
 holycrab assets upload /absolute/path/front.jpg /absolute/path/profile.mp4 --real-human-group GROUP_ID
 holycrab assets get ASSET_ID
-holycrab assets wait ASSET_ID [ASSET_ID ...] --timeout 600
+holycrab assets wait ASSET_ID --timeout 600
 ```
 
 `ASSET_ID` 使用上传返回的 `assetUniqId`，或列表中的 `uniqId`。真人分组支持图片和视频；上传视频时可加 `--duration-seconds 8`。省略 `--real-human-group` 会走普通素材流程，不能用来绕过真人验证。
@@ -333,7 +333,7 @@ claude mcp get holycrab
 用 HolyCrab 查一下现在的视频模型。我要做 8 秒、16:9 的雨夜街景，先给我模型建议和积分估算，不要直接生成。
 ```
 
-Agent 应该按这个顺序工作：查能力 → 组参数 → 估积分 → 等你确认 → 为这次抽卡创建一个稳定 attempt ID → 提交一次 → 返回任务 ID → 查结果。网络重试必须沿用同一个 ID；你明确再抽一次时才换新 ID。
+Agent 应该按这个顺序工作：查能力 → 组参数 → 估积分 → 等你确认 → 为本次生成创建一个稳定 attempt ID → 提交一次 → 返回任务 ID → 查结果。网络中断后保留 ID 并查询记录，不重新提交；只有你明确同意创建另一个付费任务时，才使用新 ID。
 
 真人场景可以这样说：
 
@@ -353,7 +353,7 @@ holycrab update
 holycrab update --yes
 ```
 
-只接受版本更高、非 Draft、非 prerelease 的严格语义版本。更新器校验 GitHub Release 的 SHA-256 `digest`，安装器再校验内部文件；更新后的 `doctor` 不通过会恢复旧托管文件和原配置。`v0.4.0` 用户需要最后手动安装一次 `v0.4.1`。受管或离线环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
+只接受版本更高、非 Draft、非 prerelease 的严格语义版本。更新器校验 GitHub Release 的 SHA-256 `digest`，安装器再校验内部文件；更新后的 `doctor` 不通过会恢复旧托管文件和原配置。`v0.4.0` 没有更新命令，需要重新运行正式安装命令升级至 `v0.4.3`。受管或离线环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
 
 ## 11. 安全卸载
 

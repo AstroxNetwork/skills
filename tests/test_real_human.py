@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "holycrab_cli.py"
+SCRIPT = Path(__file__).parents[1] / "holycrab" / "scripts" / "holycrab_cli.py"
 SPEC = importlib.util.spec_from_file_location("holycrab_real_human_test", SCRIPT)
 assert SPEC and SPEC.loader
 cli = importlib.util.module_from_spec(SPEC)
@@ -172,17 +172,19 @@ class RealHumanTests(unittest.TestCase):
         self.assertFalse(Path(data["qrPath"]).exists())
 
     def test_next_authorization_command_cleans_expired_qr(self):
-        with patch.object(cli.time, "time", return_value=time.time() - 3600):
+        with patch.object(cli.time, "time", return_value=time.time() - 3600), patch.object(cli.time, "monotonic", return_value=10):
             data = self.start()["structuredContent"]
         self.send.return_value = ok({"records": [], "total": 0})
-        result = self.call("real_human_groups_list")
+        with patch.object(cli.time, "monotonic", return_value=15):
+            result = self.call("real_human_groups_list")
         self.assertFalse(result["isError"], result)
         self.assertFalse(Path(data["qrPath"]).exists())
 
     def test_ordinary_mcp_call_also_cleans_expired_qr(self):
-        with patch.object(cli.time, "time", return_value=time.time() - 3600):
+        with patch.object(cli.time, "time", return_value=time.time() - 3600), patch.object(cli.time, "monotonic", return_value=10):
             data = self.start()["structuredContent"]
-        result = self.call("capabilities_list")
+        with patch.object(cli.time, "monotonic", return_value=15):
+            result = self.call("capabilities_list")
         self.assertFalse(result["isError"], result)
         self.assertFalse(Path(data["qrPath"]).exists())
 

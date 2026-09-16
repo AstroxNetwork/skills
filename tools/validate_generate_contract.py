@@ -122,7 +122,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("generate_root", type=Path)
     args = parser.parse_args()
-    cli_root = Path(__file__).resolve().parents[2]
+    cli_root = Path(__file__).resolve().parents[1]
     errors = validate(args.generate_root.resolve(), cli_root)
     for error in errors:
         print(f"ERROR: {error}", file=sys.stderr)

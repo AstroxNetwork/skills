@@ -18,7 +18,12 @@ Use the installed `holycrab` CLI or its local MCP tools. Treat its versioned cap
 
 ## Installation and first-use guidance
 
-After installation or the first account connection, read the shared `onboarding` from `holycrab doctor --json`, `holycrab auth status`, or MCP `cli_status` / `account_get`. `CONNECT_ACCOUNT` means guide the user to local setup; `VERIFY_ACCOUNT` means verify the active login, not just a saved Key. Offline doctor, `--no-verify`, an empty account response, and an environment override do not establish a connected account.
+Read the shared `onboarding` from `holycrab doctor --json`, `holycrab auth status`, or MCP `cli_status` / `account_get`:
+
+- `CONNECT_ACCOUNT`: ask the user to run `holycrab setup` locally.
+- `CONFIGURED`: a Key exists locally; offline doctor did not query the account. This is not a failed verification and does not invalidate a prior successful account check in the same conversation. Do not repeat verification merely to change offline doctor's label. For first use with no valid account result, check `holycrab auth status` before starting work.
+- `VERIFY_ACCOUNT`: the active Key needs verification or an environment override needs attention. Follow the returned instructions.
+- `READY`: this operation verified the active account. A saved Key, `--no-verify`, an empty response, or an unverified environment override is not enough.
 
 When the account is `READY`, give one short introduction in the user's current language: product listing images, social media ad videos, product voiceovers, selected local uploads, real-person authorization and uploads, and task/result downloads. Translate the three `onboarding.examples` and ask what they want to work on first. Use practical business goals, not commands, IDs, or credit-estimate prompts. Ask for the goal, selected materials, and desired result; check supported capabilities rather than promising a feature from the example alone.
 
@@ -35,7 +40,7 @@ Show the full introduction once in that installation conversation, not on ordina
 5. Wait for explicit confirmation. Create one new stable `attemptId` for that draw, then call `generation_create` once with `confirmed: true` and that ID, or run `holycrab generate create ... --yes` once.
 6. Save the returned task ID. Query it with `generation_get`, `generation_list`, or `holycrab tasks get|list|wait`.
 
-Before each operation, briefly explain what you will do in the user's current language. Afterward, state the outcome and one applicable `nextAction`. Show its command only when it is not null; otherwise ask for the missing user choice. Never invent a path, ID, request, or command. Completed balance/model queries need no extra steps. Use a human summary, not raw JSON, for a non-technical user. Ctrl+C stops local waiting, not the online task; reconcile interrupted writes instead of repeating them.
+Follow the user-facing reply rules above. Explain the outcome and applicable `nextAction`; show its command only when non-null. A null command does not itself mean an error or a missing choice: ask only for information actually needed. Never invent a path, ID, request, or command. Ctrl+C stops local waiting, not the online task; reconcile interrupted writes instead of repeating them.
 
 ## Submission rule
 
@@ -47,11 +52,11 @@ An urgent request to "retry" is not confirmation of a separate paid draw with a 
 
 ## Real-person authorization
 
-1. If the user already authorized the person, query `real_human_groups_list` or `holycrab real-human groups list`. Follow pagination; select their public group ID. Ask which person when names are ambiguous.
+1. List existing authorized people with `real_human_groups_list` or `holycrab real-human groups list`; follow pagination and ask the user to choose. Names are display labels, not a supported authorization-search parameter. A session can only be queried with its authorization ID; do not invent name-based authorization lookup. Keep the selected public group ID internal. An empty group list does not prove that no unfinished authorization session exists.
 2. To authorize a new person at the user's request, call `real_human_authorization_start` with their chosen display `name`, or `holycrab real-human start --name "Name"`, once. Show the returned `h5Link` and QR image privately to the user. MCP returns an image block; CLI returns an absolute `qrPath`. The link and QR are temporary verification credentials: do not publish them, send them to third-party QR services, or include them in logs. If QR generation fails, show the existing link without creating another session.
 3. The person must open the link or scan the QR and complete verification themselves, including the final completion button that returns to the official callback page. Never simulate verification, submit callback results yourself, or ask for a `bytedToken` or a callback URL. The browser handles the callback; the local Agent does not need their web login.
 4. Query `real_human_authorization_get` with `authorizationId`, or use `holycrab real-human get|wait AUTHORIZATION_ID`. For `CREATED`, wait about 5 seconds before the next query and keep waits bounded. A timeout means stop waiting and retain the ID, not start over. Stop on `SUCCEEDED`, `FAILED`, or `EXPIRED`. On failure/expiry, explain the result and only start a new session when the user asks to retry. On success, explain that the person group has been created but authorization does not create or upload any assets. Continue by asking the user to select files for that person, then preview and confirm their upload separately. Use the returned `group.uniqId` internally; do not ask the user to guess it.
-5. Prepare only the user-selected person's files with `asset_upload_prepare` (`files` plus `groupUniqId`), or `holycrab assets upload FILE [FILE ...] --real-human-group GROUP_ID`. Show the person's name, group ID, every resolved path, type, size, and known duration. Obtain one confirmation for the complete batch, then call `asset_upload_execute` with `confirmed: true`. Omitting the group uses ordinary assets; never use that as a fallback for failed authorization. Use `real_human_assets_list` to select an existing asset or reconcile an uncertain upload.
+5. Prepare only the user-selected person's files with `asset_upload_prepare` (`files` plus `groupUniqId`), or `holycrab assets upload FILE [FILE ...] --real-human-group GROUP_ID`. Show the selected person's name and every resolved path, type, size, and known duration; retain the group ID internally to ensure the exact target is unchanged. Obtain one confirmation for the complete batch, then call `asset_upload_execute` with `confirmed: true`. Omitting the group uses ordinary assets; never use that as a fallback for failed authorization. Use `real_human_assets_list` to select an existing asset or reconcile an uncertain upload.
 6. Wait for `asset_get` to return `ready: true`; report `FAILED` and its public error. Use the returned public asset ID in the existing `imageAssetIds` or `videoAssetIds` request fields, never an upstream asset/group ID. Check the selected model's capabilities, estimate credit, and obtain the normal generation confirmation. Real-person verification does not authorize a paid generation.
 
 ### Manage authorized people and assets

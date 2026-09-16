@@ -570,8 +570,8 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 ## 10. CLI 安全层
 
 - 默认结果格式由 stdout 是否为交互终端决定：交互时显示摘要，重定向或管道时保留完整 JSON。`doctor --json`、`models list --json`、`setup --stdin` 强制保留 JSON；生成命令的 `--json` 是请求输入，不是输出格式开关。MCP `content` 和 `structuredContent` 格式不变，Agent 规则只用于生成用户语言的解释。
-- `setup` / `auth set-key` 在管道、脚本或 `--stdin` 模式输出一个 JSON 结果，保留公开账号字段及 `configured`、`valid`、`savedKeyVerified`、`credentialSource` 和 `onboarding`。直接在终端运行时显示简短的账号状态和下一步，不显示内部规则；保存成功不代表环境变量覆盖后的活动账号有效。
-- `doctor`、`auth status`、MCP `cli_status` / `account_get` 追加统一 `onboarding`，包括 `state`、`instruction`、`command`、`businessUses`、三个 `examples`、`question` 和 `agentInstruction`。状态为 `CONNECT_ACCOUNT / VERIFY_ACCOUNT / READY`；普通离线自检不会返回 `READY`。异常成功响应不能证明账号有效。
+- `setup` 在管道、脚本或 `--stdin` 模式输出一个 JSON 结果，保留公开账号字段及 `configured`、`valid`、`savedKeyVerified`、`credentialSource` 和 `onboarding`。`auth set-key` 仅保留隐藏兼容，并共用相同实现。直接在终端运行时显示简短的账号状态和下一步，不显示内部规则；保存成功不代表环境变量覆盖后的活动账号有效。
+- `doctor`、`auth status`、MCP `cli_status` / `account_get` 追加统一 `onboarding`，包括 `state`、`instruction`、`command`、`businessUses`、三个 `examples`、`question` 和 `agentInstruction`。状态为 `CONNECT_ACCOUNT / CONFIGURED / VERIFY_ACCOUNT / READY`。普通离线自检和 `cli_status` 在有 Key 时返回 `CONFIGURED`，`command` 为 `null`，仅表示 Key 已配置，不判断账号有效性，也不要求重复验证；没有 Key 时仍引导 `setup`。只有实时账号验证成功才返回 `READY`，异常成功响应不能证明账号有效。
 - Agent 仅在安装或首次连接对话中、账号验证成功后介绍业务场景一次，并使用用户当前语言。示例不构成上传、授权、付费或删除许可；费用估算留在实际执行流程，不要求用户在需求中提及。
 - 测试安装通过 `HOLYCRAB_INSTALL_REF` 指定完整提交号，默认下载引用仍为版本标签；下载引用不改变版本号校验。正式更新清除该变量，保留 GitHub Release、SHA-256 和严格版本校验。
 - `estimate` 与 `create` 共用能力校验器；已知非法模型、分辨率、时长、素材组合和字段会在请求前拒绝。

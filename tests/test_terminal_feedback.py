@@ -10,7 +10,7 @@ import time
 import unittest
 from pathlib import Path
 
-SCRIPT = Path(__file__).parents[1] / "scripts/holycrab_cli.py"
+SCRIPT = Path(__file__).parents[1] / "holycrab/scripts/holycrab_cli.py"
 
 
 @unittest.skipIf(os.name == "nt", "Unix PTY; native Windows hidden input is manual acceptance")

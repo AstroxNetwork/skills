@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $ChinesePath = -join @(
     [char]0x4E2D, [char]0x6587, [char]0x7528, [char]0x6237,
     [char]0x5B89, [char]0x88C5, [char]0x6D4B, [char]0x8BD5
@@ -58,6 +58,14 @@ if ($env:HOLYCRAB_TEST_INSTALL_REF) {
 }
 
 $CliPath = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\holycrab_cli.py"
+$ProgramDir = Split-Path $CliPath
+$AllowedFiles = @("holycrab_cli.py", "installation.json", "references/capabilities.json", "vendor/segno-1.6.6-py3-none-any.whl", "vendor/LICENSE.segno")
+foreach ($InstalledFile in Get-ChildItem -LiteralPath $ProgramDir -File -Recurse) {
+    $Relative = $InstalledFile.FullName.Substring($ProgramDir.Length + 1).Replace("\", "/")
+    if ($Relative -notmatch '^__pycache__/holycrab_cli\..*\.pyc$' -and $AllowedFiles -notcontains $Relative) {
+        throw "Installation contained a non-runtime file: $Relative"
+    }
+}
 $Python = (Get-Command python).Source
 
 $SavedKey = "hc_test_windows_dpapi_123456789"
@@ -80,7 +88,7 @@ foreach ($OldVersion in @("0.4.0", "0.4.1", "0.4.2")) {
     $UpgradedVersion = & $Launcher --version
     if ($UpgradedVersion -ne "holycrab 0.4.3") { throw "Older-version upgrade failed" }
     $UpgradedDoctor = & $Launcher doctor --json | ConvertFrom-Json
-    if ($UpgradedDoctor.onboarding.state -ne "VERIFY_ACCOUNT") { throw "Upgrade confused saved credentials with verified login" }
+    if ($UpgradedDoctor.onboarding.state -ne "CONFIGURED") { throw "Offline doctor should report configuration without requiring repeated verification" }
 }
 
 $LegacyKey = "hc_test_legacy_plaintext_123456789"
@@ -139,6 +147,14 @@ $env:Path = "$FakeBin;$env:Path"
 $env:HOLYCRAB_INSTALL_MCP = "1"
 $env:HOLYCRAB_INSTALL_AGENTS = "codex"
 & (Join-Path $RepoRoot "install.ps1")
+$SkillDirectory = Join-Path $env:USERPROFILE ".agents\skills\holycrab"
+$SkillFiles = @(Get-ChildItem -LiteralPath $SkillDirectory -Recurse -File | ForEach-Object {
+    $_.FullName.Substring($SkillDirectory.Length + 1).Replace("\", "/")
+} | Sort-Object)
+$ExpectedSkillFiles = @("SKILL.md", "agents/openai.yaml", "references/capabilities.json") | Sort-Object
+if (@(Compare-Object $SkillFiles $ExpectedSkillFiles).Count -ne 0) {
+    throw "Installed Skill contains unexpected or missing files: $($SkillFiles -join ', ')"
+}
 # Simulate an installer-owned registration pointing to an old Python executable.
 $OldRegistration = Get-Content -LiteralPath $env:FAKE_CODEX_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
 $OldRegistration.transport.command = "C:\old\python.exe"

@@ -4,7 +4,7 @@ This internal runner verifies HolyCrab CLI against the fixed production API
 without creating generation tasks or uploading files.
 
 ```bash
-python3 holycrab/tests/safe_live_smoke.py \
+python3 tests/safe_live_smoke.py \
   --account-label user1 \
   --report /tmp/holycrab-safe-live-report.json
 ```

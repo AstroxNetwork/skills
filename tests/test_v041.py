@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "holycrab_cli.py"
+SCRIPT = Path(__file__).parents[1] / "holycrab" / "scripts" / "holycrab_cli.py"
 SPEC = importlib.util.spec_from_file_location("holycrab_v041", SCRIPT)
 assert SPEC and SPEC.loader
 cli = importlib.util.module_from_spec(SPEC)

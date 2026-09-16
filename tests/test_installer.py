@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).parents[2]
+REPO_ROOT = Path(__file__).parents[1]
 
 
 class InstallerTests(unittest.TestCase):
@@ -139,6 +139,16 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(handshake.returncode, 0, handshake.stderr)
             self.assertIn('"name":"holycrab-local"', handshake.stdout)
             self.assertIn('"protocolVersion":"2025-11-25"', handshake.stdout)
+            allowed_program = {"holycrab_cli.py", "installation.json", "references/capabilities.json",
+                               "vendor/segno-1.6.6-py3-none-any.whl", "vendor/LICENSE.segno"}
+            library = Path(home) / ".local/lib/holycrab"
+            installed_files = {p.relative_to(library).as_posix() for p in library.rglob("*")
+                               if p.is_file() and "__pycache__" not in p.parts}
+            self.assertEqual(installed_files, allowed_program)
+            for agent_dir in (".agents", ".claude"):
+                skill_dir = Path(home) / agent_dir / "skills/holycrab"
+                self.assertEqual({p.relative_to(skill_dir).as_posix() for p in skill_dir.rglob("*") if p.is_file()},
+                                 {"SKILL.md", "references/capabilities.json", "agents/openai.yaml"})
 
     def test_installer_persists_zsh_path_once_without_replacing_user_content(self) -> None:
         with tempfile.TemporaryDirectory() as home:
@@ -434,7 +444,7 @@ fi
             self.assertNotIn('"checks"', result.stdout)
 
     def test_windows_agent_fixture_emits_utf8_under_a_legacy_codepage(self) -> None:
-        source = (REPO_ROOT / "holycrab/tests/test_windows_installer.ps1").read_text(encoding="utf-8")
+        source = (REPO_ROOT / "tests/test_windows_installer.ps1").read_text(encoding="utf-8")
         program = source.split("$FakeCodexPython = @'\n", 1)[1].split("\n'@", 1)[0]
         value = {"transport": {"type": "stdio", "command": "C:/old/python.exe",
                                "args": ["-X", "utf8", "C:/中文用户/holycrab_cli.py", "mcp", "serve"]}}
@@ -469,7 +479,7 @@ fi
             "ubuntu-latest",
             "macos-latest",
             "windows-latest",
-            "python3 -m unittest discover -s holycrab/tests -v",
+            "python3 -m unittest discover -s tests -v",
             "python3 -m py_compile",
             "validate_capabilities.py",
             "quick_validate.py",
@@ -506,6 +516,15 @@ fi
         self.assertIn("SHA-256", notes)
         self.assertIn("Windows", notes)
         self.assertIn("DPAPI", notes)
+
+    def test_release_stays_draft_until_digest_and_native_install_checks_pass(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("--draft", workflow)
+        self.assertLess(workflow.index("--draft"), workflow.index("Verify published bytes"))
+        self.assertIn("verify-draft-install:", workflow)
+        self.assertIn("needs: [release, verify-draft-install]", workflow)
+        self.assertIn("verify_release_acceptance.py", workflow)
+        self.assertIn('gh release edit "$GITHUB_REF_NAME" --draft=false --latest', workflow)
 
 
 if __name__ == "__main__":

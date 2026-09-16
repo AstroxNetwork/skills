@@ -67,7 +67,7 @@ holycrab doctor --json
 holycrab auth status
 ```
 
-`holycrab setup` 会隐藏输入、验证并保存 Key；`holycrab auth set-key` 提供相同的显式配置入口。macOS/Linux 使用仅当前用户可读写的本地配置文件；Windows 使用当前用户 DPAPI 加密，首次读取旧版明文时会自动迁移。临时环境变量 `HOLYCRAB_API_KEY` 会覆盖本地配置；如果看到覆盖警告，请先清除该变量，再检查 Key 状态。
+`holycrab setup` 会隐藏输入、验证并保存 Key。`holycrab auth set-key` 仅为旧脚本保留隐藏兼容，不作为新流程入口。macOS/Linux 使用仅当前用户可读写的本地配置文件；Windows 使用当前用户 DPAPI 加密，首次读取旧版明文时会自动迁移。临时环境变量 `HOLYCRAB_API_KEY` 会覆盖本地配置；如果看到覆盖警告，请先清除该变量，再检查 Key 状态。
 
 ## 连接后开始创作
 
@@ -103,10 +103,10 @@ holycrab models show dreamina-seedance-2-5-260628
 holycrab credits balance
 
 holycrab generate estimate --kind image \
-  --json '{"prompt":"A crab astronaut","model":"seedream-5-0-lite-260128","size":"2k"}'
+  --json '{"prompt":"A crab astronaut","model":"seedream-5-0-lite-260128","size":"2K"}'
 
 holycrab generate create --kind image \
-  --json '{"prompt":"A crab astronaut","model":"seedream-5-0-lite-260128","size":"2k"}'
+  --json '{"prompt":"A crab astronaut","model":"seedream-5-0-lite-260128","size":"2K"}'
 
 holycrab tasks list
 holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type VIDEO
@@ -115,6 +115,8 @@ holycrab tasks wait TASK_ID --timeout 600
 holycrab generate attempts list
 holycrab assets upload /absolute/path/a.jpg /absolute/path/b.mp4 --duration-seconds 8
 ```
+
+上述示例使用 macOS/Linux shell。`TASK_ID`、`ATTEMPT_ID`、`ASSET_ID`、`GROUP_ID` 需替换为对应查询返回的真实 ID；`/absolute/path/` 需替换为已选择文件的绝对路径。`[FILE ...]` 等方括号表示可选重复参数，不应逐字复制。
 
 没有 `--yes` 时，创建命令会先显示积分估算并询问确认。脚本或 Agent 只有在用户已经明确确认后才能加 `--yes`。
 
@@ -134,7 +136,7 @@ holycrab real-human wait AUTHORIZATION_ID --timeout 600
 holycrab real-human groups list --page 1 --page-size 20
 holycrab real-human groups rename GROUP_ID --name "新名称"
 holycrab assets upload /absolute/path/a.jpg /absolute/path/b.mp4 --real-human-group GROUP_ID
-holycrab assets wait ASSET_ID [ASSET_ID ...] --timeout 600
+holycrab assets wait ASSET_ID --timeout 600
 holycrab real-human assets list --group GROUP_ID
 ```
 
@@ -157,6 +159,8 @@ MCP 提供 `real_human_authorization_start|get`、人物及素材列表、`real_
 
 ## 隐私、条款与支持
 
+用户安装仅复制运行文件白名单：CLI、启动器、能力清单、Skill、Agent 配置以及二维码依赖。`tests/` 中的 Mock、fixture、烟测脚本及测试依赖，以及 `tools/` 开发验证脚本不会进入 CLI 或 Skill 安装目录。它们保留在 GitHub 源码和自动生成的源码压缩包中，不提供用户 Mock 模式。
+
 HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政策和服务条款。
 
 - [Privacy Policy](https://holycrab.ai/privacy/)
@@ -166,10 +170,10 @@ HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政
 ## 本地开发验证
 
 ```bash
-python3 -m unittest discover -s holycrab/tests -v
-python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py
-python3 holycrab/scripts/validate_capabilities.py
-python3 holycrab/scripts/validate_generate_contract.py /path/to/read-only-generate-main
+python3 -m unittest discover -s tests -v
+python3 -m py_compile holycrab/scripts/holycrab_cli.py tools/*.py tests/safe_live_smoke.py
+python3 tools/validate_capabilities.py
+python3 tools/validate_generate_contract.py /path/to/read-only-generate-main
 sh -n install.sh bin/holycrab
 ```
 
@@ -177,8 +181,8 @@ sh -n install.sh bin/holycrab
 
 ```bash
 python3 -m venv /tmp/holycrab-qr-validator
-/tmp/holycrab-qr-validator/bin/python -m pip install --only-binary=:all: -r holycrab/tests/requirements-qr-test.txt
-/tmp/holycrab-qr-validator/bin/python holycrab/scripts/validate_qr.py
+/tmp/holycrab-qr-validator/bin/python -m pip install --only-binary=:all: -r tests/requirements-qr-test.txt
+/tmp/holycrab-qr-validator/bin/python tools/validate_qr.py
 ```
 
 仓库中的测试和开发验证不会调用正式生成接口或产生费用；实际使用 `holycrab generate create` 时，用户确认后会提交真实付费任务。安全问题请按 [SECURITY.md](SECURITY.md) 联系我们。

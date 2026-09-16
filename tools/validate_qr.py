@@ -16,7 +16,7 @@ import zxingcpp
 
 
 def main() -> None:
-    spec = importlib.util.spec_from_file_location("qr_validation_cli", Path(__file__).with_name("holycrab_cli.py"))
+    spec = importlib.util.spec_from_file_location("qr_validation_cli", Path(__file__).resolve().parents[1] / "holycrab/scripts/holycrab_cli.py")
     assert spec and spec.loader
     cli = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cli)

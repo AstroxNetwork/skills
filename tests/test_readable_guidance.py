@@ -105,6 +105,58 @@ class ReadableGuidanceTests(unittest.TestCase):
         self.assertNotIn('"checks"', output)
         self.assertNotIn("agentInstruction", output)
 
+    def test_local_doctor_after_auth_success_does_not_request_reverification(self):
+        cli.save_config({"apiKey": "hc_fixture_existing"})
+        with patch.object(cli, "send", return_value=ok({"username": "Fixture"})) as transport:
+            auth_code, auth_output, _ = self.invoke(["auth", "status"])
+            code, output, errors = self.invoke(["doctor"])
+            json_code, json_output, _ = self.invoke(["doctor", "--json"])
+            status = cli.mcp_tool_call("cli_status", {})
+        self.assertEqual(auth_code, 0)
+        self.assertIn("account connected", auth_output)
+        self.assertEqual(code, 0)
+        self.assertIn("API Key: configured", output)
+        for fragment in ("Account not verified", "holycrab auth status", "account connected"):
+            self.assertNotIn(fragment, output + errors)
+        self.assertEqual(json_code, 0)
+        for guidance in (json.loads(json_output)["onboarding"], status["onboarding"]):
+            self.assertEqual(guidance["state"], "CONFIGURED")
+            self.assertIsNone(guidance["command"])
+        self.assertEqual(transport.call_count, 1)
+
+    def test_local_doctor_environment_key_is_configured_not_verified(self):
+        with patch.dict(os.environ, {"HOLYCRAB_API_KEY": "hc_fixture_environment"}), \
+                patch.object(cli, "send") as transport:
+            code, output, errors = self.invoke(["doctor"])
+        self.assertEqual(code, 0)
+        self.assertIn("API Key: configured", output)
+        for fragment in ("Account not verified", "holycrab auth status", "account connected", "hc_fixture_environment"):
+            self.assertNotIn(fragment, output + errors)
+        transport.assert_not_called()
+
+    def test_installer_still_guides_configured_account_verification(self):
+        cli.save_config({"apiKey": "hc_fixture_existing"})
+        with patch.object(cli, "send") as transport:
+            guidance = cli.local_health_report()["onboarding"]
+        text = cli.format_onboarding(guidance, installed=True)
+        self.assertIn("HolyCrab 0.4.3 installed", text)
+        self.assertIn("Next: verify your account", text)
+        self.assertIn("holycrab auth status", text)
+        self.assertNotIn("account connected", text)
+        self.assertNotIn("Account not verified", text)
+        transport.assert_not_called()
+
+    def test_online_doctor_keeps_actual_account_verification_feedback(self):
+        cli.save_config({"apiKey": "hc_fixture_existing"})
+        for payload, valid in (({"username": "Fixture"}, True), ({}, False)):
+            with self.subTest(valid=valid), patch.object(cli, "send", return_value=ok(payload)) as transport, \
+                    patch.object(cli, "check_for_update", return_value={"updateAvailable": False}):
+                code, output, errors = self.invoke(["doctor", "--online"])
+            self.assertEqual(code, 0 if valid else 1)
+            self.assertIn("account connected" if valid else "Account not verified", output)
+            self.assertNotIn("hc_fixture_existing", output + errors)
+            self.assertEqual(transport.call_count, 1)
+
     def test_authorization_success_keeps_person_and_explicit_upload_next_step(self):
         reply = {"authorizationId": "auth1", "status": "SUCCEEDED",
                  "group": {"uniqId": "group1", "name": "Fixture person"}}

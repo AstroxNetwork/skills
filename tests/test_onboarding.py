@@ -75,11 +75,13 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())["onboarding"]["state"], "VERIFY_ACCOUNT")
         self.assertEqual(errors.getvalue(), "")
 
-    def test_local_doctor_distinguishes_missing_and_unverified_credentials(self) -> None:
+    def test_local_doctor_distinguishes_missing_and_configured_credentials(self) -> None:
         with patch.object(cli, "send") as transport:
             self.assertEqual(cli.local_health_report()["onboarding"]["state"], "CONNECT_ACCOUNT")
             cli.save_config({"apiKey": "hc_test_saved_only"})
-            self.assertEqual(cli.local_health_report()["onboarding"]["state"], "VERIFY_ACCOUNT")
+            guidance = cli.local_health_report()["onboarding"]
+            self.assertEqual(guidance["state"], "CONFIGURED")
+            self.assertIsNone(guidance["command"])
         transport.assert_not_called()
 
     def test_online_doctor_requires_a_valid_account_payload(self) -> None:

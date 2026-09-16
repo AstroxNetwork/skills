@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).parents[2]
+REPO_ROOT = Path(__file__).parents[1]
 PUBLIC_FILES = (
     REPO_ROOT / "README.md",
     REPO_ROOT / "SECURITY.md",
@@ -18,7 +18,6 @@ PUBLIC_FILES = (
     REPO_ROOT / "holycrab" / "references" / "api.md",
     REPO_ROOT / "holycrab" / "references" / "capabilities.json",
     REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py",
-    REPO_ROOT / "holycrab" / "scripts" / "holycrab_api.py",
 )
 
 

@@ -1,0 +1,9 @@
+{
+  "version": "v0.4.3",
+  "realHumanCoreFlow": {
+    "status": "pending",
+    "operator": null,
+    "testedAt": null,
+    "notes": "User must verify actual authorization, private verification completion, person-group creation, separately confirmed upload and material readiness. Mock success is not manual acceptance. Do not include names, private links, QR codes or file paths."
+  }
+}

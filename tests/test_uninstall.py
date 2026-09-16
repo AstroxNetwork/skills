@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 
-REPO_ROOT = Path(__file__).parents[2]
+REPO_ROOT = Path(__file__).parents[1]
 SCRIPT = REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py"
 SPEC = importlib.util.spec_from_file_location("holycrab_uninstall", SCRIPT)
 assert SPEC and SPEC.loader

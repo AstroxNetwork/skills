@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-CLI_SCRIPT = Path(__file__).parents[1] / "scripts" / "holycrab_cli.py"
+CLI_SCRIPT = Path(__file__).parents[1] / "holycrab" / "scripts" / "holycrab_cli.py"
 CLI_SPEC = importlib.util.spec_from_file_location("holycrab_safe_live_cli", CLI_SCRIPT)
 assert CLI_SPEC and CLI_SPEC.loader
 cli = importlib.util.module_from_spec(CLI_SPEC)
@@ -245,7 +245,7 @@ def assert_invalid_request_stays_local(guard: SafeRequestGuard) -> None:
 def _git_commit() -> str | None:
     try:
         completed = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).parents[2], text=True,
+            ["git", "rev-parse", "HEAD"], cwd=Path(__file__).parents[1], text=True,
             capture_output=True, check=False,
         )
         value = completed.stdout.strip()

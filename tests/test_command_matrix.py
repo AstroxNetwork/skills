@@ -83,7 +83,7 @@ class CommandMatrixTests(unittest.TestCase):
         if method == "DELETE":
             return ok(True)
         if path == "/api/real-human-groups/group1" and method == "PATCH":
-            return ok({"uniqId": "group1", "name": "Fixture"})
+            return ok({"uniqId": "group1", "name": kwargs["payload"]["name"]})
         if path == "/api/real-human-groups/group1/assets":
             return ok({"records": [{"uniqId": "asset1", "step": "UPLOADED_TO_ARK"}], "total": 1, "pages": 1})
         if path == "/api/user-assets/asset1":
@@ -180,7 +180,7 @@ class CommandMatrixTests(unittest.TestCase):
             for item in value.values(): self.check_actions(item)
 
     def test_all_command_failure_feedback(self) -> None:
-        local_faults = {"models list": "load_capabilities", "models show": "load_capabilities",
+        local_faults = {"models list": "_capability_manifest", "models show": "_capability_manifest",
             "generate attempts list": "load_attempts", "generate attempts get": "load_attempts",
             "auth clear-key": "save_config"}
         for terminal, command in ((terminal, command) for terminal in (False, True) for command in COMMANDS):

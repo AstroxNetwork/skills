@@ -6,10 +6,10 @@ import unittest
 from pathlib import Path
 
 
-SKILL_ROOT = Path(__file__).parents[1]
+SKILL_ROOT = Path(__file__).parents[1] / "holycrab"
 REPO_ROOT = SKILL_ROOT.parent
 MANIFEST_PATH = SKILL_ROOT / "references" / "capabilities.json"
-VALIDATOR_PATH = SKILL_ROOT / "scripts" / "validate_capabilities.py"
+VALIDATOR_PATH = REPO_ROOT / "tools" / "validate_capabilities.py"
 
 
 class CapabilityManifestTests(unittest.TestCase):

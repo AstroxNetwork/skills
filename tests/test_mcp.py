@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-SCRIPT_PATH = Path(__file__).parents[1] / "scripts" / "holycrab_cli.py"
+SCRIPT_PATH = Path(__file__).parents[1] / "holycrab" / "scripts" / "holycrab_cli.py"
 SPEC = importlib.util.spec_from_file_location("holycrab_mcp", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 holycrab = importlib.util.module_from_spec(SPEC)
