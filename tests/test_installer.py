@@ -17,6 +17,36 @@ REPO_ROOT = Path(__file__).parents[1]
 
 
 class InstallerTests(unittest.TestCase):
+    def test_post_release_smoke_checks_both_native_platforms(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("os: [macos-latest, windows-latest]", workflow)
+        self.assertIn("shell: powershell", workflow)
+        self.assertIn('python-version: "3.10"', workflow)
+        self.assertIn('AddSeconds(10)', workflow)
+
+    def test_post_release_smoke_verifies_website_bytes_before_execution(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
+        self.assertIn('https://holycrab.ai/cli/', workflow)
+        self.assertIn('Release is not the expected stable version', workflow)
+        self.assertIn('sha256:', workflow)
+        self.assertIn('Website installer differs from the immutable release', workflow)
+        self.assertLess(workflow.index('Verify the deployed entry points'), workflow.index('Install on macOS'))
+        self.assertLess(workflow.index('Verify the deployed entry points'), workflow.index('Install on PowerShell'))
+
+    def test_post_release_smoke_has_no_business_writes_or_real_credentials(self) -> None:
+        workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
+        self.assertIn('HOLYCRAB_INSTALL_AGENTS: none', workflow)
+        self.assertIn('HOLYCRAB_INSTALL_MCP: "0"', workflow)
+        self.assertIn('HOLYCRAB_NO_UPDATE_CHECK: "1"', workflow)
+        self.assertIn('"name": "cli_status"', workflow)
+        self.assertIn('"name": "capabilities_list"', workflow)
+        self.assertIn('"asset_upload" not in names', workflow)
+        self.assertNotIn('generation_create', workflow)
+        self.assertNotIn('auth status', workflow)
+        self.assertNotIn('HOLYCRAB_API_KEY', workflow)
+        self.assertNotIn('contents: write', workflow)
+
     RELEASE_FILES = {
         "SHA256_HOLYCRAB_CLI": REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py",
         "SHA256_CAPABILITIES": REPO_ROOT / "holycrab" / "references" / "capabilities.json",
