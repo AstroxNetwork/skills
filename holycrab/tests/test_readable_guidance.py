@@ -167,7 +167,10 @@ class ReadableGuidanceTests(unittest.TestCase):
             code, output, _ = self.invoke(["assets", "upload", *paths, "--real-human-group", "group1"])
         self.assertEqual(code, 2)
         self.assertIn("Upload preview", output)
-        for fragment in (*paths, "Fixture person", "group1", "image/png", "Size:", "checked online"):
+        # Windows TEMP can use an 8.3 alias (RUNNER~1). Preview deliberately
+        # shows the resolved long path, not the originally supplied alias.
+        resolved_paths = [str(Path(path).resolve(strict=True)) for path in paths]
+        for fragment in (*resolved_paths, "Fixture person", "group1", "image/png", "Size:", "checked online"):
             self.assertIn(fragment, output)
         self.assertNotIn('"uploadPlanId"', output)
         self.assertEqual(confirm.call_count, 1)
