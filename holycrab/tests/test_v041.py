@@ -364,29 +364,29 @@ class V041Tests(unittest.TestCase):
 
     def test_update_rejects_unstable_versions_and_missing_digest(self) -> None:
         with self.assertRaises(ValueError):
-            cli.release_update_info({"tag_name": "v0.4.3-rc1", "draft": False, "prerelease": True,
-                                     "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.3-rc1"})
+            cli.release_update_info({"tag_name": "v0.4.4-rc1", "draft": False, "prerelease": True,
+                                     "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.4-rc1"})
         installer_name = "install.ps1" if os.name == "nt" else "install.sh"
         with self.assertRaisesRegex(SystemExit, "missing its GitHub SHA-256"):
-            cli.release_installer({"tag_name": "v0.4.3", "assets": [{"name": installer_name, "browser_download_url":
-                f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.3/{installer_name}", "digest": None}]})
+            cli.release_installer({"tag_name": "v0.4.4", "assets": [{"name": installer_name, "browser_download_url":
+                f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.4/{installer_name}", "digest": None}]})
         older = cli.release_update_info({"tag_name": "v0.4.0", "draft": False, "prerelease": False,
                                          "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.0"})
         self.assertFalse(older["updateAvailable"])
         bad_asset_name = "install.ps1" if os.name == "nt" else "install.sh"
         with self.assertRaisesRegex(SystemExit, "invalid download URL"):
-            cli.release_installer({"tag_name": "v0.4.3", "assets": [{"name": bad_asset_name,
+            cli.release_installer({"tag_name": "v0.4.4", "assets": [{"name": bad_asset_name,
                 "browser_download_url": "https://evil.example/install", "digest": "sha256:" + "0" * 64}]})
 
     def test_update_cache_limits_automatic_checks_to_once_per_day(self) -> None:
-        release = {"checkedAt": cli.utc_now(), "latestVersion": "0.4.3", "updateAvailable": True,
-                   "releasePage": cli.RELEASE_PAGE_PREFIX + "v0.4.3", "release": {"tag_name": "v0.4.3"}}
+        release = {"checkedAt": cli.utc_now(), "latestVersion": "0.4.4", "updateAvailable": True,
+                   "releasePage": cli.RELEASE_PAGE_PREFIX + "v0.4.4", "release": {"tag_name": "v0.4.4"}}
         with patch.dict(os.environ, {"HOLYCRAB_NO_UPDATE_CHECK": "0"}), \
                 patch.object(cli, "fetch_latest_release", return_value=release) as fetch:
             first = cli.check_for_update()
             second = cli.check_for_update()
         self.assertTrue(first["updateAvailable"])
-        self.assertEqual(second["latestVersion"], "0.4.3")
+        self.assertEqual(second["latestVersion"], "0.4.4")
         fetch.assert_called_once()
 
     def test_failed_automatic_update_check_is_also_cached_for_one_day(self) -> None:
@@ -400,14 +400,14 @@ class V041Tests(unittest.TestCase):
 
     def test_update_requires_confirmation_and_verifies_digest_before_execution(self) -> None:
         name = "install.ps1" if os.name == "nt" else "install.sh"
-        marker = '$Version = "v0.4.3"\n' if os.name == "nt" else "VERSION=v0.4.3\n"
+        marker = '$Version = "v0.4.4"\n' if os.name == "nt" else "VERSION=v0.4.4\n"
         body = marker.encode()
-        release = {"tag_name": "v0.4.3", "assets": [{"name": name,
-            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.3/{name}",
+        release = {"tag_name": "v0.4.4", "assets": [{"name": name,
+            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.4/{name}",
             "digest": "sha256:" + cli.hashlib.sha256(body).hexdigest()}]}
         state = {"release": release}
         args = argparse.Namespace(check=False, yes=False)
-        with patch.object(cli, "check_for_update", return_value={"latestVersion": "0.4.3", "updateAvailable": True}), \
+        with patch.object(cli, "check_for_update", return_value={"latestVersion": "0.4.4", "updateAvailable": True}), \
                 patch.object(cli, "read_update_state", return_value=state), \
                 patch.object(cli.sys.stdin, "isatty", return_value=False), \
                 patch.object(cli, "run_update") as run, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):

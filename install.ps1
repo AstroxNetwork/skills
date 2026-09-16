@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Repository = "AstroxNetwork/skills"
-$Version = "v0.4.2"
+$Version = "v0.4.3"
 $SourceRef = if ($env:HOLYCRAB_INSTALL_REF) { $env:HOLYCRAB_INSTALL_REF } else { $Version }
 if ($SourceRef -cnotmatch '^(?:[0-9a-f]{40}|v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$') {
     throw "HOLYCRAB_INSTALL_REF must be a full commit hash or stable version tag; installation stopped."
@@ -28,7 +28,7 @@ function Write-HolyCrabProgress([string]$Message) {
 }
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "8ebd0cfdd5890c4486131d4d55b163cd547b6643d1747b663a9e461d7029eb87" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "84389174d9c41510c6000dd729318ce5a0a37e2d2e219bdb4a244640dd99d50d" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
     @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "b5e52ba0aa5ede2e5c6a99491805f232cc4cc5ff6e158c4c27c81336ce149b23" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
@@ -109,7 +109,7 @@ function Register-HolyCrabMcp([string]$Agent, [hashtable]$Python, [string]$CliPa
     $Helper = @'
 import importlib.util, json, sys
 script, agent, client, previous = sys.argv[1:5]
-server = json.loads(sys.stdin.read())
+server = json.loads(sys.stdin.read().lstrip("\ufeff"))
 spec = importlib.util.spec_from_file_location("holycrab_installer", script)
 cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)

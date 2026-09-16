@@ -26,7 +26,7 @@ $PathEntries = @($env:Path -split ";" | Where-Object {
 if ($PathEntries.Count -ne 1) { throw "HolyCrab bin directory should occur once in current PATH" }
 
 $Version = & $Launcher --version
-if ($Version -ne "holycrab 0.4.2") { throw "Unexpected version: $Version" }
+if ($Version -ne "holycrab 0.4.3") { throw "Unexpected version: $Version" }
 
 $Doctor = & $Launcher doctor --json | ConvertFrom-Json
 if ($Doctor.ok -ne $true) { throw "HolyCrab doctor did not report ok" }
@@ -42,7 +42,7 @@ if ($env:HOLYCRAB_TEST_INSTALL_REF) {
         $oldRef=$env:HOLYCRAB_INSTALL_REF; try { $env:HOLYCRAB_INSTALL_REF=$ref; & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/AstroxNetwork/skills/$ref/install.ps1"))) } finally { $env:HOLYCRAB_INSTALL_REF=$oldRef }
         if ($env:HOLYCRAB_INSTALL_REF -ne $PreviousRef) { throw "Temporary download ref was not restored" }
         $PinnedVersion = & $Launcher --version
-        if ($LASTEXITCODE -ne 0 -or $PinnedVersion -ne "holycrab 0.4.2") { throw "Fixed-commit Windows installation failed" }
+        if ($LASTEXITCODE -ne 0 -or $PinnedVersion -ne "holycrab 0.4.3") { throw "Fixed-commit Windows installation failed" }
         $PinnedHelp = & $Launcher --help | Out-String
         if ($PinnedHelp -notmatch "uninstall") { throw "Fixed-commit Windows installation omitted uninstall" }
     } finally {
@@ -67,12 +67,12 @@ if (-not ($Config.PSObject.Properties.Name -contains "apiKeyDpapi")) { throw "Wi
 if ($ConfigText.Contains($SavedKey)) { throw "Windows config contains plaintext API Key" }
 
 $OriginalCli = Get-Content -LiteralPath $CliPath -Raw -Encoding UTF8
-foreach ($OldVersion in @("0.4.0", "0.4.1")) {
-    [IO.File]::WriteAllText($CliPath, $OriginalCli.Replace('VERSION = "0.4.2"', ('VERSION = "' + $OldVersion + '"')), [Text.UTF8Encoding]::new($false))
+foreach ($OldVersion in @("0.4.0", "0.4.1", "0.4.2")) {
+    [IO.File]::WriteAllText($CliPath, $OriginalCli.Replace('VERSION = "0.4.3"', ('VERSION = "' + $OldVersion + '"')), [Text.UTF8Encoding]::new($false))
     & (Join-Path $RepoRoot "install.ps1")
     if ((Get-Content -LiteralPath $ConfigPath -Raw) -ne $ConfigText) { throw "Upgrade changed the saved DPAPI credential" }
     $UpgradedVersion = & $Launcher --version
-    if ($UpgradedVersion -ne "holycrab 0.4.2") { throw "Older-version upgrade failed" }
+    if ($UpgradedVersion -ne "holycrab 0.4.3") { throw "Older-version upgrade failed" }
     $UpgradedDoctor = & $Launcher doctor --json | ConvertFrom-Json
     if ($UpgradedDoctor.onboarding.state -ne "VERIFY_ACCOUNT") { throw "Upgrade confused saved credentials with verified login" }
 }

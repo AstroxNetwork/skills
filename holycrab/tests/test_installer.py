@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -47,13 +48,13 @@ class InstallerTests(unittest.TestCase):
             result = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             version = subprocess.run([str(root / "prefix/bin/holycrab"), "--version"], env=env, text=True, capture_output=True)
-            self.assertEqual(version.stdout.strip(), "holycrab 0.4.2")
+            self.assertEqual(version.stdout.strip(), "holycrab 0.4.3")
             self.assertIn("Next: holycrab setup", result.stdout)
             self.assertNotIn("account is connected", result.stdout)
 
     def test_invalid_download_ref_is_rejected_before_installing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            for ref in ("main", "../main", "v0.4.2-rc1", "a" * 39, "a?token=secret"):
+            for ref in ("main", "../main", "v0.4.3-rc1", "a" * 39, "a?token=secret"):
                 with self.subTest(ref=ref):
                     env = {**os.environ, "HOME": temporary, "HOLYCRAB_INSTALL_REF": ref,
                            "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT), "HOLYCRAB_INSTALL_AGENTS": "none"}
@@ -65,8 +66,8 @@ class InstallerTests(unittest.TestCase):
     def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         powershell_installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
-        self.assertIn("VERSION=v0.4.2", installer)
-        self.assertIn('$Version = "v0.4.2"', powershell_installer)
+        self.assertIn("VERSION=v0.4.3", installer)
+        self.assertIn('$Version = "v0.4.3"', powershell_installer)
 
         stable_urls = (
             "https://holycrab.ai/cli/install.sh",
@@ -230,7 +231,7 @@ class InstallerTests(unittest.TestCase):
             env = {**os.environ, "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT),
                    "HOLYCRAB_INSTALL_PREFIX": str(prefix), "HOLYCRAB_CONFIG_DIR": str(config),
                    "HOLYCRAB_INSTALL_AGENTS": "none", "HOLYCRAB_INSTALL_MCP": "0"}
-            for previous_version in (None, "0.4.0", "0.4.1"):
+            for previous_version in (None, "0.4.0", "0.4.1", "0.4.2"):
                 if previous_version is not None:
                     # Simulate an older CLI, then reinstall without touching local user state.
                     (prefix / "lib" / "holycrab" / "holycrab_cli.py").write_text('VERSION = "' + previous_version + '"\n')
@@ -339,7 +340,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-relative=${url#*/v0.4.2/}
+relative=${url#*/v0.4.3/}
 cp "$FAKE_RELEASE_ROOT/$relative" "$destination"
 if [ "$relative" = "holycrab/scripts/holycrab_cli.py" ]; then
   printf '\\n# tampered\\n' >> "$destination"
@@ -388,6 +389,23 @@ fi
                              "/holycrab/scripts/*.py", "/holycrab/scripts/vendor/LICENSE.segno"):
             self.assertIn(f"{release_file} text eol=lf", attributes)
         self.assertIn("& $Launcher doctor --json", powershell_installer)
+
+    def test_windows_mcp_helper_accepts_utf8_bom_and_chinese_paths(self) -> None:
+        installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
+        helper = installer.split("$Helper = @'\n", 1)[1].split("\n'@", 1)[0]
+        server = ["C:/test/python.exe", "-X", "utf8", "C:/中文用户/holycrab_cli.py", "mcp", "serve"]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            helper_path = root / "register-mcp.py"
+            helper_path.write_text(helper, encoding="utf-8")
+            module = root / "fake-cli.py"
+            module.write_text("import json\ndef register_installer_mcp(agent, client, command, args, previous):\n    print(json.dumps([command, *args]))\n", encoding="utf-8")
+            for marker in ("", "\ufeff"):
+                result = subprocess.run([sys.executable, str(helper_path), str(module), "codex", "--discover", "old.json"],
+                                        input=marker + json.dumps(server, ensure_ascii=False),
+                                        text=True, encoding="utf-8", capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout), server)
 
     def test_docs_explain_supported_systems_update_and_uninstall(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
@@ -440,8 +458,8 @@ fi
         self.assertNotIn('gh release upload "$release_version"', workflow)
 
     def test_release_notes_have_the_approved_english_title(self) -> None:
-        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.2.md").read_text(encoding="utf-8")
-        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.2\n"))
+        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.3.md").read_text(encoding="utf-8")
+        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.3\n"))
         self.assertIn("SHA-256", notes)
         self.assertIn("Windows", notes)
         self.assertIn("DPAPI", notes)

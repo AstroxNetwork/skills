@@ -46,7 +46,7 @@ except ImportError:  # pragma: no cover - POSIX runtime
     msvcrt = None
 
 
-VERSION = "0.4.2"
+VERSION = "0.4.3"
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
 PUBLIC_ACCOUNT_URL = "https://generate.holycrab.ai/user-tokens"
 REAL_HUMAN_CALLBACK_URL = "https://generate.holycrab.ai/real-human-authorization/callback"

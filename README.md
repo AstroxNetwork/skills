@@ -6,9 +6,9 @@
 - 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
 - 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.4.2` 内置 `2026-09-14` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
+它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.4.3` 内置 `2026-09-14` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
 
-`v0.4.2` 增加安装后的业务场景引导，并分离测试安装的下载引用与版本号。本版本仍在测试分支，官方稳定入口不会安装尚未发布的测试版。
+`v0.4.3` 修复 Agent 客户端不在 PATH 时的卸载登记清理，保留安装后的业务场景引导以及独立的测试下载引用。本版本仍在测试分支，官方稳定入口不会安装尚未发布的测试版。
 
 `v0.4.1` 增加启动自检、每日更新提示、付费提交防重、严格下载防护和真人素材两阶段批量上传。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
@@ -89,7 +89,7 @@ holycrab auth status
 $ref='COMMIT_SHA'; $oldRef=$env:HOLYCRAB_INSTALL_REF; try { $env:HOLYCRAB_INSTALL_REF=$ref; & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/AstroxNetwork/skills/$ref/install.ps1"))) } finally { $env:HOLYCRAB_INSTALL_REF=$oldRef }
 ```
 
-此命令面向原生 Windows PowerShell，先确认电脑已有 Python 3.10+。测试安装仍校验 `0.4.2` 版本与文件哈希；正式更新会清除临时下载引用，仅安装通过发布校验的稳定版。
+此命令面向原生 Windows PowerShell，先确认电脑已有 Python 3.10+。测试安装仍校验 `0.4.3` 版本与文件哈希；正式更新会清除临时下载引用，仅安装通过发布校验的稳定版。
 
 ## 常用命令
 
