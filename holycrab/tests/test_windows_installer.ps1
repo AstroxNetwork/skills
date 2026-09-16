@@ -102,11 +102,18 @@ $FakeCodexPython = @'
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 arguments = sys.argv[1:]
 state = Path(os.environ["FAKE_CODEX_STATE"])
 if arguments[:3] == ["mcp", "get", "holycrab"]:
+    with open(os.environ["FAKE_CODEX_LOG"], "a", encoding="utf-8") as log:
+        for candidate in Path(tempfile.gettempdir()).glob("holycrab-install.*/backup/lib/installation.json"):
+            value = json.loads(candidate.read_text(encoding="utf-8-sig"))
+            log.write("fixture previous: " + json.dumps({key: value.get(key) for key in ("prefix", "agents", "mcp", "agentRegistrations")}) + "\n")
+        if state.exists():
+            log.write("fixture current: " + state.read_text(encoding="utf-8-sig") + "\n")
     if state.exists():
         print(state.read_text(encoding="utf-8"))
         raise SystemExit(0)
@@ -140,7 +147,7 @@ $OwnedManifest.agentRegistrations.codex.command = "C:\old\python.exe"
 [IO.File]::WriteAllText($OwnedManifestPath, ($OwnedManifest | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
 & (Join-Path $RepoRoot "install.ps1")
 $McpLog = Get-Content -LiteralPath $env:FAKE_CODEX_LOG -Raw -Encoding UTF8
-if ($McpLog -notmatch "mcp remove holycrab") { throw "Stale HolyCrab MCP was not removed" }
+if ($McpLog -notmatch "mcp remove holycrab") { throw "Stale HolyCrab MCP was not removed: $McpLog" }
 if ($McpLog -notmatch "mcp add holycrab" -or -not $McpLog.Contains($CliPath)) {
     throw "HolyCrab MCP was not restored with the current CLI path"
 }
