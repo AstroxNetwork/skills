@@ -21,6 +21,113 @@ SPEC.loader.exec_module(cli)
 
 
 class UninstallTests(unittest.TestCase):
+    def fake_agent(self, root: Path, agent: str) -> Path:
+        executable = root / "clients" / agent
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.write_text(f"#!{sys.executable}\n" + '''
+import json, os, sys
+from pathlib import Path
+arguments = sys.argv[1:]
+state = Path(os.environ["FAKE_AGENT_STATE"])
+agent = Path(sys.argv[0]).name
+if arguments[:3] == ["mcp", "get", "holycrab"]:
+    if os.environ.get("FAKE_AGENT_DENIED") == "1":
+        print("Permission denied", file=sys.stderr)
+        raise SystemExit(1)
+    if not state.exists():
+        print("No MCP server named 'holycrab' found.", file=sys.stderr)
+        raise SystemExit(1)
+    transport = json.loads(state.read_text())["transport"]
+    if agent == "codex":
+        print(json.dumps({"transport": transport}))
+    else:
+        print("holycrab:\\n  Scope: User config (available in all projects)\\n  Type: stdio\\n  Command: " + transport["command"] + "\\n  Args: " + " ".join(transport["args"]))
+    raise SystemExit(0)
+with open(os.environ["FAKE_AGENT_LOG"], "a") as log:
+    log.write(json.dumps(arguments) + "\\n")
+if arguments[:2] == ["mcp", "add"]:
+    server = arguments[arguments.index("--") + 1:]
+    state.write_text(json.dumps({"transport": {"type": "stdio", "command": server[0], "args": server[1:]}}))
+elif arguments[:2] == ["mcp", "remove"]:
+    if agent == "claude":
+        assert arguments == ["mcp", "remove", "--scope", "user", "holycrab"]
+    state.unlink(missing_ok=True)
+''', encoding="utf-8")
+        executable.chmod(0o700)
+        return executable
+
+    def test_installed_agents_are_cleaned_from_a_terminal_without_agent_path(self):
+        for agent in ("codex", "claude"):
+            with self.subTest(agent=agent), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                executable = self.fake_agent(root, agent)
+                env, command = self.install(temporary, agents=agent)
+                env.update({"HOLYCRAB_INSTALL_MCP": "1", "FAKE_AGENT_STATE": str(root / "agent.json"),
+                            "FAKE_AGENT_LOG": str(root / "agent.log"),
+                            "PATH": str(executable.parent) + os.pathsep + os.environ["PATH"]})
+                for _ in range(2):
+                    installed = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
+                                               text=True, capture_output=True)
+                    self.assertEqual(installed.returncode, 0, installed.stderr)
+                    manifest = json.loads((root / ".local/lib/holycrab/installation.json").read_text())
+                    record = manifest["agentRegistrations"][agent]
+                    self.assertTrue(record["managed"])
+                    self.assertEqual(record["executable"], str(executable))
+                env["PATH"] = os.environ["PATH"]
+                removed = subprocess.run([str(command), "uninstall", "--yes"], env=env,
+                                         text=True, capture_output=True)
+                self.assertEqual(removed.returncode, 0, removed.stderr)
+                self.assertIn("HolyCrab uninstall completed", removed.stdout)
+                self.assertNotIn("MCP cleanup pending", removed.stdout)
+                self.assertFalse((root / "agent.json").exists())
+                self.assertFalse(command.exists())
+                actions = [json.loads(line) for line in (root / "agent.log").read_text().splitlines()]
+                self.assertEqual(sum(action[:2] == ["mcp", "add"] for action in actions), 1)
+                self.assertEqual(sum(action[:2] == ["mcp", "remove"] for action in actions), 1)
+
+    def test_preexisting_manual_mcp_is_preserved_on_install_and_uninstall(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = self.fake_agent(root, "codex")
+            env, command = self.install(temporary, agents="codex")
+            state = root / "agent.json"
+            state.write_text(json.dumps({"transport": {"type": "stdio", "command": str(command), "args": ["mcp", "serve"]}}))
+            env.update({"HOLYCRAB_INSTALL_MCP": "1", "FAKE_AGENT_STATE": str(state),
+                        "FAKE_AGENT_LOG": str(root / "agent.log"),
+                        "PATH": str(executable.parent) + os.pathsep + os.environ["PATH"]})
+            for _ in range(2):
+                installed = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
+                                           text=True, capture_output=True)
+                self.assertEqual(installed.returncode, 0, installed.stderr)
+                manifest = json.loads((root / ".local/lib/holycrab/installation.json").read_text())
+                self.assertFalse(manifest["agentRegistrations"]["codex"]["managed"])
+            removed = subprocess.run([str(command), "uninstall", "--yes"], env=env,
+                                     text=True, capture_output=True)
+            self.assertEqual(removed.returncode, 0, removed.stderr)
+            self.assertTrue(state.exists())
+            self.assertFalse((root / "agent.log").exists())
+
+    def test_failed_agent_inspection_uninstalls_program_but_reports_pending_cleanup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = self.fake_agent(root, "codex")
+            env, command = self.install(temporary, agents="codex")
+            env.update({"HOLYCRAB_INSTALL_MCP": "1", "FAKE_AGENT_STATE": str(root / "agent.json"),
+                        "FAKE_AGENT_LOG": str(root / "agent.log"),
+                        "PATH": str(executable.parent) + os.pathsep + os.environ["PATH"]})
+            installed = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
+                                       text=True, capture_output=True)
+            self.assertEqual(installed.returncode, 0, installed.stderr)
+            env["FAKE_AGENT_DENIED"] = "1"
+            removed = subprocess.run([str(command), "uninstall", "--yes"], env=env,
+                                     text=True, capture_output=True)
+            self.assertEqual(removed.returncode, 0, removed.stderr)
+            self.assertIn("MCP cleanup pending for codex", removed.stdout)
+            self.assertIn("Agent registration cleanup is incomplete", removed.stdout)
+            self.assertNotIn("HolyCrab uninstall completed", removed.stdout)
+            self.assertFalse(command.exists())
+            self.assertTrue((root / "agent.json").exists())
+
     def install(self, home: str, *, agents: str = "none") -> tuple[dict[str, str], Path]:
         env = {
             **os.environ,

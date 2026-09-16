@@ -99,6 +99,7 @@ $env:FAKE_CODEX_LOG = Join-Path $TestRoot "codex-mcp.log"
 $env:FAKE_CODEX_STATE = Join-Path $TestRoot "codex-mcp-state.txt"
 $env:PYTHON_FOR_HOLYCRAB_TEST = $Python
 $FakeCodexPython = @'
+import json
 import os
 import sys
 from pathlib import Path
@@ -106,14 +107,18 @@ from pathlib import Path
 arguments = sys.argv[1:]
 state = Path(os.environ["FAKE_CODEX_STATE"])
 if arguments[:3] == ["mcp", "get", "holycrab"]:
-    print(state.read_text(encoding="utf-8") if state.exists() else r"command: C:\old\holycrab_cli.py mcp serve")
-    raise SystemExit(0)
+    if state.exists():
+        print(state.read_text(encoding="utf-8"))
+        raise SystemExit(0)
+    print("No MCP server named 'holycrab' found.", file=sys.stderr)
+    raise SystemExit(1)
 with open(os.environ["FAKE_CODEX_LOG"], "a", encoding="utf-8") as log:
     log.write(" ".join(arguments) + "\n")
 if arguments[:3] == ["mcp", "remove", "holycrab"]:
     state.unlink(missing_ok=True)
 elif arguments[:3] == ["mcp", "add", "holycrab"]:
-    state.write_text("command: " + " ".join(arguments) + "\n", encoding="utf-8")
+    server = arguments[arguments.index("--") + 1:]
+    state.write_text(json.dumps({"transport": {"type": "stdio", "command": server[0], "args": server[1:]}}), encoding="utf-8")
 '@
 [IO.File]::WriteAllText((Join-Path $FakeBin "fake_codex.py"), $FakeCodexPython, [Text.UTF8Encoding]::new($false))
 $FakeCodex = @'
@@ -125,6 +130,15 @@ $env:Path = "$FakeBin;$env:Path"
 $env:HOLYCRAB_INSTALL_MCP = "1"
 $env:HOLYCRAB_INSTALL_AGENTS = "codex"
 & (Join-Path $RepoRoot "install.ps1")
+# Simulate an installer-owned registration pointing to an old Python executable.
+$OldRegistration = Get-Content -LiteralPath $env:FAKE_CODEX_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
+$OldRegistration.transport.command = "C:\old\python.exe"
+[IO.File]::WriteAllText($env:FAKE_CODEX_STATE, ($OldRegistration | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+$OwnedManifestPath = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\installation.json"
+$OwnedManifest = Get-Content -LiteralPath $OwnedManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$OwnedManifest.agentRegistrations.codex.command = "C:\old\python.exe"
+[IO.File]::WriteAllText($OwnedManifestPath, ($OwnedManifest | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+& (Join-Path $RepoRoot "install.ps1")
 $McpLog = Get-Content -LiteralPath $env:FAKE_CODEX_LOG -Raw -Encoding UTF8
 if ($McpLog -notmatch "mcp remove holycrab") { throw "Stale HolyCrab MCP was not removed" }
 if ($McpLog -notmatch "mcp add holycrab" -or -not $McpLog.Contains($CliPath)) {
@@ -135,6 +149,8 @@ $ManifestText = Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_PREFIX
 if ($ManifestText.Contains($SavedKey) -or $ManifestText.Contains($LegacyKey)) { throw "installation.json contains an API Key" }
 $Manifest = $ManifestText | ConvertFrom-Json
 if ($Manifest.schemaVersion -ne 2 -or $Manifest.managedBy -ne "holycrab-installer") { throw "Installation ownership metadata is missing" }
+if ($Manifest.agentRegistrations.codex.executable -ne (Join-Path $FakeBin "codex.cmd") -or
+    $Manifest.agentRegistrations.codex.managed -ne $true) { throw "Actual Agent client path and ownership were not recorded" }
 if ($Manifest.pathRegistration.kind -ne "windows-user-path" -or $Manifest.pathRegistration.addedByInstaller -ne $true) {
     $PathRegistrationJson = $Manifest.pathRegistration | ConvertTo-Json -Compress
     throw "Windows PATH ownership was not preserved across reinstall: $PathRegistrationJson; expected directory: $BinDir"
@@ -143,12 +159,17 @@ if ($Manifest.pathRegistration.kind -ne "windows-user-path" -or $Manifest.pathRe
 & $Python (Join-Path $PSScriptRoot "windows_mcp_smoke.py") $CliPath
 if ($LASTEXITCODE -ne 0) { throw "MCP smoke test failed" }
 
+# The ordinary terminal no longer has the installation Agent's injected PATH.
+$env:Path = (@($env:Path -split ";" | Where-Object { $_ -and $_ -ine $FakeBin }) -join ";")
 $UninstallOutput = & $Launcher uninstall --yes | Out-String
 if ($LASTEXITCODE -ne 0) { throw "Default Windows uninstall failed" }
 if ($UninstallOutput -notmatch "cleanup is scheduled" -or $UninstallOutput -match "uninstall completed") {
     throw "Windows uninstall feedback incorrectly claims synchronous completion"
 }
 if ($UninstallOutput.Contains($SavedKey) -or $UninstallOutput.Contains($LegacyKey)) { throw "API Key leaked in uninstall output" }
+if ($UninstallOutput -match "MCP cleanup pending" -or (Test-Path $env:FAKE_CODEX_STATE)) {
+    throw "Recorded Agent path did not clean the MCP registration outside PATH"
+}
 for ($Attempt = 0; $Attempt -lt 100 -and ((Test-Path $Launcher) -or (Test-Path $CliPath)); $Attempt++) {
     Start-Sleep -Milliseconds 100
 }

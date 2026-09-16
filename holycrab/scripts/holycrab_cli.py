@@ -18,6 +18,7 @@ import math
 import os
 import platform
 import re
+import shlex
 import shutil
 import socket
 import stat
@@ -2763,6 +2764,195 @@ def validated_uninstall_manifest() -> tuple[dict[str, Any], Path, Path, Path]:
     return manifest, prefix, library, launcher
 
 
+def agent_registration(manifest: dict[str, Any], agent: str) -> dict[str, Any] | None:
+    records = manifest.get("agentRegistrations")
+    record = records.get(agent) if isinstance(records, dict) else None
+    return record if isinstance(record, dict) else None
+
+
+def find_agent_client(agent: str, manifest: dict[str, Any], preferred: str | None = None) -> str | None:
+    """Bounded discovery, never scan arbitrary Agent configurations or directories."""
+    if agent not in {"codex", "claude"}:
+        return None
+    record = agent_registration(manifest, agent) or {}
+    names = {agent + suffix for suffix in ("", ".exe", ".cmd", ".bat", ".ps1")}
+    for value in (preferred, record.get("executable")):
+        if isinstance(value, str):
+            path = Path(value).expanduser()
+            if path.is_absolute() and path.name.lower() in names and path.is_file() and (
+                os.name == "nt" or os.access(path, os.X_OK)
+            ):
+                return str(path)
+    executable = shutil.which(agent)
+    if executable:
+        return executable
+    candidates = [Path.home() / ".local" / "bin" / agent]
+    if os.name == "nt":
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            candidates.append(Path(appdata) / "npm" / f"{agent}.cmd")
+    else:
+        candidates.extend(Path(directory) / agent for directory in ("/opt/homebrew/bin", "/usr/local/bin"))
+        if sys.platform == "darwin" and agent == "codex":
+            candidates.extend(root / app / "Contents/Resources/codex"
+                              for root in (Path("/Applications"), Path.home() / "Applications")
+                              for app in ("ChatGPT.app", "Codex.app"))
+    return next((str(path) for path in candidates if path.is_file() and (
+        os.name == "nt" or os.access(path, os.X_OK)
+    )), None)
+
+
+def agent_client_command(executable: str, arguments: list[str]) -> list[str]:
+    if executable.lower().endswith(".ps1"):
+        powershell = shutil.which("powershell")
+        if not powershell:
+            raise OSError("PowerShell is unavailable for this Agent client")
+        return [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", executable, *arguments]
+    return [executable, *arguments]
+
+
+def run_agent_client(executable: str, arguments: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(agent_client_command(executable, arguments), capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=10, check=False)
+
+
+def parse_mcp_registration(output: str, agent: str) -> dict[str, Any] | None:
+    try:
+        value = json.loads(output)
+    except (ValueError, TypeError):
+        value = None
+    if isinstance(value, dict):
+        transport = value.get("transport", value)
+        if isinstance(transport, dict) and transport.get("type") == "stdio" and (
+            isinstance(transport.get("command"), str) and isinstance(transport.get("args", []), list)
+            and all(isinstance(item, str) for item in transport.get("args", []))
+        ):
+            return {"command": transport["command"], "args": transport.get("args", []),
+                    "scope": "user" if agent == "codex" else value.get("scope")}
+        return None
+    # Claude's supported `mcp get` output has separate Command, Args and Scope lines.
+    fields = {}
+    for line in output.splitlines():
+        match = re.fullmatch(r"\s*(Command|Args|Scope|Type):\s*(.*?)\s*", line, re.IGNORECASE)
+        if match:
+            key = match[1].lower()
+            if key in fields:  # Ambiguous output must never establish ownership.
+                return None
+            fields[key] = match[2]
+    if "command" not in fields or fields.get("type", "stdio") != "stdio":
+        return None
+    try:
+        if "args" in fields:
+            command = fields["command"].strip('"')
+            arguments = shlex.split(fields["args"], posix=os.name != "nt")
+        else:
+            tokens = shlex.split(fields["command"], posix=os.name != "nt")
+            command, arguments = tokens[0], tokens[1:]
+    except (ValueError, IndexError):
+        return None
+    return {"command": command, "args": [item.strip('"') for item in arguments],
+            "scope": "user" if agent == "codex" or fields.get("scope", "").lower().startswith("user config") else None}
+
+
+def mcp_points_to_cli(registration: dict[str, Any], expected_command: str) -> bool:
+    command, arguments = registration.get("command"), registration.get("args")
+    if not isinstance(command, str) or not isinstance(arguments, list):
+        return False
+    if not expected_command.lower().endswith("holycrab_cli.py"):
+        return _normalized_path(command) == _normalized_path(expected_command) and arguments == ["mcp", "serve"]
+    # Windows registers Python directly, including py.exe's optional -3 switch.
+    executable_name = command.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if re.fullmatch(r"(?:py|python(?:3(?:\.\d+)?)?)(?:\.exe)?", executable_name) is None:
+        return False
+    remainder = arguments[1:] if arguments[:1] == ["-3"] else arguments
+    return (len(remainder) == 5 and remainder[:2] == ["-X", "utf8"]
+            and isinstance(remainder[2], str)
+            and _normalized_path(remainder[2]) == _normalized_path(expected_command)
+            and remainder[3:] == ["mcp", "serve"])
+
+
+def registration_matches(registration: dict[str, Any] | None, manifest: dict[str, Any],
+                         agent: str, expected_command: str) -> bool:
+    if registration is None or registration.get("scope") != "user" or not mcp_points_to_cli(registration, expected_command):
+        return False
+    record = agent_registration(manifest, agent)
+    if record is None:
+        return True  # Legacy installer manifest, still require exact CLI command and args.
+    return (record.get("managed") is True and record.get("scope") == "user"
+            and isinstance(record.get("command"), str)
+            and _normalized_path(record["command"]) == _normalized_path(registration["command"])
+            and record.get("args") == registration["args"])
+
+
+def inspect_agent_registration(executable: str, agent: str) -> tuple[dict[str, Any] | None, bool, int]:
+    arguments = ["mcp", "get", "holycrab"] + (["--json"] if agent == "codex" else [])
+    completed = run_agent_client(executable, arguments)
+    if completed.returncode != 0:
+        message = (completed.stderr + "\n" + completed.stdout).lower()
+        absent = re.search(r"no mcp server (?:named|found with (?:the )?name)\s*:?\s+[\"']?holycrab[\"']?(?: found)?[.\s]*$", message.strip()) is not None
+        return None, absent, completed.returncode
+    return parse_mcp_registration(completed.stdout, agent), False, 0
+
+
+def register_installer_mcp(agent: str, preferred: str | None, command: str, arguments: list[str],
+                           previous_path: str) -> None:
+    """Internal installer entry point; no public command, credential or arbitrary Agent mutation."""
+    manifest = load_installation() or {}
+    previous = read_json_file(Path(previous_path), {}) if previous_path else {}
+    if not isinstance(previous, dict) or previous.get("managedBy") != INSTALLATION_MANAGER or (
+        previous.get("prefix") != manifest.get("prefix")
+    ):
+        previous = {}
+    executable = find_agent_client(agent, previous, preferred)
+    expected = str(installation_path().parent / "holycrab_cli.py") if os.name == "nt" else command
+    record: dict[str, Any] = {"managed": False, "scope": "user", "command": command, "args": arguments,
+                              "executable": executable}
+    if agent not in {"codex", "claude"} or not mcp_points_to_cli(record, expected):
+        raise RuntimeError("Installer MCP command does not point to this HolyCrab installation")
+    # Preserve prior ownership when inspection fails, so uninstall reports pending cleanup.
+    old_record = agent_registration(previous, agent)
+    if old_record is not None:
+        record = dict(old_record)
+        if executable:
+            record["executable"] = executable
+    elif previous.get("mcp") is True and agent in previous.get("agents", []):
+        record["managed"] = True
+    try:
+        if not executable:
+            raise RuntimeError(f"{agent} is unavailable; its HolyCrab MCP registration was not checked")
+        current, absent, _ = inspect_agent_registration(executable, agent)
+        if current is not None and registration_matches(current, previous, agent, expected) and (
+            previous.get("mcp") is True and agent in previous.get("agents", [])
+            and (current["command"] != command or current["args"] != arguments)
+        ):
+            remove = ["mcp", "remove"] + (["--scope", "user"] if agent == "claude" else [])
+            if run_agent_client(executable, [*remove, "holycrab"]).returncode != 0:
+                raise RuntimeError(f"Could not repair the managed {agent} MCP entry; it was kept")
+            absent = True
+            current = None
+        if current is not None and mcp_points_to_cli(current, expected) and current.get("scope") == "user":
+            owned = previous.get("mcp") is True and agent in previous.get("agents", []) and registration_matches(current, previous, agent, expected)
+            record = {"executable": executable, "managed": owned, "scope": "user",
+                      "command": current["command"], "args": current["args"]}
+            if not owned:
+                print(f"Info: the existing {agent} HolyCrab MCP entry was kept; it is not installer-managed.", file=sys.stderr)
+        elif absent:
+            add = ["mcp", "add"] + (["--scope", "user"] if agent == "claude" else [])
+            result = run_agent_client(executable, [*add, "holycrab", "--", command, *arguments])
+            if result.returncode != 0:
+                raise RuntimeError(f"{agent} HolyCrab MCP registration failed; check the client and rerun the installer")
+            record = {"executable": executable, "managed": True, "scope": "user", "command": command, "args": arguments}
+            checked, _, _ = inspect_agent_registration(executable, agent)
+            if not registration_matches(checked, {"agentRegistrations": {agent: record}}, agent, expected):
+                raise RuntimeError(f"{agent} HolyCrab MCP registration could not be verified; check the client before using it")
+        else:
+            raise RuntimeError(f"The {agent} MCP entry could not be verified as this installation; it was not changed")
+    except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+        print(f"Warning: {sanitize_text_for_output(str(error))}", file=sys.stderr)
+    manifest.setdefault("agentRegistrations", {})[agent] = record
+    write_private_json(installation_path(), manifest)
+
+
 def remove_managed_mcp_registrations(manifest: dict[str, Any], expected_command: str) -> list[str]:
     warnings: list[str] = []
     if manifest.get("mcp") is not True:
@@ -2770,46 +2960,40 @@ def remove_managed_mcp_registrations(manifest: dict[str, Any], expected_command:
     for agent in manifest.get("agents", []):
         if agent not in {"codex", "claude"}:
             continue
-        executable = shutil.which(agent)
+        record = agent_registration(manifest, agent)
+        if record is not None and record.get("managed") is not True:
+            warnings.append(f"Info: the {agent} MCP entry is not installer-managed; it was kept")
+            continue
+        executable = find_agent_client(agent, manifest)
+        recovery = f"Open {agent} and remove only its HolyCrab MCP entry if it still points to this uninstalled CLI."
         if executable is None:
-            warnings.append(f"{agent} is unavailable; its HolyCrab MCP registration could not be checked")
+            warnings.append(f"MCP cleanup pending for {agent}: the client is unavailable. {recovery}")
             continue
         try:
-            inspected = subprocess.run(
-                [executable, "mcp", "get", "holycrab"], capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=10, check=False,
-            )
+            registration, absent, _ = inspect_agent_registration(executable, agent)
         except (OSError, subprocess.SubprocessError) as error:
-            warnings.append(f"Could not inspect {agent} MCP registration: {sanitize_text_for_output(str(error))}")
+            warnings.append(f"MCP cleanup pending for {agent}: inspection failed. {recovery}")
             continue
-        if inspected.returncode != 0:
+        if absent:
             continue
-        output = f"{inspected.stdout}\n{inspected.stderr}"
-        command_matches = (
-            expected_command.lower() in output.lower() if os.name == "nt" else expected_command in output
-        )
-        owned = (
-            command_matches
-            and re.search(r"\bmcp\b", output, re.IGNORECASE) is not None
-            and re.search(r"\bserve\b", output, re.IGNORECASE) is not None
-        )
-        if not owned:
-            warnings.append(f"The {agent} MCP entry named holycrab is unmanaged or points elsewhere; it was kept")
+        if registration is None:
+            warnings.append(f"MCP cleanup pending for {agent}: its registration could not be read safely. {recovery}")
+            continue
+        if not registration_matches(registration, manifest, agent, expected_command):
+            warnings.append(f"Info: the {agent} MCP entry named holycrab is unmanaged or points elsewhere; it was kept")
             continue
         try:
-            removed = subprocess.run(
-                [executable, "mcp", "remove", "holycrab"], capture_output=True, text=True,
-                encoding="utf-8", errors="replace", timeout=10, check=False,
-            )
+            arguments = ["mcp", "remove"] + (["--scope", "user"] if agent == "claude" else [])
+            removed = run_agent_client(executable, [*arguments, "holycrab"])
         except (OSError, subprocess.SubprocessError) as error:
             raise RuntimeError(
                 f"Could not remove the managed {agent} MCP registration; no program files were removed: "
                 f"{sanitize_text_for_output(str(error))}"
             ) from error
         if removed.returncode != 0:
-            detail = sanitize_text_for_output(removed.stderr or removed.stdout or "unknown error")
             raise RuntimeError(
-                f"Could not remove the managed {agent} MCP registration; no program files were removed: {detail}"
+                f"Could not remove the managed {agent} MCP registration; no program files were removed "
+                f"(client exit code {removed.returncode})"
             )
     return warnings
 
@@ -3197,8 +3381,19 @@ def perform_uninstall(args: argparse.Namespace) -> int:
     else:
         print(f"Local HolyCrab credentials and records were preserved at {config}.")
     for warning in warnings:
-        print(f"Warning: {warning}")
-    print("HolyCrab uninstall cleanup is scheduled; exit this process to finish program removal." if os.name == "nt" else "HolyCrab uninstall completed.")
+        informational = warning.startswith("Info:") or warning == "PATH registration was kept because the installer did not add it" or (
+            warning.startswith("PATH registration was kept because") and warning.endswith("contains other programs")
+        )
+        print(warning if warning.startswith("Info:") else f"{'Info' if informational else 'Warning'}: {warning}")
+    pending = any(warning.startswith("MCP cleanup pending") for warning in warnings)
+    if os.name == "nt":
+        print("HolyCrab uninstall cleanup is scheduled; exit this process to finish program removal.")
+        if pending:
+            print("Agent registration cleanup is incomplete; follow the pending cleanup instructions above.")
+    elif pending:
+        print("HolyCrab program files were uninstalled; Agent registration cleanup is incomplete. Follow the pending cleanup instructions above.")
+    else:
+        print("HolyCrab uninstall completed.")
     return 0
 
 
@@ -3227,26 +3422,18 @@ def file_check(path: Path, expected: str | None = None,
 
 
 def mcp_registration_check(agent: str, expected_command: str) -> dict[str, Any]:
-    executable = shutil.which(agent)
+    manifest = load_installation() or {}
+    executable = find_agent_client(agent, manifest)
     if executable is None:
         return {"selected": True, "installed": False, "ok": False}
     try:
-        completed = subprocess.run(
-            [executable, "mcp", "get", "holycrab"], capture_output=True, text=True,
-            encoding="utf-8", errors="replace", timeout=10, check=False,
-        )
+        registration, _, exit_code = inspect_agent_registration(executable, agent)
     except (OSError, subprocess.SubprocessError) as error:
         return {"selected": True, "installed": True, "ok": False,
                 "error": sanitize_text_for_output(str(error))}
-    output = f"{completed.stdout}\n{completed.stderr}"
-    matches = (
-        completed.returncode == 0
-        and expected_command in output
-        and re.search(r"\bmcp\b", output, re.IGNORECASE) is not None
-        and re.search(r"\bserve\b", output, re.IGNORECASE) is not None
-    )
+    matches = registration is not None and registration.get("scope") == "user" and mcp_points_to_cli(registration, expected_command)
     return {"selected": True, "installed": True, "ok": matches,
-            "exitCode": completed.returncode}
+            "exitCode": exit_code}
 
 
 def local_health_report(*, online: bool = False) -> dict[str, Any]:

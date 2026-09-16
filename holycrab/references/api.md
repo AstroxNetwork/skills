@@ -582,6 +582,7 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 - 任务接口原始字符串 `audioIds` 由 CLI 解析为 `audioUrls`，音频结果可由 `holycrab download` 下载。
 - 普通 `doctor` 只看本地状态和版本缓存；`doctor --online` 额外刷新版本并验证 API Key。更新只接受更高的稳定语义版本，需用户运行 `holycrab update`，不会静默安装。
 - `holycrab uninstall [--purge] [--yes]` 是纯本地生命周期命令，不对应后端 API 或 MCP 工具。默认保留凭据与任务记录；`--purge` 只删除已知本地状态，不撤销服务端 API Key。命令只移除安装清单证明属于当前 CLI 的文件、PATH 和 MCP 登记，修改过或无法确认归属的内容保留并提示。
+  安装清单的 `agentRegistrations` 仅记录 Codex/Claude Code 的实际客户端路径、用户级登记命令/参数和 `managed` 归属，不包含凭据。卸载优先使用记录路径，并核对完整命令/参数；其他名称、不同命令、额外参数或非安装器管理的登记不删除。Claude 只删除 `--scope user` 的登记。客户端不可用或检查失败时明确报告 `MCP cleanup pending`，程序卸载仍可继续但不报告全量清理完成；匹配登记删除失败则在删除程序前终止。旧清单仍须通过完整命令/参数核对，不靠字符串包含关系判断。
 
 ## 11. 变更说明
 

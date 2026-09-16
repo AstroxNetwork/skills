@@ -28,7 +28,7 @@ function Write-HolyCrabProgress([string]$Message) {
 }
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "bab709a5ad2d4738ff852fea780d84007aea21e011ece63f3461780d973ff435" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "8ebd0cfdd5890c4486131d4d55b163cd547b6643d1747b663a9e461d7029eb87" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
     @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "b5e52ba0aa5ede2e5c6a99491805f232cc4cc5ff6e158c4c27c81336ce149b23" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
@@ -104,29 +104,27 @@ function Add-HolyCrabPath([string]$Directory, [bool]$PreviouslyManaged) {
 
 function Register-HolyCrabMcp([string]$Agent, [hashtable]$Python, [string]$CliPath) {
     $Resolved = Get-Command $Agent -ErrorAction SilentlyContinue
-    if (-not $Resolved) { return }
-    $Existing = (& $Resolved.Source mcp get holycrab 2>&1 | Out-String)
-    if ($LASTEXITCODE -eq 0) {
-        if ($Existing.Contains($CliPath) -and $Existing -match "mcp" -and $Existing -match "serve") { return }
-        if ($Existing -match "holycrab_cli\.py|[\\/]holycrab") {
-            & $Resolved.Source mcp remove holycrab *> $null
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warning "Could not remove the stale HolyCrab MCP entry for $Agent."
-                return
-            }
-        } else {
-            Write-Warning "An unmanaged MCP entry named holycrab already exists for $Agent; it was not changed."
-            return
-        }
-    }
-
+    $ClientPath = if ($Resolved) { $Resolved.Source } else { "--discover" }
     $ServerCommand = @($Python.Executable) + @($Python.Arguments) + @("-X", "utf8", $CliPath, "mcp", "serve")
-    if ($Agent -eq "codex") {
-        $Arguments = @("mcp", "add", "holycrab", "--") + $ServerCommand
-    } else {
-        $Arguments = @("mcp", "add", "--scope", "user", "holycrab", "--") + $ServerCommand
+    $Helper = @'
+import importlib.util, json, sys
+script, agent, client, previous = sys.argv[1:5]
+server = json.loads(sys.stdin.read())
+spec = importlib.util.spec_from_file_location("holycrab_installer", script)
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+cli.register_installer_mcp(agent, client or None, server[0], server[1:], previous)
+'@
+    $HelperPath = Join-Path $TempDir "register-mcp.py"
+    [IO.File]::WriteAllText($HelperPath, $Helper, [Text.UTF8Encoding]::new($false))
+    $HelperArguments = @($Python.Arguments) + @("-X", "utf8", $HelperPath, $CliPath, $Agent, $ClientPath, (Join-Path $BackupDir "lib\installation.json"))
+    $PreviousOutputEncoding = $OutputEncoding
+    try {
+        $OutputEncoding = [Text.UTF8Encoding]::new($false)
+        (ConvertTo-Json -InputObject $ServerCommand -Compress) | & $Python.Executable @HelperArguments
+    } finally {
+        $OutputEncoding = $PreviousOutputEncoding
     }
-    & $Resolved.Source @Arguments
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "$Agent MCP registration failed. Run the installer again after checking $Agent."
     }

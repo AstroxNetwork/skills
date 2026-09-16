@@ -24,7 +24,7 @@ PATH_REG_PROFILE=
 PATH_REG_ADDED=0
 PATH_REG_ADDED_THIS_RUN=0
 PREVIOUS_PATH_PROFILE=
-SHA256_HOLYCRAB_CLI=bab709a5ad2d4738ff852fea780d84007aea21e011ece63f3461780d973ff435
+SHA256_HOLYCRAB_CLI=8ebd0cfdd5890c4486131d4d55b163cd547b6643d1747b663a9e461d7029eb87
 SHA256_CAPABILITIES=75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
 SHA256_SKILL=b5e52ba0aa5ede2e5c6a99491805f232cc4cc5ff6e158c4c27c81336ce149b23
@@ -308,48 +308,30 @@ esac
 
 repair_or_add_mcp() {
   mcp_agent=$1
-  mcp_output=
-  if mcp_output=$($mcp_agent mcp get holycrab 2>/dev/null); then
-    if printf '%s' "$mcp_output" | grep -F "$BIN_DIR/holycrab" >/dev/null 2>&1 \
-      && printf '%s' "$mcp_output" | grep -F "mcp" >/dev/null 2>&1 \
-      && printf '%s' "$mcp_output" | grep -F "serve" >/dev/null 2>&1; then
-      return
-    fi
-    if printf '%s' "$mcp_output" | grep -E 'holycrab(_cli\.py|[/\\]holycrab)' >/dev/null 2>&1; then
-      $mcp_agent mcp remove holycrab >/dev/null 2>&1 || {
-        echo "Warning: could not remove the stale HolyCrab MCP entry for $mcp_agent." >&2
-        return
-      }
-    else
-      echo "Warning: an unmanaged MCP entry named holycrab already exists for $mcp_agent; it was not changed." >&2
-      return
-    fi
-  fi
-  if [ "$mcp_agent" = "codex" ]; then
-    $mcp_agent mcp add holycrab -- "$BIN_DIR/holycrab" mcp serve >/dev/null
-  else
-    $mcp_agent mcp add --scope user holycrab -- "$BIN_DIR/holycrab" mcp serve >/dev/null
-  fi
+  python3 - "$LIB_DIR/holycrab_cli.py" "$mcp_agent" "$BIN_DIR/holycrab" "$BACKUP_DIR/lib/installation.json" <<'PY'
+import importlib.util, sys
+script, agent, command, previous = sys.argv[1:]
+spec = importlib.util.spec_from_file_location("holycrab_installer", script)
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+cli.register_installer_mcp(agent, None, command, ["mcp", "serve"], previous)
+PY
 }
 
 if [ "$INSTALL_MCP" = "1" ]; then
   progress "Checking and registering HolyCrab in the selected Agents..."
   case ",$INSTALL_AGENTS," in
     *,codex,*)
-      if command -v codex >/dev/null 2>&1; then
         if ! repair_or_add_mcp codex; then
           echo "Warning: Codex MCP registration failed; run: codex mcp add holycrab -- $BIN_DIR/holycrab mcp serve" >&2
         fi
-      fi
       ;;
   esac
   case ",$INSTALL_AGENTS," in
     *,claude,*)
-      if command -v claude >/dev/null 2>&1; then
         if ! repair_or_add_mcp claude; then
           echo "Warning: Claude MCP registration failed; run: claude mcp add --scope user holycrab -- $BIN_DIR/holycrab mcp serve" >&2
         fi
-      fi
       ;;
   esac
 fi

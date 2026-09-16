@@ -42,7 +42,7 @@ holycrab update
 holycrab update --yes
 ```
 
-安装器和更新器都校验 SHA-256，更新失败会恢复安装前的托管文件，并保留 API Key、本地 attempt、上传计划和用户设置。`v0.4.0` 没有更新器，因此旧用户仍需手动运行一键安装命令升级一次。离线或受管环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
+安装器和更新器都校验 SHA-256，在同一位置替换程序，保留 API Key、本地 attempt、上传计划和用户设置。替换前会临时备份托管文件，自检失败时恢复；安装成功后删除临时备份，不保留两个可运行版本。`v0.4.0` 没有更新器，因此旧用户仍需手动运行一键安装命令升级一次。离线或受管环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
 
 交互式卸载会先列出影响范围，并且只确认一次；脚本环境在确认后使用 `--yes`：
 
@@ -54,6 +54,8 @@ holycrab uninstall --purge --yes
 ```
 
 默认卸载只移除当前安装器管理的 CLI、匹配的 MCP 登记和未修改的 Skill 文件，保留本机 API Key、attempt、上传计划及授权二维码记录。`--purge` 才清理这些已知本地状态；额外或修改过的文件不会删除。卸载不会联系 HolyCrab 服务，也不会让线上 API Key 失效，需要彻底停用时仍须前往 [API Key 页面](https://generate.holycrab.ai/user-tokens)撤销。卸载命令仅供本机用户执行，不提供 MCP 工具。
+
+安装器记录 Codex、Claude Code 的实际客户端路径及登记归属，卸载时核对完整命令和参数后清理。即使普通终端的 PATH 中找不到客户端，也会尝试记录的路径及少量标准安装位置。Claude 只清理用户级登记；手动登记、其他 Agent 和其他 MCP 配置不修改。无法检查的登记列为 `MCP cleanup pending`，按提示在对应 Agent 中清理；匹配登记删除失败时，先停止卸载，保留程序文件。原有或共享 PATH 按正常保留项提示。
 
 ## 配置 Key 和自检
 
