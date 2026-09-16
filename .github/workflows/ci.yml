@@ -47,13 +47,14 @@ jobs:
           holycrab.tests.test_mcp
           holycrab.tests.test_public_boundary
           holycrab.tests.test_real_human
+          holycrab.tests.test_safe_live_smoke
           holycrab.tests.test_v041
       - name: Compile Python entry points (Unix)
         if: runner.os != 'Windows'
-        run: python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py holycrab/scripts/validate_generate_contract.py
+        run: python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py holycrab/scripts/validate_generate_contract.py holycrab/tests/safe_live_smoke.py
       - name: Compile Python entry points (Windows)
         if: runner.os == 'Windows'
-        run: python -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py holycrab/scripts/validate_generate_contract.py
+        run: python -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py holycrab/scripts/validate_generate_contract.py holycrab/tests/safe_live_smoke.py
       - name: Validate the capability snapshot (Unix)
         if: runner.os != 'Windows'
         run: python3 holycrab/scripts/validate_capabilities.py

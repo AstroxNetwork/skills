@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -135,22 +136,35 @@ class InstallerTests(unittest.TestCase):
             self.assertFalse((Path(home) / ".bashrc").exists())
             self.assertFalse((Path(home) / ".bash_profile").exists())
 
-    def test_fresh_install_and_upgrade_can_generate_qr_without_pip(self) -> None:
+    def test_fresh_install_and_v040_upgrade_preserve_state_and_qr_without_pip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             prefix = root / "prefix"
             config = root / "config"
             config.mkdir()
             config_file = config / "config.json"
-            config_file.write_text('{"installMarker":"preserved"}')
+            config_file.write_text('{"apiKey":"test-only-upgrade-key","installMarker":"preserved"}')
             config_file.chmod(0o600)
+            state_files = {
+                "attempts.json": '{"upgrade-attempt":{"state":"unknown"}}',
+                "update-state.json": '{"checkedAtEpoch":1,"update":{"updateAvailable":false}}',
+                "health-state.json": '{"files":{}}',
+                "upload-plans/upgrade-plan.json": json.dumps({
+                    "state": "prepared", "files": [], "expiresAtEpoch": time.time() + 3600,
+                }),
+            }
+            for relative, contents in state_files.items():
+                path = config / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(contents, encoding="utf-8")
+                path.chmod(0o600)
             env = {**os.environ, "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT),
                    "HOLYCRAB_INSTALL_PREFIX": str(prefix), "HOLYCRAB_CONFIG_DIR": str(config),
                    "HOLYCRAB_INSTALL_AGENTS": "none", "HOLYCRAB_INSTALL_MCP": "0"}
             for install_number in range(2):
                 if install_number == 1:
-                    # Simulate the v0.2.1 layout before an in-place upgrade.
-                    (prefix / "lib" / "holycrab" / "holycrab_cli.py").write_text('VERSION = "0.2.1"\n')
+                    # v0.4.0 had no self-updater, so users upgrade by running the installer again.
+                    (prefix / "lib" / "holycrab" / "holycrab_cli.py").write_text('VERSION = "0.4.0"\n')
                 installed = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
                                            text=True, capture_output=True)
                 self.assertEqual(installed.returncode, 0, installed.stderr)
@@ -169,7 +183,23 @@ assert 'real_human_group_delete' in {t['name'] for t in module.MCP_TOOLS}
                                          str(prefix / "lib" / "holycrab" / "holycrab_cli.py")],
                                         env=env, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(config_file.read_text(), '{"installMarker":"preserved"}')
+                self.assertEqual(
+                    config_file.read_text(),
+                    '{"apiKey":"test-only-upgrade-key","installMarker":"preserved"}',
+                )
+                attempts = json.loads((config / "attempts.json").read_text(encoding="utf-8"))
+                self.assertEqual(attempts["upgrade-attempt"]["state"], "unknown")
+                self.assertEqual(
+                    json.loads((config / "update-state.json").read_text(encoding="utf-8"))["update"]["updateAvailable"],
+                    False,
+                )
+                self.assertIsInstance(
+                    json.loads((config / "health-state.json").read_text(encoding="utf-8")), dict
+                )
+                upload_plan = json.loads(
+                    (config / "upload-plans" / "upgrade-plan.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(upload_plan["state"], "prepared")
                 self.assertTrue((prefix / "lib" / "holycrab" / "vendor" / "LICENSE.segno").is_file())
 
     def test_failed_upgrade_restores_managed_files_and_preserves_user_state(self) -> None:
