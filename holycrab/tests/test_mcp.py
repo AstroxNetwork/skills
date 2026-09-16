@@ -72,7 +72,7 @@ class McpProtocolTests(unittest.TestCase):
                                 "real_human_groups_list", "real_human_group_rename",
                                 "real_human_group_delete", "real_human_assets_list",
                                 "real_human_asset_delete", "asset_upload_prepare", "asset_upload_execute",
-                                "asset_upload", "asset_get"})
+                                "asset_get"})
 
     def test_delete_tools_require_confirmation_and_are_destructive(self) -> None:
         response = holycrab.mcp_dispatch(
@@ -85,6 +85,27 @@ class McpProtocolTests(unittest.TestCase):
                 self.assertEqual(tools[name]["inputSchema"]["properties"]["confirmed"]["type"], "boolean")
                 self.assertTrue(tools[name]["annotations"]["destructiveHint"])
                 self.assertFalse(tools[name]["annotations"]["idempotentHint"])
+
+    def test_removed_direct_upload_tool_is_not_advertised(self) -> None:
+        response = holycrab.mcp_dispatch(
+            {"jsonrpc": "2.0", "id": 22, "method": "tools/list", "params": {}}
+        )
+        names = {tool["name"] for tool in response["result"]["tools"]}
+        self.assertNotIn("asset_upload", names)
+        self.assertIn("asset_upload_prepare", names)
+        self.assertIn("asset_upload_execute", names)
+
+    def test_removed_direct_upload_calls_fail_without_network(self) -> None:
+        with patch.object(holycrab, "send") as send, \
+                patch.object(holycrab, "open_presigned_upload") as upload:
+            response = holycrab.mcp_dispatch({
+                "jsonrpc": "2.0", "id": 23, "method": "tools/call",
+                "params": {"name": "asset_upload", "arguments": {"file": "unused.jpg"}},
+            })
+        self.assertTrue(response["result"]["isError"])
+        self.assertIn("Unknown MCP tool: asset_upload", response["result"]["content"][0]["text"])
+        send.assert_not_called()
+        upload.assert_not_called()
 
     def test_capability_get_returns_public_schema_without_api_routes(self) -> None:
         response = holycrab.mcp_dispatch(

@@ -2424,20 +2424,6 @@ def _execute_upload_plan(plan_id: str, *, confirmed: bool,
     return output
 
 
-def upload_asset(
-    file: str,
-    content_type: str | None = None,
-    duration_seconds: int | None = None,
-    name: str | None = None,
-    group_uniq_id: str | None = None,
-) -> dict[str, Any]:
-    return {
-        "deprecated": True,
-        "message": "Direct upload is disabled. Prepare a plan, show the complete preview, then execute it only after explicit confirmation.",
-        "nextAction": next_action("PREPARE_UPLOAD", "Use the two-stage upload flow.", None),
-    }
-
-
 def command_upload_asset(args: argparse.Namespace) -> int:
     command_progress("Checking files and preparing the complete upload preview...")
     preview = prepare_upload_plan(args.file, group_uniq_id=args.real_human_group,
@@ -3396,8 +3382,6 @@ REAL_HUMAN_TOOLS = [
     real_human_tool("asset_upload_execute", "Execute one prepared upload plan only after the user confirms the complete target and file list.",
                     {"uploadPlanId": ID_SCHEMA, "confirmed": {"type": "boolean"}},
                     ("uploadPlanId", "confirmed"), read_only=False),
-    real_human_tool("asset_upload", "Deprecated safety stub. It never uploads. Use asset_upload_prepare, show the preview, obtain confirmation, then asset_upload_execute.",
-                    {"file": {"type": "string", "minLength": 1}}, ("file",), read_only=True),
 ]
 MCP_TOOLS.extend(REAL_HUMAN_TOOLS)
 
@@ -3460,8 +3444,6 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
                                    duration_seconds=arguments.get("durationSeconds"))
     if name == "asset_upload_execute":
         return execute_upload_plan(arguments["uploadPlanId"], confirmed=arguments["confirmed"])
-    if name == "asset_upload":
-        return upload_asset(arguments["file"])
     if name == "cli_status":
         return local_health_report(online=False)
     if name == "account_get":

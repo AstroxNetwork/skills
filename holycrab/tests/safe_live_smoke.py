@@ -50,7 +50,6 @@ SAFE_MCP_TOOLS = frozenset(
         "real_human_assets_list",
         "asset_get",
         "asset_upload_prepare",
-        "asset_upload",
     }
 )
 SENSITIVE_REPORT_KEYS = {

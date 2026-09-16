@@ -247,17 +247,17 @@ class V041Tests(unittest.TestCase):
                 cli.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
         send.assert_not_called()
 
-    def test_upload_cancel_and_deprecated_tool_never_send_bytes(self) -> None:
+    def test_upload_cancel_and_removed_tool_never_send_bytes(self) -> None:
         first = Path(self.temp.name) / "first.jpg"
         jpeg(first)
         plan = cli.prepare_upload_plan([str(first)])
         with patch.object(cli, "send") as send, patch.object(cli, "open_presigned_upload") as put:
             with self.assertRaisesRegex(ValueError, "confirmed must be true"):
                 cli.execute_upload_plan(plan["uploadPlanId"], confirmed=False)
-            result = cli.mcp_tool_call("asset_upload", {"file": str(first)})
+            with self.assertRaisesRegex(SystemExit, "Unknown MCP tool: asset_upload"):
+                cli.mcp_tool_call("asset_upload", {"file": str(first)})
         send.assert_not_called()
         put.assert_not_called()
-        self.assertTrue(result["deprecated"])
         args = argparse.Namespace(file=[str(first)], real_human_group=None,
                                   duration_seconds=None, yes=False)
         with patch.object(cli, "send") as send, patch.object(cli, "open_presigned_upload") as put, \

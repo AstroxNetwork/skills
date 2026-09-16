@@ -199,8 +199,8 @@ class CommandMatrixTests(unittest.TestCase):
                 self.assertNotIn("Traceback", output.getvalue() + errors.getvalue())
                 self.assertNotIn("Task created.", errors.getvalue())
 
-    def test_all_21_mcp_tools_schema_errors_are_protocol_only(self) -> None:
-        self.assertEqual(len(cli.MCP_TOOLS), 21)
+    def test_all_20_mcp_tools_schema_errors_are_protocol_only(self) -> None:
+        self.assertEqual(len(cli.MCP_TOOLS), 20)
         for tool in cli.MCP_TOOLS:
             with self.subTest(tool=tool["name"]), redirect_stdout(io.StringIO()) as output, redirect_stderr(TerminalBuffer()) as errors:
                 response = cli.mcp_dispatch({"id": 1, "method": "tools/call", "params": {
@@ -208,7 +208,7 @@ class CommandMatrixTests(unittest.TestCase):
                 self.assertTrue(response["result"]["isError"])
                 self.assertEqual(output.getvalue() + errors.getvalue(), "")
 
-    def test_all_21_mcp_tools_valid_results_are_protocol_only(self) -> None:
+    def test_all_20_mcp_tools_valid_results_are_protocol_only(self) -> None:
         arguments = {"capability_get": {"model": "seedream-5-0-lite-260128"},
             "generation_estimate": {"kind": "image", "request": self.payload()},
             "generation_create": {"kind": "image", "request": self.payload(), "confirmed": True, "attemptId": "mcp-create"},
@@ -218,8 +218,7 @@ class CommandMatrixTests(unittest.TestCase):
             "real_human_group_delete": {"groupUniqId": "group1", "confirmed": True},
             "real_human_assets_list": {"groupUniqId": "group1"},
             "real_human_asset_delete": {"groupUniqId": "group1", "assetId": "asset1", "confirmed": True},
-            "asset_get": {"assetId": "asset1"}, "asset_upload_prepare": {"files": [str(self.file)]},
-            "asset_upload": {"file": str(self.file)}}
+            "asset_get": {"assetId": "asset1"}, "asset_upload_prepare": {"files": [str(self.file)]}}
         for tool in cli.MCP_TOOLS:
             with self.subTest(tool=tool["name"]), ExitStack() as stack:
                 self.context(stack)

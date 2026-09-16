@@ -96,7 +96,7 @@ class SafeMcpGuardTests(unittest.TestCase):
         delegate = Mock()
         guard = smoke.SafeMcpGuard(delegate)
 
-        for tool in ("generation_create", "asset_upload_execute", "real_human_authorization_start",
+        for tool in ("generation_create", "asset_upload", "asset_upload_execute", "real_human_authorization_start",
                      "real_human_group_rename", "real_human_group_delete", "real_human_asset_delete"):
             with self.subTest(tool=tool), self.assertRaises(smoke.SafetyViolation) as stopped:
                 guard(tool, {})

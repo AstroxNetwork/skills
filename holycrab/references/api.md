@@ -573,7 +573,7 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 - 生成提交只在收到合法任务 ID 时记为 `created`；明确 4xx 业务拒绝记为 `failed`；408、5xx、断网、异常 2xx 和缺少任务 ID 都记为 `unknown`，不会重试。用 `generate attempts list|get` 或 MCP `generation_attempt_list|get` 查询本地记录。
 - 授权、素材、估算、任务及需要恢复的 attempt 结果包含 `nextAction: {code, instruction, command}`。缺少文件、输出位置或请求时 `command` 为 `null`，Agent 应询问用户，不应拼接占位命令。即时查询无需额外建议。轮询仅在状态变化和结束时输出。
 - CLI 过程提示仅在交互终端写入 stderr；JSON stdout 和 MCP 消息不含过程文本。`Ctrl+C` 返回 130：只读等待停止本机轮询；写入开始后保留已知 ID，生成 attempt 记为 `unknown`，上传计划保留已执行边界和批次记录，不自动重试。下载残片会被清理，已有文件保留。
-- `asset_upload_prepare` 只检查并预览，`asset_upload_execute` 必须接收 `uploadPlanId + confirmed: true`。旧 `asset_upload` 不上传。
+- MCP 上传仅提供 `asset_upload_prepare` 和 `asset_upload_execute`：前者只检查并预览，后者必须接收 `uploadPlanId + confirmed: true`。
 - 下载只接受无内嵌凭据、无 fragment、非本机/内网地址的 HTTPS；每次重定向重新校验，限制跳转和总大小，先写私有临时文件再原子落盘，默认不覆盖现有文件。
 - 任务接口原始字符串 `audioIds` 由 CLI 解析为 `audioUrls`，音频结果可由 `holycrab download` 下载。
 - 普通 `doctor` 只看本地状态和版本缓存；`doctor --online` 额外刷新版本并验证 API Key。更新只接受更高的稳定语义版本，需用户运行 `holycrab update`，不会静默安装。

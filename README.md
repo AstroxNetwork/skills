@@ -123,7 +123,7 @@ holycrab real-human assets delete ASSET_ID --group GROUP_ID
 holycrab real-human groups delete GROUP_ID
 ```
 
-MCP 提供 `real_human_authorization_start|get`、人物及素材列表、`real_human_group_rename|delete`、`real_human_asset_delete`、`asset_upload_prepare|execute`、`asset_get`、`generation_attempt_list|get` 和 `cli_status`。旧 `asset_upload` 只返回迁移提示，绝不直接上传。删除工具必须传 `confirmed: true`，且 Agent 只能在用户明确要求删除该对象后这样做。发起授权工具同时返回二维码图片。链接和二维码含临时验证凭据，请只展示给本次操作的用户。所有授权与素材结果都带稳定 `nextAction`；失败、过期、超时或结果不明时不自动重试。
+MCP 提供 `real_human_authorization_start|get`、人物及素材列表、`real_human_group_rename|delete`、`real_human_asset_delete`、`asset_upload_prepare|execute`、`asset_get`、`generation_attempt_list|get` 和 `cli_status`。上传仅使用两阶段接口，预览并确认后才能执行。删除工具必须传 `confirmed: true`，且 Agent 只能在用户明确要求删除该对象后这样做。发起授权工具同时返回二维码图片。链接和二维码含临时验证凭据，请只展示给本次操作的用户。所有授权与素材结果都带稳定 `nextAction`；失败、过期、超时或结果不明时不自动重试。
 
 完整体验步骤见 [HolyCrab CLI 使用指南](HolyCrab%20CLI%20使用指南.md)。公开模型限制见 [capabilities.json](holycrab/references/capabilities.json)。
 
