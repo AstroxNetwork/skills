@@ -5,7 +5,7 @@ import json
 import os
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -210,20 +210,46 @@ class SafeLiveSuiteTests(unittest.TestCase):
         raw = {
             "ok": True,
             "taskId": "private-task",
-            "checks": [],
+            "checks": [
+                {"check": "one", "status": "passed"},
+                {"check": "two", "status": "not_applicable"},
+            ],
             "safety": {"generationCreateCalls": 0, "blockedCalls": 0},
+            "onlineDataCreated": False,
         }
         with tempfile.TemporaryDirectory() as directory:
             report_path = Path(directory) / "live.json"
+            output = StringIO()
             with patch.object(smoke.getpass, "getpass", return_value="secret-key"), \
                     patch.object(smoke, "run_safe_live_suite", return_value=raw), \
-                    patch.dict(os.environ, {}, clear=False):
+                    patch.dict(os.environ, {}, clear=False), \
+                    redirect_stdout(output):
                 os.environ.pop("HOLYCRAB_API_KEY", None)
                 self.assertEqual(smoke.main(["--report", str(report_path), "--account-label", "user1"]), 0)
             contents = report_path.read_text(encoding="utf-8")
             self.assertNotIn("secret-key", contents)
             self.assertNotIn("private-task", contents)
             self.assertTrue(json.loads(contents)["ok"])
+            console = output.getvalue()
+            self.assertIn("API Key received", console)
+            self.assertIn("Running safe checks", console)
+            self.assertIn("1 passed, 0 failed, 1 not applicable", console)
+            self.assertIn("generation create calls: 0", console)
+            self.assertIn("No further terminal action is required", console)
+            self.assertNotIn("secret-key", console)
+            self.assertNotIn("private-task", console)
+
+    def test_report_write_failure_does_not_print_traceback_or_success(self) -> None:
+        with patch.object(smoke.getpass, "getpass", return_value="hc_test_fixture_hidden"), \
+                patch.object(smoke, "run_safe_live_suite", return_value={"ok": True}), \
+                patch.object(smoke, "write_private_report", side_effect=OSError("permission denied")), \
+                patch.dict(os.environ, {}, clear=False), redirect_stdout(StringIO()) as output, \
+                redirect_stderr(StringIO()) as errors:
+            os.environ.pop("HOLYCRAB_API_KEY", None)
+            self.assertEqual(smoke.main(["--report", "fixture.json"]), 1)
+        self.assertIn("report could not be saved", errors.getvalue())
+        self.assertNotIn("Completed:", output.getvalue())
+        self.assertNotIn("hc_test_fixture_hidden", output.getvalue() + errors.getvalue())
 
 
 if __name__ == "__main__":

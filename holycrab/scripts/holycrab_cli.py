@@ -32,7 +32,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 try:
     import fcntl
@@ -145,6 +145,65 @@ PUBLIC_TASK_FIELDS = (
     "createTime",
     "updateTime",
 )
+
+
+class CommandInterrupted(Exception):
+    """A stopped operation whose known outcome must still be reported safely."""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        super().__init__("Stopped by user; review the operation result before taking another action.")
+        self.result = result
+
+
+class CommandUsageError(ValueError):
+    """A locally rejected argument, before any operation was attempted."""
+
+
+def command_progress(message: str) -> None:
+    if sys.stderr.isatty():
+        print(sanitize_text_for_output(message), file=sys.stderr, flush=True)
+
+
+def clear_environment_command(name: str) -> str:
+    if not re.fullmatch(r"HOLYCRAB_[A-Z_]+", name):
+        raise ValueError("Unsupported environment variable")
+    return f"Remove-Item Env:{name} -ErrorAction SilentlyContinue" if os.name == "nt" else f"unset {name}"
+
+
+def read_confirmation(prompt: str) -> str:
+    print(prompt, end="", file=sys.stderr, flush=True)
+    return input().strip().lower()
+
+
+def validate_wait_limits(timeout: float, interval: float) -> None:
+    if not math.isfinite(timeout) or timeout < 0 or not math.isfinite(interval) or interval <= 0:
+        raise CommandUsageError("timeout must be finite and nonnegative; interval must be finite and positive")
+
+
+def task_list_query(page: int, page_size: int, start: str | None, end: str | None,
+                    task_type: str | None = None) -> list[tuple[str, str]]:
+    if type(page) is not int or page < 1 or type(page_size) is not int or not 1 <= page_size <= 100:
+        raise CommandUsageError("page must be positive and pageSize must be between 1 and 100")
+    if bool(start) != bool(end):
+        raise CommandUsageError("--start-date and --end-date must be supplied together")
+    if start and end:
+        for value in (start, end):
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                raise CommandUsageError("Dates must use YYYY-MM-DD")
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError as error:
+                raise CommandUsageError("Dates must use valid YYYY-MM-DD calendar dates") from error
+        if start > end:
+            raise CommandUsageError("start date must not be after end date")
+    query = [("page", str(page)), ("pageSize", str(page_size))]
+    if start and end:
+        query.extend((("startDate", start), ("endDate", end)))
+    if task_type:
+        if task_type not in {"IMAGE", "VIDEO", "AUDIO", "TEXT"}:
+            raise CommandUsageError("taskType must be IMAGE, VIDEO, AUDIO, or TEXT")
+        query.append(("taskType", task_type))
+    return query
 
 
 def config_dir() -> Path:
@@ -359,7 +418,7 @@ def credential(explicit: str | None = None) -> tuple[str, str]:
 def base_url() -> str:
     if "HOLYCRAB_BASE_URL" in os.environ:
         raise SystemExit(
-            "Custom API origins are not supported. Run `unset HOLYCRAB_BASE_URL` and try again."
+            "Custom API origins are not supported. Run `" + clear_environment_command("HOLYCRAB_BASE_URL") + "` and try again."
         )
     return DEFAULT_BASE_URL
 
@@ -611,6 +670,9 @@ def public_task_data(value: Any) -> Any:
         return output
     output = {key: value[key] for key in PUBLIC_TASK_FIELDS if key in value}
     output["audioUrls"] = parse_audio_urls(value.get("audioIds"))
+    identifier = value.get("uniqId") or value.get("taskId")
+    if isinstance(identifier, str) and re.fullmatch(r"[A-Za-z0-9]{1,64}", identifier):
+        output["nextAction"] = task_next_action(identifier, value.get("step"), output)
     return output
 
 
@@ -644,7 +706,7 @@ def print_response(status: int, response: Any) -> int:
 def capabilities_path() -> Path:
     if "HOLYCRAB_CAPABILITIES_PATH" in os.environ:
         raise SystemExit(
-            "Capability overrides are not supported. Run `unset HOLYCRAB_CAPABILITIES_PATH` and try again."
+            "Capability overrides are not supported. Run `" + clear_environment_command("HOLYCRAB_CAPABILITIES_PATH") + "` and try again."
         )
     candidates = [
         Path(__file__).resolve().parents[1] / "references" / "capabilities.json",
@@ -969,12 +1031,13 @@ def attempt_record(attempt_id: str) -> dict[str, Any]:
         record = load_attempts().get(identifier)
     if not isinstance(record, dict):
         raise SystemExit(f"Generation attempt not found: {identifier}")
-    return dict(record)
+    return {**record, "nextAction": attempt_next_action(record)}
 
 
 def attempt_records() -> list[dict[str, Any]]:
     with attempts_lock():
-        records = [dict(value) for value in load_attempts().values() if isinstance(value, dict)]
+        records = [{**value, "nextAction": attempt_next_action(value)}
+                   for value in load_attempts().values() if isinstance(value, dict)]
     return sorted(records, key=lambda item: str(item.get("createdAt", "")), reverse=True)
 
 
@@ -1025,7 +1088,8 @@ def estimate_generation(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
     normalized = normalize_generation_request(kind, payload)
     freeze_endpoint, _ = generation_endpoints(kind, normalized)
     status, response = send("POST", freeze_endpoint, payload=None if kind == "audio" else normalized)
-    return {"kind": kind, "estimate": response_data(status, response)}
+    return {"kind": kind, "estimate": response_data(status, response),
+            "nextAction": next_action("REVIEW_ESTIMATE", "Review this estimate and confirm the exact request before creating one billable task.", None)}
 
 
 def create_generation(
@@ -1035,13 +1099,35 @@ def create_generation(
     confirmed: bool,
     attempt_id: str | None = None,
     approved_estimate: dict[str, Any] | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    selected_attempt = attempt_id or uuid.uuid4().hex
+    context: dict[str, Any] = {}
+    try:
+        return _create_generation(kind, payload, confirmed=confirmed, attempt_id=selected_attempt,
+                                  approved_estimate=approved_estimate, progress=progress, context=context)
+    except KeyboardInterrupt:
+        if not context.get("reserved"):
+            raise
+        result = generation_unknown(selected_attempt, note="Interrupted while submitting or recording the result; do not resubmit.")
+        if context.get("taskId"):
+            update_attempt(selected_attempt, taskId=context["taskId"])
+            result["taskId"] = context["taskId"]
+            result["nextAction"] = next_action("QUERY_TASK", "A valid task ID was received before interruption. Query this same task; do not resubmit.", f"holycrab tasks get {context['taskId']}")
+        raise CommandInterrupted(result) from None
+
+
+def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, attempt_id: str,
+                       approved_estimate: dict[str, Any] | None, progress: Callable[[str], None] | None,
+                       context: dict[str, Any]) -> dict[str, Any]:
     payload = normalize_generation_request(kind, payload)
     selected_attempt = attempt_id or uuid.uuid4().hex
     if confirmed and attempt_exists(selected_attempt):
         raise SystemExit(
             f"Local submission attempt {selected_attempt} already exists; query it instead of submitting again"
         )
+    if not approved_estimate and progress:
+        progress("Estimating credits; no task has been submitted...")
     estimate = approved_estimate or estimate_generation(kind, payload)
     if not confirmed:
         return {
@@ -1061,9 +1147,14 @@ def create_generation(
             "endpoint": create_endpoint,
         },
     )
+    context["reserved"] = True
     update_attempt(selected_attempt, state="submitting")
     try:
+        if progress:
+            progress("Submitting exactly one billable task. If interrupted, query its attempt instead of submitting again...")
         status, response = send("POST", create_endpoint, payload=payload)
+    except KeyboardInterrupt:
+        raise CommandInterrupted(generation_unknown(selected_attempt, note="Submission was interrupted. The online outcome is uncertain; do not resubmit.")) from None
     except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
         return generation_unknown(
             selected_attempt,
@@ -1091,7 +1182,7 @@ def create_generation(
                 "nextAction": {
                     "code": "FIX_REQUEST",
                     "instruction": "Correct the rejected request and create a new attempt only after confirmation.",
-                    "command": "holycrab generate estimate --kind KIND --json @request.json",
+                    "command": None,
                 },
             }
     task_id = extract_task_id(response)
@@ -1101,6 +1192,7 @@ def create_generation(
             http_status=status,
             note="The success response did not contain a valid task ID; do not resubmit.",
         )
+    context["taskId"] = task_id
     update_attempt(selected_attempt, state="created", taskId=task_id, httpStatus=status)
     return {
         "attemptId": selected_attempt,
@@ -1108,6 +1200,8 @@ def create_generation(
         "state": "created",
         "estimate": estimate["estimate"],
         "response": public_task_data(response_data(status, response)),
+        "nextAction": next_action("WAIT_FOR_TASK", "The task was created. Wait for this same task; do not submit it again.",
+                                  f"holycrab tasks wait {task_id} --timeout 600"),
     }
 
 
@@ -1127,21 +1221,28 @@ def command_set_key(args: argparse.Namespace) -> int:
         api_key = getpass.getpass("Paste API Key (input hidden): ").strip()
     if not api_key:
         raise SystemExit("API Key cannot be empty")
+    SENSITIVE_OUTPUT_VALUES.add(api_key)
     account = None
     if not args.no_verify:
+        command_progress("API Key received. Verifying your HolyCrab account...")
         status, response = send("GET", "/api/user/me", api_key=api_key)
         account = response_data(status, response)
+        if not isinstance(account, dict) or not public_account_data(account):
+            raise ValueError("Account verification returned an incomplete response; the API Key was not saved")
     config = load_config()
     config["apiKey"] = api_key
     save_config(config)
     print("HolyCrab API Key saved locally with user-only permissions.")
     if os.environ.get("HOLYCRAB_API_KEY"):
         print("Warning: HOLYCRAB_API_KEY is still set and overrides the saved login.")
-        print("Run: unset HOLYCRAB_API_KEY")
+        print("Run: " + clear_environment_command("HOLYCRAB_API_KEY"))
     if isinstance(account, dict):
         visible = public_account_data(account)
         if visible:
             print_json(visible)
+        command_progress("HolyCrab account connected. Return to Codex or Claude Code and ask it to check HolyCrab capabilities or estimate a request.")
+    elif args.no_verify:
+        command_progress("API Key saved without verification. Next: holycrab auth status")
     return 0
 
 
@@ -1151,11 +1252,14 @@ def command_auth_status(args: argparse.Namespace) -> int:
         else "local config" if load_config().get("apiKey") else None
     )
     if not source:
-        print_json({"configured": False, "valid": False, "next": "Run `holycrab setup`."})
+        print_json({"configured": False, "valid": False, "next": "Run `holycrab setup`.",
+                    "nextAction": next_action("CONNECT_ACCOUNT", "Configure your API Key locally; never send it in chat.", "holycrab setup")})
         return 1
+    command_progress("Checking your HolyCrab account...")
     status, response = send("GET", "/api/user/me")
     if not response_ok(status, response):
-        print_json({"configured": True, "valid": False, "credentialSource": source, "httpStatus": status})
+        print_json({"configured": True, "valid": False, "credentialSource": source, "httpStatus": status,
+                    "nextAction": next_action("CHECK_API_KEY", "Check that the API Key is enabled on the account page, then configure the correct Key locally.", "holycrab setup")})
         return 1
     print_json({"configured": True, "valid": True, "credentialSource": source, "account": public_account_data(response_data(status, response))})
     return 0
@@ -1166,7 +1270,7 @@ def command_clear_key(args: argparse.Namespace) -> int:
     config.pop("apiKey", None)
     config.pop("apiKeyDpapi", None)
     save_config(config)
-    print("Saved HolyCrab API Key cleared. Environment variables were not changed.")
+    print("Saved HolyCrab API Key cleared. Environment variables were not changed; the online API Key was not revoked.")
     return 0
 
 
@@ -1183,11 +1287,13 @@ def command_models_show(args: argparse.Namespace) -> int:
 
 
 def command_credits_balance(args: argparse.Namespace) -> int:
+    command_progress("Checking your HolyCrab credit balance...")
     status, response = send("GET", "/api/user/me")
     return print_response(status, public_account_response(response))
 
 
 def command_generation_estimate(args: argparse.Namespace) -> int:
+    command_progress(f"Estimating credits for this {args.kind} request; no task will be created...")
     print_json(estimate_generation(args.kind, parse_json_argument(args.json)))
     return 0
 
@@ -1196,14 +1302,15 @@ def command_generation_create(args: argparse.Namespace) -> int:
     payload = parse_json_argument(args.json)
     approved_estimate = None
     if not args.yes:
+        command_progress("Estimating credits before confirmation; no task has been submitted...")
         approved_estimate = create_generation(args.kind, payload, confirmed=False)
         print_json(approved_estimate)
         if not sys.stdin.isatty():
             print("Not submitted. Re-run with --yes only after the user confirms the estimate.", file=sys.stderr)
             return 2
-        answer = input("Create one billable task with this request? [y/N] ").strip().lower()
+        answer = read_confirmation("Create one billable task with this request? [y/N] ")
         if answer not in {"y", "yes"}:
-            print("Cancelled; no generation task was created.")
+            print("Cancelled; no generation task was created.", file=sys.stderr)
             return 2
     result = create_generation(
         args.kind,
@@ -1211,8 +1318,11 @@ def command_generation_create(args: argparse.Namespace) -> int:
         confirmed=True,
         attempt_id=args.attempt_id,
         approved_estimate=approved_estimate,
+        progress=command_progress,
     )
     print_json(result)
+    command_progress("Task created. Next: " + result["nextAction"]["command"] if result.get("state") == "created"
+                     else "Task submission did not return a confirmed creation. Follow the returned nextAction; do not retry automatically.")
     return 0 if result.get("state") == "created" else 1
 
 
@@ -1227,24 +1337,14 @@ def command_attempts_get(args: argparse.Namespace) -> int:
 
 
 def command_task_get(args: argparse.Namespace) -> int:
+    command_progress(f"Checking task {args.uniq_id}...")
     status, response = send("GET", f"/api/tasks/{urllib.parse.quote(args.uniq_id, safe='')}")
     return print_response(status, public_task_response(response))
 
 
 def command_task_list(args: argparse.Namespace) -> int:
-    if bool(args.start_date) != bool(args.end_date):
-        raise SystemExit("--start-date and --end-date must be supplied together")
-    for label, value in (("start-date", args.start_date), ("end-date", args.end_date)):
-        if value:
-            try:
-                datetime.strptime(value, "%Y-%m-%d")
-            except ValueError as error:
-                raise SystemExit(f"--{label} must use YYYY-MM-DD") from error
-    query = [("page", str(args.page)), ("pageSize", str(args.page_size))]
-    if args.start_date and args.end_date:
-        query.extend((("startDate", args.start_date), ("endDate", args.end_date)))
-    if args.type:
-        query.append(("taskType", args.type))
+    query = task_list_query(args.page, args.page_size, args.start_date, args.end_date, args.type)
+    command_progress("Checking tasks for your HolyCrab account...")
     status, response = send(
         "GET", "/api/tasks", query=query
     )
@@ -1252,29 +1352,40 @@ def command_task_list(args: argparse.Namespace) -> int:
 
 
 def poll_task(uniq_id: str, timeout: float, interval: float, *, emit: bool = False) -> tuple[int, Any]:
+    validate_wait_limits(timeout, interval)
     deadline = time.monotonic() + timeout
     latest: Any = None
+    previous_state: Any = object()
     while True:
         status, latest = send("GET", f"/api/tasks/{urllib.parse.quote(uniq_id, safe='')}")
-        if emit:
+        data = response_data(status, latest) if response_ok(status, latest) else None
+        step = data.get("step") if isinstance(data, dict) else None
+        state = (status, step)
+        if emit and state != previous_state:
             print_response(status, public_task_response(latest))
+            previous_state = state
         if not response_ok(status, latest):
             return 1, latest
-        data = response_data(status, latest)
-        step = data.get("step") if isinstance(data, dict) else None
         if step == 2:
             return 0, latest
         if step == 3:
             return 1, latest
-        if time.monotonic() >= deadline:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
             return 2, latest
-        time.sleep(interval)
+        time.sleep(min(interval, remaining))
 
 
 def command_poll_task(args: argparse.Namespace) -> int:
-    code, _ = poll_task(args.uniq_id, args.timeout, args.interval, emit=True)
+    validate_wait_limits(args.timeout, args.interval)
+    command_progress(f"Waiting for task {args.uniq_id}, up to {args.timeout:g} seconds. Ctrl+C stops only this local wait...")
+    code, latest = poll_task(args.uniq_id, args.timeout, args.interval, emit=True)
     if code == 2:
+        print_json({"timedOut": True, "taskId": args.uniq_id,
+                    "nextAction": next_action("CONTINUE_QUERYING", "The local wait timed out; the task was not resubmitted. Query this same task again.", f"holycrab tasks get {args.uniq_id}")})
         print("Polling timed out; the task was not resubmitted.", file=sys.stderr)
+    else:
+        command_progress("Task wait finished: completed." if code == 0 else "Task wait finished without a successful result. Review the returned status and error.")
     return code
 
 
@@ -1344,6 +1455,7 @@ def open_download(url: str) -> Any:
 
 
 def command_download(args: argparse.Namespace) -> int:
+    command_progress(f"Checking downloadable results for task {args.uniq_id}...")
     status, response = send("GET", f"/api/tasks/{urllib.parse.quote(args.uniq_id, safe='')}")
     data = response_data(status, response)
     urls = task_output_urls(data)
@@ -1362,7 +1474,9 @@ def command_download(args: argparse.Namespace) -> int:
     )
     partial = Path(partial_name)
     total = 0
+    last_progress = time.monotonic()
     try:
+        command_progress(f"Downloading output {args.index + 1} to {destination}...")
         with open_download(url) as remote, os.fdopen(descriptor, "wb") as local:
             descriptor = -1
             content_length = remote.headers.get("Content-Length") if getattr(remote, "headers", None) else None
@@ -1376,6 +1490,10 @@ def command_download(args: argparse.Namespace) -> int:
                 total += len(chunk)
                 if total > MAX_DOWNLOAD_BYTES:
                     raise SystemExit("Download exceeded the allowed size limit")
+                now = time.monotonic()
+                if now - last_progress >= 2:
+                    command_progress(f"Downloaded {total} bytes...")
+                    last_progress = now
         if force:
             os.replace(partial, destination)
         else:
@@ -1392,6 +1510,7 @@ def command_download(args: argparse.Namespace) -> int:
         except FileNotFoundError:
             pass
     print_json({"taskId": args.uniq_id, "output": str(destination), "bytes": total})
+    command_progress(f"Download completed: {destination} ({total} bytes).")
     return 0
 
 
@@ -1448,7 +1567,7 @@ def public_page(value: Any, projector: Any) -> dict[str, Any]:
 
 def page_query(page: int = 1, page_size: int = 20) -> list[tuple[str, str]]:
     if type(page) is not int or page < 1 or type(page_size) is not int or not 1 <= page_size <= 100:
-        raise ValueError("page must be a positive integer and pageSize must be an integer from 1 to 100")
+        raise CommandUsageError("page must be a positive integer and pageSize must be an integer from 1 to 100")
     return [("page", str(page)), ("pageSize", str(page_size))]
 
 
@@ -1553,6 +1672,38 @@ def next_action(code: str, instruction: str, command: str | None) -> dict[str, A
     return {"code": code, "instruction": instruction, "command": command}
 
 
+def task_next_action(task_id: str, step: Any, data: dict[str, Any]) -> dict[str, Any]:
+    if type(step) is int and step in {0, 1}:
+        return next_action("WAIT_FOR_TASK", "This task is still processing. Wait for the same task; do not submit it again.",
+                           f"holycrab tasks wait {task_id} --timeout 600")
+    if step == 2:
+        if task_output_urls(data):
+            return next_action("CHOOSE_DOWNLOAD_DESTINATION", "The task completed. Choose a local destination before downloading its result.", None)
+        if data.get("textResult"):
+            return next_action("VIEW_TEXT_RESULT", "The task completed. Read the returned textResult.", None)
+        return next_action("QUERY_TASK", "The task completed but no downloadable result was returned. Query this same task again.",
+                           f"holycrab tasks get {task_id}")
+    if step == 3:
+        return next_action("REVIEW_TASK_FAILURE", "This task failed. Review its public error; a new billable task requires a separate estimate and explicit confirmation.", None)
+    return next_action("QUERY_TASK", "The task state is not clear. Query this same task; do not resubmit it.", f"holycrab tasks get {task_id}")
+
+
+def attempt_next_action(record: dict[str, Any]) -> dict[str, Any]:
+    task_id = record.get("taskId")
+    if record.get("state") == "created" and isinstance(task_id, str) and re.fullmatch(r"[A-Za-z0-9]{1,64}", task_id):
+        return next_action("QUERY_TASK", "This attempt already created a task. Query that same task.", f"holycrab tasks get {task_id}")
+    if record.get("state") == "failed":
+        return next_action("REVIEW_REJECTED_REQUEST", "The service rejected this request. Correct it, estimate again, and obtain new confirmation before using a new attempt.", None)
+    return next_action("QUERY_RECENT_TASKS", "Do not submit this attempt again. Query recent tasks; finding no task cannot prove that the online task was not created.",
+                       "holycrab tasks list --page 1 --page-size 20")
+
+
+def interrupted_mutation(instruction: str, *, command: str | None = None, **identifiers: Any) -> CommandInterrupted:
+    return CommandInterrupted({"state": "unknown", "interrupted": True, **identifiers,
+                               "message": "The operation was interrupted after submission began; its online outcome is uncertain.",
+                               "nextAction": next_action("QUERY_EXISTING_RECORDS", instruction + " Do not retry automatically.", command)})
+
+
 def authorization_next_action(status: str, authorization_id: str, group_id: str | None = None) -> dict[str, Any]:
     if status == "CREATED":
         return next_action(
@@ -1563,19 +1714,19 @@ def authorization_next_action(status: str, authorization_id: str, group_id: str 
     if status == "SUCCEEDED" and group_id:
         return next_action(
             "UPLOAD_ASSETS",
-            "Authorization succeeded. This permits uploads to the person group; it does not approve any file upload or paid generation.",
-            f"holycrab assets upload FILE [FILE ...] --real-human-group {group_id}",
+            "Authorization succeeded and the person group was created. Authorization does not create assets. Select this person's files, preview an upload to this group, and confirm it separately. Paid generation also requires separate confirmation.",
+            None,
         )
     if status == "EXPIRED":
         return next_action(
             "ASK_BEFORE_NEW_AUTHORIZATION",
             "The private link expired. Ask the user before creating a new authorization.",
-            "holycrab real-human start --name PERSON_NAME",
+            None,
         )
     return next_action(
         "ASK_BEFORE_NEW_AUTHORIZATION",
         "This authorization did not complete. Explain the failure and ask the user before creating a new authorization.",
-        "holycrab real-human start --name PERSON_NAME",
+        None,
     )
 
 
@@ -1584,7 +1735,7 @@ def asset_next_action(asset_id: str, step: str | None, error: str | None = None)
         return next_action(
             "ESTIMATE_GENERATION",
             "The asset is ready. Put its asset ID into the generation request and estimate credits before asking for paid-generation confirmation.",
-            "holycrab generate estimate --kind video --json @request.json",
+            None,
         )
     if step == "FAILED":
         detail = f" Public error: {error}" if error else ""
@@ -1613,6 +1764,8 @@ def create_authorization(name: str) -> AuthorizationStartResult:
     try:
         status, response = send("POST", "/api/real-human-authorizations/sessions",
                                 payload={"name": name.strip(), "callbackUrl": REAL_HUMAN_CALLBACK_URL})
+    except KeyboardInterrupt:
+        raise interrupted_mutation("Check existing authorizations on the HolyCrab website before deciding whether another authorization is needed.") from None
     except (OSError, http.client.HTTPException) as error:
         raise ValueError("Authorization outcome is uncertain; do not retry automatically. Check the website.") from error
     data = mutation_response_data(status, response, "Authorization")
@@ -1641,6 +1794,10 @@ def create_authorization(name: str) -> AuthorizationStartResult:
     )
     try:
         result["qrPath"], result.qr_bytes = authorization_qr(identifier, link, expiry)
+    except KeyboardInterrupt:
+        result["interrupted"] = True
+        result["warning"] = "The authorization was created, but QR preparation was interrupted. Use this existing link; do not create another session."
+        raise CommandInterrupted(result) from None
     except (OSError, ValueError, ImportError, SystemExit):
         result["warning"] = "QR image could not be saved. Use the authorization link; do not create another session."
     return result
@@ -1673,14 +1830,20 @@ def get_authorization(authorization_id: str) -> dict[str, Any]:
 def list_real_human_groups(page: int = 1, page_size: int = 20) -> dict[str, Any]:
     query = page_query(page, page_size)
     cleanup_authorization_qrs()
-    return public_page(response_data(*send("GET", "/api/real-human-groups", query=query)), public_group)
+    output = public_page(response_data(*send("GET", "/api/real-human-groups", query=query)), public_group)
+    if output.get("total") == 0:
+        output["nextAction"] = next_action("ASK_BEFORE_AUTHORIZATION", "No authorized people were found. Ask the user whether to start a new authorization for the intended person.", None)
+    return output
 
 
 def list_real_human_assets(group_id: str, page: int = 1, page_size: int = 50) -> dict[str, Any]:
     identifier = public_id(group_id, "groupUniqId")
     query = page_query(page, page_size)
     cleanup_authorization_qrs()
-    return public_page(response_data(*send("GET", f"/api/real-human-groups/{identifier}/assets", query=query)), public_asset)
+    output = public_page(response_data(*send("GET", f"/api/real-human-groups/{identifier}/assets", query=query)), public_asset)
+    if output.get("total") == 0:
+        output["nextAction"] = next_action("SELECT_FILES_TO_UPLOAD", "This person group has no uploaded assets. Select this person's local files, preview the complete upload to this group, and confirm it separately.", None)
+    return output
 
 
 def find_real_human_group(group_id: str) -> dict[str, Any]:
@@ -1725,6 +1888,8 @@ def rename_real_human_group(group_id: str, name: str) -> dict[str, Any]:
     try:
         status, response = send("PATCH", f"/api/real-human-groups/{identifier}",
                                 payload={"name": name.strip()})
+    except KeyboardInterrupt:
+        raise interrupted_mutation("Query the person groups to check the current name.", command="holycrab real-human groups list", groupUniqId=identifier) from None
     except (OSError, http.client.HTTPException) as error:
         detail = reconcile_group(identifier)
         raise ValueError(f"Rename outcome is uncertain. {detail} Do not retry automatically") from error
@@ -1749,6 +1914,8 @@ def delete_real_human_group(group_id: str, confirmed: bool,
         raise ValueError("Real-human group not found")
     try:
         status, response = send("DELETE", f"/api/real-human-groups/{identifier}")
+    except KeyboardInterrupt:
+        raise interrupted_mutation("Query the person groups to check whether this group remains.", command="holycrab real-human groups list", groupUniqId=identifier) from None
     except (OSError, http.client.HTTPException) as error:
         detail = reconcile_group(identifier)
         raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
@@ -1774,6 +1941,8 @@ def delete_real_human_asset(group_id: str, asset_id: str, confirmed: bool,
     endpoint = f"/api/real-human-groups/{group_identifier}/assets/{asset_identifier}"
     try:
         status, response = send("DELETE", endpoint)
+    except KeyboardInterrupt:
+        raise interrupted_mutation("Query this person's assets to check whether the asset remains.", command=f"holycrab real-human assets list --group {group_identifier}", groupUniqId=group_identifier, assetUniqId=asset_identifier) from None
     except (OSError, http.client.HTTPException) as error:
         detail = reconcile_asset(asset_identifier)
         raise ValueError(f"Delete outcome is uncertain. {detail} Do not retry automatically") from error
@@ -1795,8 +1964,7 @@ def get_asset(asset_id: str) -> dict[str, Any]:
 
 
 def poll_resource(identifier: str, timeout: float, interval: float, *, authorization: bool) -> int:
-    if not math.isfinite(timeout) or timeout < 0 or not math.isfinite(interval) or interval <= 0:
-        raise ValueError("timeout must be finite and nonnegative; interval must be finite and positive")
+    validate_wait_limits(timeout, interval)
     deadline = time.monotonic() + timeout
     previous_state: Any = object()
     data: dict[str, Any] = {}
@@ -1807,8 +1975,10 @@ def poll_resource(identifier: str, timeout: float, interval: float, *, authoriza
             print_json(data)
             previous_state = state
         if state == ("SUCCEEDED" if authorization else "UPLOADED_TO_ARK"):
+            command_progress("Authorization completed; select files to upload next." if authorization else "Asset is ready.")
             return 0
         if state in ({"FAILED", "EXPIRED"} if authorization else {"FAILED", "DELETING"}):
+            command_progress("Waiting ended without success. Review the returned status and nextAction.")
             return 1
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -1824,25 +1994,31 @@ def poll_resource(identifier: str, timeout: float, interval: float, *, authoriza
 
 
 def command_real_human_start(args: argparse.Namespace) -> int:
+    command_progress("Creating one real-human authorization. Do not repeat this request if the result is unclear.")
     print_json(create_authorization(args.name))
     return 0
 
 
 def command_real_human_get(args: argparse.Namespace) -> int:
+    command_progress("Checking the existing authorization...")
     print_json(get_authorization(args.authorization_id))
     return 0
 
 
 def command_real_human_wait(args: argparse.Namespace) -> int:
+    validate_wait_limits(args.timeout, args.interval)
+    command_progress(f"Waiting for this authorization for up to {args.timeout:g} seconds. Ctrl+C stops local waiting only.")
     return poll_resource(args.authorization_id, args.timeout, args.interval, authorization=True)
 
 
 def command_real_human_groups(args: argparse.Namespace) -> int:
+    command_progress("Listing authorized people...")
     print_json(list_real_human_groups(args.page, args.page_size))
     return 0
 
 
 def command_real_human_group_rename(args: argparse.Namespace) -> int:
+    command_progress("Renaming the selected authorized person...")
     print_json(rename_real_human_group(args.group_id, args.name))
     return 0
 
@@ -1853,25 +2029,32 @@ def deletion_confirmed(prompt: str, yes: bool) -> bool:
     if not sys.stdin.isatty():
         print("Deletion was not confirmed; rerun interactively or use --yes after explicit approval.", file=sys.stderr)
         return False
-    return input(prompt).strip().lower() in {"y", "yes"}
+    accepted = read_confirmation(prompt) in {"y", "yes"}
+    if not accepted:
+        print("Cancelled; nothing was deleted.", file=sys.stderr)
+    return accepted
 
 
 def command_real_human_group_delete(args: argparse.Namespace) -> int:
+    command_progress("Checking the person and assets selected for deletion...")
     target = find_real_human_group(args.group_id)
     print_json({"warning": "Permanent deletion removes this person, all group assets, and upstream records.",
                 "target": public_fields(target, ("uniqId", "name", "assetCount"))})
     if not deletion_confirmed("Permanently delete this person and every group asset? [y/N] ", args.yes):
         return 2
+    command_progress("Deleting the confirmed person and group assets...")
     print_json(delete_real_human_group(args.group_id, True, target))
     return 0
 
 
 def command_real_human_assets(args: argparse.Namespace) -> int:
+    command_progress("Listing assets for the selected authorized person...")
     print_json(list_real_human_assets(args.group, args.page, args.page_size))
     return 0
 
 
 def command_real_human_asset_delete(args: argparse.Namespace) -> int:
+    command_progress("Checking the real-human asset selected for deletion...")
     group = find_real_human_group(args.group)
     asset = get_asset(args.asset_id)
     print_json({"warning": "Permanent deletion removes this asset's storage, upstream record, and database record.",
@@ -1880,20 +2063,29 @@ def command_real_human_asset_delete(args: argparse.Namespace) -> int:
                            **public_fields(asset, ("uniqId", "name", "assetType"))}})
     if not deletion_confirmed("Permanently delete this real-human asset? [y/N] ", args.yes):
         return 2
+    command_progress("Deleting the confirmed real-human asset...")
     print_json(delete_real_human_asset(args.group, args.asset_id, True, group, asset))
     return 0
 
 
 def command_asset_get(args: argparse.Namespace) -> int:
+    command_progress("Checking the existing asset...")
     print_json(get_asset(args.uniq_id))
     return 0
 
 
 def command_asset_wait(args: argparse.Namespace) -> int:
+    validate_wait_limits(args.timeout, args.interval)
     result = 0
     identifiers = args.uniq_id if isinstance(args.uniq_id, list) else [args.uniq_id]
-    for identifier in identifiers:
-        result = max(result, poll_resource(identifier, args.timeout, args.interval, authorization=False))
+    command_progress(f"Waiting for {len(identifiers)} assets, up to {args.timeout:g} seconds per asset. Ctrl+C stops local waiting only.")
+    completed = 0
+    for index, identifier in enumerate(identifiers, 1):
+        command_progress(f"Checking asset {index}/{len(identifiers)}: {identifier}; {completed} ready.")
+        code = poll_resource(identifier, args.timeout, args.interval, authorization=False)
+        completed += int(code == 0)
+        result = max(result, code)
+    command_progress(f"Asset wait ended: {completed}/{len(identifiers)} ready.")
     return result
 
 
@@ -1993,6 +2185,8 @@ def cleanup_upload_plans() -> None:
             if path.is_symlink() or not path.is_file() or not re.fullmatch(r"[A-Za-z0-9]{1,64}\.json", path.name):
                 continue
             plan = read_json_file(path, None)
+            if isinstance(plan, dict) and plan.get("state") == "executing":
+                continue  # Keep the one-shot ledger for interrupted uploads.
             if not isinstance(plan, dict) or now > float(plan.get("expiresAtEpoch", 0)):
                 path.unlink()
     except (SystemExit, OSError, TypeError, ValueError):
@@ -2013,17 +2207,13 @@ def prepare_upload_plan(files: list[str], *, group_uniq_id: str | None = None,
         "group": public_fields(group, ("uniqId", "name")) if group else None, "files": inspected,
     }
     write_private_json(upload_plan_path(plan_id), stored)
-    command = f"holycrab assets upload FILE [FILE ...]"
-    if group_uniq_id:
-        command += f" --real-human-group {group_uniq_id}"
-    command += " --yes"
     return {
         "uploadPlanId": plan_id, "expiresInSeconds": UPLOAD_PLAN_SECONDS,
         "target": stored["group"] or {"type": "ordinary-assets"},
         "files": [{key: item[key] for key in ("path", "name", "mediaType", "contentType", "size", "durationSeconds")} for item in inspected],
         "onlineChecks": "Dimensions, aspect ratio, frame rate, duration, and codecs are still checked online; local preview does not guarantee acceptance.",
         "confirmationRequired": True,
-        "nextAction": next_action("CONFIRM_UPLOAD_PLAN", "Confirm once only if every file and the target person are correct.", command),
+        "nextAction": next_action("CONFIRM_UPLOAD_PLAN", "Confirm once only if every file and the target person are correct.", None),
     }
 
 
@@ -2037,13 +2227,18 @@ class FileChunks:
                 yield chunk
 
 
-def upload_prepared_file(item: dict[str, Any], group_id: str | None) -> dict[str, Any]:
+def upload_prepared_file(item: dict[str, Any], group_id: str | None,
+                         progress: Callable[[str], None] | None = None) -> dict[str, Any]:
     path = Path(item["path"])
     query = [("file_extension", item["extension"]), ("content_type", item["contentType"])]
     if item.get("durationSeconds") is not None:
         query.append(("duration_seconds", str(item["durationSeconds"])))
     try:
+        if progress:
+            progress("Requesting an upload location...")
         status, response = send("GET", "/api/user-assets/pre-signed-download-url", query=query)
+    except KeyboardInterrupt:
+        return {"state": "unknown", "phase": "presign", "interrupted": True}
     except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
         return {"state": "unknown", "phase": "presign", "message": str(error)}
     if not response_ok(status, response):
@@ -2074,9 +2269,13 @@ def upload_prepared_file(item: dict[str, Any], group_id: str | None) -> dict[str
         headers={"Content-Type": item["contentType"], "Content-Length": str(item["size"])}, method="PUT",
     )
     try:
+        if progress:
+            progress(f"Uploading {item['size']} bytes...")
         with open_presigned_upload(request) as upload_response:
             if not 200 <= upload_response.status < 300:
                 raise OSError(f"Upload returned HTTP {upload_response.status}")
+    except KeyboardInterrupt:
+        return {"assetUniqId": asset_id, "state": "unknown", "phase": "upload", "interrupted": True}
     except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
         return {"assetUniqId": asset_id, "state": "unknown", "message": str(error)}
     form: dict[str, Any] = {
@@ -2086,7 +2285,11 @@ def upload_prepared_file(item: dict[str, Any], group_id: str | None) -> dict[str
         form["duration_seconds"] = item["durationSeconds"]
     endpoint = f"/api/real-human-groups/{group_id}/assets/upload" if group_id else "/api/user-assets/upload"
     try:
+        if progress:
+            progress("Registering the uploaded asset...")
         register_status, register_response = send("POST", endpoint, form=form)
+    except KeyboardInterrupt:
+        return {"assetUniqId": asset_id, "state": "unknown", "phase": "registration", "interrupted": True}
     except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as error:
         return {"assetUniqId": asset_id, "state": "unknown", "message": str(error)}
     code = register_response.get("code") if isinstance(register_response, dict) else None
@@ -2103,7 +2306,40 @@ def upload_prepared_file(item: dict[str, Any], group_id: str | None) -> dict[str
     }
 
 
-def execute_upload_plan(plan_id: str, *, confirmed: bool) -> dict[str, Any]:
+def execute_upload_plan(plan_id: str, *, confirmed: bool,
+                        progress: Callable[[str], None] | None = None) -> dict[str, Any]:
+    context: dict[str, Any] = {}
+    try:
+        return _execute_upload_plan(plan_id, confirmed=confirmed, progress=progress, context=context)
+    except KeyboardInterrupt:
+        if not context.get("started"):
+            raise
+        plan = context["plan"]
+        current = context.get("current", {})
+        failed = {"file": current.get("path"), "state": "unknown", "phase": "recording", "interrupted": True}
+        known = context.get("currentResult", {})
+        if known.get("assetUniqId"):
+            failed["assetUniqId"] = known["assetUniqId"]
+        group_id = context.get("groupId")
+        if group_id:
+            failed["groupUniqId"] = group_id
+        output = {"uploaded": context.get("completed", []), "failedOrUnknown": failed,
+                  "notAttempted": [{"file": item["path"]} for item in context.get("remaining", [])]}
+        if failed.get("assetUniqId"):
+            output["nextAction"] = asset_next_action(failed["assetUniqId"], None)
+        else:
+            output["nextAction"] = next_action("REVIEW_ASSETS", "Upload was interrupted. Keep this batch inventory and inspect existing assets before deciding what to do. Do not upload these files again automatically.",
+                                               f"holycrab real-human assets list --group {group_id}" if group_id else None)
+        plan.update(uploaded=output["uploaded"], failedOrUnknown=failed, notAttempted=output["notAttempted"])
+        try:
+            write_private_json(upload_plan_path(plan_id), plan)
+        except (OSError, SystemExit, KeyboardInterrupt):
+            output["warning"] = "Could not finish recording the batch. Keep this result; the plan must not be executed again."
+        raise CommandInterrupted(output) from None
+
+
+def _execute_upload_plan(plan_id: str, *, confirmed: bool,
+                         progress: Callable[[str], None] | None, context: dict[str, Any]) -> dict[str, Any]:
     if confirmed is not True:
         raise ValueError("confirmed must be true after the user approves the complete upload preview")
     path = upload_plan_path(plan_id)
@@ -2125,25 +2361,36 @@ def execute_upload_plan(plan_id: str, *, confirmed: bool) -> dict[str, Any]:
     # Persist the one-shot boundary before the first network write. A crash cannot
     # leave an executable plan that silently repeats an upload.
     plan["state"] = "executing"
+    context.update(started=True, plan=plan, remaining=plan["files"])
     write_private_json(path, plan)
     uploaded: list[dict[str, Any]] = []
     failed: dict[str, Any] | None = None
     not_attempted: list[dict[str, Any]] = []
     group_id = plan.get("group", {}).get("uniqId") if isinstance(plan.get("group"), dict) else None
+    context["groupId"] = group_id
     files = plan["files"]
     for index, item in enumerate(files):
-        result = upload_prepared_file(item, group_id)
+        context.update(current=item, currentResult={}, remaining=files[index + 1:], completed=list(uploaded))
+        try:
+            if progress:
+                progress(f"Processing file {index + 1}/{len(files)}: {item['name']}")
+            result = (upload_prepared_file(item, group_id, progress) if progress
+                      else upload_prepared_file(item, group_id))
+        except KeyboardInterrupt:
+            result = {"state": "unknown", "interrupted": True}
+        context["currentResult"] = result
         if result.get("state") != "uploaded":
             failed = {"file": item["path"], **result}
             if group_id:
                 failed["groupUniqId"] = group_id
             not_attempted = [{"file": remaining["path"]} for remaining in files[index + 1:]]
+            plan.update(uploaded=uploaded, failedOrUnknown=failed, notAttempted=not_attempted)
+            write_private_json(path, plan)
             break
         uploaded.append({"file": item["path"], **result})
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        pass
+        plan["uploaded"] = uploaded
+        write_private_json(path, plan)
+        context["completed"] = list(uploaded)
     output: dict[str, Any] = {"uploaded": uploaded, "failedOrUnknown": failed, "notAttempted": not_attempted}
     if failed and failed.get("assetUniqId"):
         output["nextAction"] = asset_next_action(
@@ -2167,6 +2414,13 @@ def execute_upload_plan(plan_id: str, *, confirmed: bool) -> dict[str, Any]:
             "WAIT_FOR_ASSETS", "All uploads were registered. Wait until every asset is ready before generation.",
             f"holycrab assets wait {ids} --timeout 600",
         )
+    if failed and failed.get("interrupted"):
+        raise CommandInterrupted(output)
+    context["completed"] = list(uploaded)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
     return output
 
 
@@ -2185,6 +2439,7 @@ def upload_asset(
 
 
 def command_upload_asset(args: argparse.Namespace) -> int:
+    command_progress("Checking files and preparing the complete upload preview...")
     preview = prepare_upload_plan(args.file, group_uniq_id=args.real_human_group,
                                   duration_seconds=args.duration_seconds)
     print_json(preview)
@@ -2192,16 +2447,17 @@ def command_upload_asset(args: argparse.Namespace) -> int:
         if not sys.stdin.isatty():
             print("No files were uploaded. Re-run with --yes only after the user confirms the complete preview.", file=sys.stderr)
             return 2
-        answer = input(f"Upload these {len(args.file)} files to the displayed target? [y/N] ").strip().lower()
+        answer = read_confirmation(f"Upload these {len(args.file)} files to the displayed target? [y/N] ")
         if answer not in {"y", "yes"}:
             try:
                 upload_plan_path(preview["uploadPlanId"]).unlink()
             except FileNotFoundError:
                 pass
-            print("Cancelled; no files were uploaded.")
+            print("Cancelled; no files were uploaded.", file=sys.stderr)
             return 2
-    result = execute_upload_plan(preview["uploadPlanId"], confirmed=True)
+    result = execute_upload_plan(preview["uploadPlanId"], confirmed=True, progress=command_progress)
     print_json(result)
+    command_progress(f"Upload ended: {len(result['uploaded'])} uploaded, {int(result['failedOrUnknown'] is not None)} failed or unknown, {len(result['notAttempted'])} not attempted.")
     return 0 if result["failedOrUnknown"] is None else 1
 
 
@@ -2331,12 +2587,15 @@ def load_installation() -> dict[str, Any] | None:
     return value
 
 
-def run_update(release: dict[str, Any]) -> None:
+def run_update(release: dict[str, Any], *, progress: Callable[[str], None] | None = None) -> None:
     name, url, expected = release_installer(release)
     manifest = load_installation() or {}
     descriptor, temporary_name = tempfile.mkstemp(prefix="holycrab-update-", suffix=Path(name).suffix)
     temporary = Path(temporary_name)
+    installing = False
     try:
+        if progress:
+            progress("Downloading the release installer...")
         digest = hashlib.sha256()
         total = 0
         with open_download(url) as remote, os.fdopen(descriptor, "wb") as local:
@@ -2347,6 +2606,8 @@ def run_update(release: dict[str, Any]) -> None:
                     raise SystemExit("Release installer is unexpectedly large; update stopped")
                 digest.update(chunk)
                 local.write(chunk)
+        if progress:
+            progress("Verifying the installer SHA-256 digest and release version...")
         if digest.hexdigest() != expected:
             raise SystemExit("Release installer SHA-256 digest mismatch; update stopped")
         release_version = release.get("tag_name")
@@ -2366,9 +2627,22 @@ def run_update(release: dict[str, Any]) -> None:
             environment["HOLYCRAB_INSTALL_MCP"] = "1" if manifest["mcp"] else "0"
         command = (["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(temporary)]
                    if os.name == "nt" else ["sh", str(temporary)])
-        completed = subprocess.run(command, env=environment, check=False)
+        installing = True
+        if progress:
+            progress("Installing and running post-install checks; the installer will report each stage...")
+        interactive = progress is not None and sys.stderr.isatty()
+        completed = subprocess.run(command, env=environment, check=False,
+                                   stdout=sys.stderr if interactive else subprocess.PIPE,
+                                   stderr=None if interactive else subprocess.PIPE)
         if completed.returncode != 0:
-            raise SystemExit("HolyCrab installer failed; the previous installation was kept or restored")
+            raise SystemExit("HolyCrab installer failed. Run `holycrab doctor --json`; reinstall if necessary. Review local state before assuming restoration completed")
+        if progress:
+            progress("Update completed; the installer's version and health checks passed.")
+    except KeyboardInterrupt:
+        if installing:
+            raise CommandInterrupted({"state": "unknown", "interrupted": True,
+                "nextAction": next_action("CHECK_INSTALLATION", "Update interrupted during installation. Check local health; reinstall if the launcher no longer works. Do not assume rollback completed.", "holycrab doctor --json")}) from None
+        raise
     finally:
         if descriptor >= 0:
             os.close(descriptor)
@@ -2379,9 +2653,11 @@ def run_update(release: dict[str, Any]) -> None:
 
 
 def command_update(args: argparse.Namespace) -> int:
+    command_progress("Checking GitHub for a stable HolyCrab update...")
     update = check_for_update(force=True, timeout=30.0)
     if update.get("error"):
         print_json(update)
+        print("Version check failed. Current installation was not changed. Run `holycrab update --check` when connectivity is restored.", file=sys.stderr)
         return 1
     print_json({key: value for key, value in update.items() if key != "release"})
     if not update.get("updateAvailable") or args.check:
@@ -2394,10 +2670,10 @@ def command_update(args: argparse.Namespace) -> int:
         if not sys.stdin.isatty():
             print("Update not installed. Re-run interactively or use --yes after reviewing the release.", file=sys.stderr)
             return 2
-        if input("Install this verified HolyCrab update now? [y/N] ").strip().lower() not in {"y", "yes"}:
-            print("Update cancelled; the current installation was not changed.")
+        if read_confirmation("Install this verified HolyCrab update now? [y/N] ") not in {"y", "yes"}:
+            print("Update cancelled; the current installation was not changed.", file=sys.stderr)
             return 2
-    run_update(release)
+    run_update(release, progress=command_progress)
     return 0
 
 
@@ -2753,6 +3029,19 @@ Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
 
 
 def command_uninstall(args: argparse.Namespace) -> int:
+    # Before confirmation an interrupt changes nothing; after confirmation the
+    # cleanup may be partial, so never promise that files/registrations remain.
+    args.cleanup_started = False
+    try:
+        return perform_uninstall(args)
+    except KeyboardInterrupt:
+        if not args.cleanup_started:
+            raise
+        raise CommandInterrupted({"state": "unknown", "interrupted": True,
+            "nextAction": next_action("CHECK_LOCAL_CLEANUP", "Uninstall was interrupted after cleanup started. Some registrations or program files may have been removed. Check the installation or reinstall before continuing; local data purge may be incomplete.", "holycrab doctor --json")}) from None
+
+
+def perform_uninstall(args: argparse.Namespace) -> int:
     manifest, prefix, library, launcher = validated_uninstall_manifest()
     config = _normalized_path(config_dir())
     print("HolyCrab uninstall preview:")
@@ -2779,17 +3068,21 @@ def command_uninstall(args: argparse.Namespace) -> int:
             print("Nothing was removed. Re-run with --yes after reviewing this preview.", file=sys.stderr)
             return 2
         prompt = "Uninstall HolyCrab and purge known local data? [y/N] " if args.purge else "Uninstall HolyCrab and preserve local data? [y/N] "
-        if input(prompt).strip().lower() not in {"y", "yes"}:
-            print("Uninstall cancelled; nothing was removed.")
+        if read_confirmation(prompt) not in {"y", "yes"}:
+            print("Uninstall cancelled; nothing was removed.", file=sys.stderr)
             return 2
 
+    args.cleanup_started = True
+    command_progress("Removing matching installer-managed HolyCrab MCP registrations...")
     expected_command = str(prefix / ("lib/holycrab/holycrab_cli.py" if os.name == "nt" else "bin/holycrab"))
     try:
         warnings = remove_managed_mcp_registrations(manifest, expected_command)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         return 1
+    command_progress("Removing unchanged installer-managed Skill files...")
     warnings.extend(remove_managed_skill_files(manifest))
+    command_progress("Removing program files and eligible PATH/profile entries...")
     hard_failures: list[str] = []
 
     if os.name == "nt":  # pragma: no cover - Windows CI
@@ -2809,7 +3102,7 @@ def command_uninstall(args: argparse.Namespace) -> int:
                 shutil.rmtree(library)
         except OSError:
             pass
-        print("HolyCrab program cleanup is scheduled and will finish within 10 seconds.")
+        print("HolyCrab program cleanup is scheduled. It will finish after this process exits, normally within 10 seconds; check the program paths if files remain.")
     else:
         try:
             launcher.unlink()
@@ -2832,6 +3125,7 @@ def command_uninstall(args: argparse.Namespace) -> int:
         print("Local credentials and records were kept because program removal was incomplete.", file=sys.stderr)
         return 1
     if args.purge:
+        command_progress("Purging known local HolyCrab credentials and records; unknown files will be kept...")
         purge_warnings = purge_known_local_state()
         warnings.extend(purge_warnings)
         if any(message.startswith(("Could not remove", "Refused to purge")) for message in purge_warnings):
@@ -2847,7 +3141,7 @@ def command_uninstall(args: argparse.Namespace) -> int:
         print(f"Local HolyCrab credentials and records were preserved at {config}.")
     for warning in warnings:
         print(f"Warning: {warning}")
-    print("HolyCrab uninstall completed.")
+    print("HolyCrab uninstall cleanup is scheduled; exit this process to finish program removal." if os.name == "nt" else "HolyCrab uninstall completed.")
     return 0
 
 
@@ -3038,6 +3332,8 @@ def local_health_report(*, online: bool = False) -> dict[str, Any]:
 
 
 def command_doctor(args: argparse.Namespace) -> int:
+    if args.online:
+        command_progress("Checking local health, refreshing version status, validating the API Key, and checking selected MCP registrations...")
     report = local_health_report(online=args.online)
     print_json(report)
     return 0 if report["ok"] else 1
@@ -3188,7 +3484,7 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
             attempt_id=attempt_id.strip(),
         )
     if name == "generation_get":
-        task_id = urllib.parse.quote(str(arguments.get("taskId", "")), safe="")
+        task_id = public_id(arguments.get("taskId"), "taskId")
         status, response = send("GET", f"/api/tasks/{task_id}")
         return public_task_data(response_data(status, response))
     if name == "generation_attempt_list":
@@ -3196,16 +3492,8 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
     if name == "generation_attempt_get":
         return attempt_record(arguments["attemptId"])
     if name == "generation_list":
-        query = [("page", str(arguments.get("page", 1))), ("pageSize", str(arguments.get("pageSize", 20)))]
-        start, end = arguments.get("startDate"), arguments.get("endDate")
-        if bool(start) != bool(end):
-            raise ValueError("startDate and endDate must be supplied together")
-        if start and end:
-            for value in (start, end):
-                datetime.strptime(value, "%Y-%m-%d")
-            query.extend((("startDate", start), ("endDate", end)))
-        if arguments.get("taskType"):
-            query.append(("taskType", arguments["taskType"]))
+        query = task_list_query(arguments.get("page", 1), arguments.get("pageSize", 20),
+                                arguments.get("startDate"), arguments.get("endDate"), arguments.get("taskType"))
         status, response = send("GET", "/api/tasks", query=query)
         return public_task_data(response_data(status, response))
     raise SystemExit(f"Unknown MCP tool: {name}")
@@ -3242,7 +3530,7 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
         negotiated = requested if requested in SUPPORTED_INITIALIZE_PROTOCOLS else LATEST_INITIALIZE_PROTOCOL
         notice = cached_update_notice()
         instructions = (
-            "Explain each HolyCrab result in the user's current language and always show the returned nextAction. "
+            "Before an operation explain what you will do in the user's current language. Afterward explain the result and the returned nextAction when one applies; do not invent extra steps for completed queries. "
             "Never treat authorization as upload consent or generation consent. Never retry an unknown mutation."
         )
         if notice:
@@ -3274,6 +3562,10 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
             if warning and isinstance(value, dict):
                 value.setdefault("warning", warning)
             return mcp_result(identifier, value)
+        except CommandInterrupted as error:
+            result = mcp_result(identifier, error.result)
+            result["result"]["isError"] = True
+            return result
         except (SystemExit, OSError, http.client.HTTPException, ValueError, TypeError, AttributeError) as error:
             text = sanitize_text_for_output(str(error) or error.__class__.__name__)
             return {
@@ -3485,25 +3777,76 @@ def startup_maintenance(raw_args: list[str]) -> None:
         return
 
 
+def command_failure_feedback(args: argparse.Namespace) -> None:
+    if args.func in {command_set_key, command_auth_status, command_credits_balance}:
+        command_progress("Check connectivity and that the API Key is enabled. Configure credentials locally with `holycrab setup`; never send a Key in chat.")
+    elif args.func in {command_task_get, command_poll_task, command_download}:
+        identifier = args.uniq_id
+        command = f"holycrab tasks get {identifier}" if re.fullmatch(r"[A-Za-z0-9]{1,64}", identifier) else "holycrab tasks list"
+        command_progress(f"Check the existing task with `{command}`. Do not submit a replacement task because a query or download failed.")
+    elif args.func in {command_generation_create, command_upload_asset, command_real_human_start,
+                        command_real_human_group_rename, command_real_human_group_delete, command_real_human_asset_delete}:
+        command_progress("Review the returned status and existing records before deciding what to do. Do not automatically repeat a write request with an uncertain result.")
+    elif args.func in {command_generation_estimate, command_task_list, command_real_human_get,
+                        command_real_human_wait, command_real_human_groups, command_real_human_assets,
+                        command_asset_get, command_asset_wait}:
+        command_progress("Check connectivity and credentials, then query the same records again. No new task, authorization, or upload is needed to resume a read-only check.")
+    elif args.func in {command_doctor, command_update}:
+        command_progress("Review the reported checks. Run `holycrab doctor --json` to inspect local health; reinstall only if repair is needed.")
+
+
 def main() -> int:
     raw_args = sys.argv[1:]
-    if not raw_args or raw_args[0] != "uninstall":
-        warning = cleanup_authorization_qrs()
-        if warning:
-            print(warning, file=sys.stderr)
-        cleanup_upload_plans()
-    startup_maintenance(raw_args)
     args = build_parser().parse_args()
     try:
-        return args.func(args)
+        # Semantic argument checks also precede housekeeping and version requests.
+        if args.func in {command_poll_task, command_real_human_wait, command_asset_wait}:
+            validate_wait_limits(args.timeout, args.interval)
+        if args.func in {command_task_get, command_poll_task, command_download}:
+            try:
+                public_id(args.uniq_id, "taskId")
+            except ValueError as error:
+                raise CommandUsageError(str(error)) from error
+        if args.func == command_task_list:
+            task_list_query(args.page, args.page_size, args.start_date, args.end_date, args.type)
+        if args.func in {command_real_human_groups, command_real_human_assets}:
+            page_query(args.page, args.page_size)
+        if raw_args[0] != "uninstall":
+            warning = cleanup_authorization_qrs()
+            if warning:
+                print(warning, file=sys.stderr)
+            cleanup_upload_plans()
+        startup_maintenance(raw_args)
+        code = args.func(args)
+        if code == 1:
+            command_failure_feedback(args)
+        return code
+    except CommandInterrupted as error:
+        print_json(error.result)
+        print("Stopped after an operation began. The outcome may be uncertain; follow the returned nextAction and do not retry automatically.", file=sys.stderr)
+        return 130
+    except KeyboardInterrupt:
+        print("Stopped. Ctrl+C ended this local operation; it does not cancel an existing online task or authorization.", file=sys.stderr)
+        return 130
+    except CommandUsageError as error:
+        print(f"Invalid argument: {sanitize_text_for_output(str(error))}", file=sys.stderr)
+        return 2
+    except SystemExit as error:
+        if isinstance(error.code, int):
+            return error.code
+        print(f"Error: {sanitize_text_for_output(str(error))}", file=sys.stderr)
+        command_failure_feedback(args)
+        return 1
     except json.JSONDecodeError as error:
         print(f"Invalid JSON: {error}", file=sys.stderr)
         return 2
     except urllib.error.URLError as error:
         print(f"Network error: {sanitize_text_for_output(str(error.reason))}", file=sys.stderr)
+        command_failure_feedback(args)
         return 1
     except (ValueError, OSError, http.client.HTTPException) as error:
         print(f"Error: {sanitize_text_for_output(str(error))}", file=sys.stderr)
+        command_failure_feedback(args)
         return 1
 
 

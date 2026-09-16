@@ -49,6 +49,8 @@ jobs:
           holycrab.tests.test_real_human
           holycrab.tests.test_safe_live_smoke
           holycrab.tests.test_v041
+          holycrab.tests.test_feedback
+          holycrab.tests.test_command_matrix
       - name: Compile Python entry points (Unix)
         if: runner.os != 'Windows'
         run: python3 -m py_compile holycrab/scripts/holycrab_api.py holycrab/scripts/holycrab_cli.py holycrab/scripts/validate_capabilities.py holycrab/scripts/validate_generate_contract.py holycrab/tests/safe_live_smoke.py

@@ -94,6 +94,10 @@ Seedance 视频在没有填写 `generateAudio` 时，CLI 和本地 MCP 会默认
 
 ## 真人授权和素材
 
+终端中的慢操作会显示当前阶段；脚本调用不输出过程提示，JSON 和 MCP 输出保持纯净。输入 API Key 后会先显示正在验证，通过验证并保存后才提示账号已连接。需要继续操作时，结果中的 `nextAction` 给出指引；缺少文件、保存位置或具体请求时，`command` 为 `null`，由 Agent 询问用户，不拼接示例命令。
+
+`Ctrl+C` 的退出码为 130，只停止本机操作，不会取消线上任务。提交或上传已经开始时，结果可能不明确：保留已知 ID 和批次清单，先查询，不能直接重复提交。Windows 卸载安排退出后的清理，不表示程序文件已同步删除。
+
 ```bash
 holycrab real-human start --name "小林"
 holycrab real-human wait AUTHORIZATION_ID --timeout 600

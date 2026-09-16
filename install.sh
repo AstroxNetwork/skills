@@ -23,13 +23,19 @@ PATH_REG_PROFILE=
 PATH_REG_ADDED=0
 PATH_REG_ADDED_THIS_RUN=0
 PREVIOUS_PATH_PROFILE=
-SHA256_HOLYCRAB_CLI=d19ae338ef52cdc9a9de04fee9796047b9681d1ef945e3d72d97fae3496046cb
+SHA256_HOLYCRAB_CLI=c31679819eb5e918345a7fbfe0a37f0ffaa08b30f02e5ff2a515cccbd27c4d13
 SHA256_CAPABILITIES=75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
-SHA256_SKILL=74ac0726e3c7b2f3d735ea3d060e1bafd5a3d852d0e78efb19f77d0157c88d01
+SHA256_SKILL=19393b95c3958ab83cb9467d986a0badf657cf60ccf49b62aa539cbc3a03c499
 SHA256_OPENAI_YAML=64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7
 SHA256_SEGNO=28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7
 SHA256_SEGNO_LICENSE=de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935
+
+progress() {
+  if [ -t 2 ]; then printf '%s\n' "$1" >&2; fi
+}
+
+progress "Checking Python and installation settings..."
 
 command -v python3 >/dev/null 2>&1 || {
   echo "Python 3.10 or newer is required for HolyCrab." >&2
@@ -129,7 +135,10 @@ cleanup() {
   fi
   rm -rf "$TEMP_DIR"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 129' HUP
+trap 'exit 143' TERM
 
 sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -156,6 +165,7 @@ fetch() {
   fetch_relative=$1
   fetch_destination=$2
   fetch_sha256=$3
+  progress "Downloading or copying $fetch_relative..."
   if [ -n "$SOURCE_DIR" ]; then
     cp "$SOURCE_DIR/$fetch_relative" "$fetch_destination"
   else
@@ -164,6 +174,7 @@ fetch() {
       exit 1
     }
     curl -fsSL "https://raw.githubusercontent.com/$REPOSITORY/$VERSION/$fetch_relative" -o "$fetch_destination"
+    progress "Verifying SHA-256 for $fetch_relative..."
     verify_sha256 "$fetch_destination" "$fetch_sha256" "$fetch_relative"
   fi
 }
@@ -204,8 +215,6 @@ case ",$INSTALL_AGENTS," in
     if [ -d "$HOME/.claude/skills/holycrab" ]; then cp -R "$HOME/.claude/skills/holycrab" "$BACKUP_DIR/claude-skill"; HAD_CLAUDE_SKILL=1; fi
     ;;
 esac
-INSTALL_STARTED=1
-mkdir -p "$BIN_DIR" "$LIB_DIR/references" "$LIB_DIR/vendor"
 fetch "holycrab/scripts/holycrab_cli.py" "$TEMP_DIR/holycrab_cli.py" "$SHA256_HOLYCRAB_CLI"
 fetch "holycrab/references/capabilities.json" "$TEMP_DIR/capabilities.json" "$SHA256_CAPABILITIES"
 fetch "bin/holycrab" "$TEMP_DIR/holycrab" "$SHA256_LAUNCHER"
@@ -213,12 +222,16 @@ fetch "holycrab/SKILL.md" "$TEMP_DIR/SKILL.md" "$SHA256_SKILL"
 fetch "holycrab/agents/openai.yaml" "$TEMP_DIR/openai.yaml" "$SHA256_OPENAI_YAML"
 fetch "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl" "$TEMP_DIR/segno.whl" "$SHA256_SEGNO"
 fetch "holycrab/scripts/vendor/LICENSE.segno" "$TEMP_DIR/LICENSE.segno" "$SHA256_SEGNO_LICENSE"
+progress "Installing verified program files..."
+INSTALL_STARTED=1
+mkdir -p "$BIN_DIR" "$LIB_DIR/references" "$LIB_DIR/vendor"
 install -m 755 "$TEMP_DIR/holycrab_cli.py" "$LIB_DIR/holycrab_cli.py"
 install -m 644 "$TEMP_DIR/capabilities.json" "$LIB_DIR/references/capabilities.json"
 install -m 755 "$TEMP_DIR/holycrab" "$BIN_DIR/holycrab"
 install -m 644 "$TEMP_DIR/segno.whl" "$LIB_DIR/vendor/segno-1.6.6-py3-none-any.whl"
 install -m 644 "$TEMP_DIR/LICENSE.segno" "$LIB_DIR/vendor/LICENSE.segno"
 
+progress "Configuring PATH..."
 persist_path
 
 python3 - "$LIB_DIR/installation.json" "$PREFIX" "$INSTALL_AGENTS" "$INSTALL_MCP" \
@@ -280,6 +293,7 @@ install_skill() {
   install -m 644 "$TEMP_DIR/openai.yaml" "$skill_destination/agents/openai.yaml"
 }
 
+progress "Installing Skills for the selected Agents..."
 case ",$INSTALL_AGENTS," in
   *,codex,*) install_skill "$HOME/.agents/skills/holycrab" ;;
 esac
@@ -314,6 +328,7 @@ repair_or_add_mcp() {
 }
 
 if [ "$INSTALL_MCP" = "1" ]; then
+  progress "Checking and registering HolyCrab in the selected Agents..."
   case ",$INSTALL_AGENTS," in
     *,codex,*)
       if command -v codex >/dev/null 2>&1; then
@@ -334,15 +349,20 @@ if [ "$INSTALL_MCP" = "1" ]; then
   esac
 fi
 
-echo "HolyCrab CLI, local MCP, and Skill are installed."
-echo "Command: $BIN_DIR/holycrab"
+progress "Verifying the installed CLI version and local health..."
 PATH="$BIN_DIR:$PATH"
 export PATH
-HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" --version >/dev/null
+installed_version=$(HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" --version)
+if [ "$installed_version" != "holycrab ${VERSION#v}" ]; then
+  echo "Installed CLI version does not match $VERSION; installation stopped." >&2
+  exit 1
+fi
 HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" doctor --json >/dev/null || {
   echo "Installed files failed HolyCrab doctor; installation stopped." >&2
   exit 1
 }
 INSTALL_COMPLETE=1
+echo "HolyCrab CLI, local MCP, and Skill are installed."
+echo "Command: $BIN_DIR/holycrab"
 echo "PATH is active inside the installer. If this command was piped to sh, run: export PATH=\"$BIN_DIR:\$PATH\""
 echo "Next: holycrab setup"

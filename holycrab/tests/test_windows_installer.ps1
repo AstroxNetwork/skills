@@ -110,8 +110,12 @@ if ($Manifest.pathRegistration.kind -ne "windows-user-path" -or $Manifest.pathRe
 & $Python (Join-Path $PSScriptRoot "windows_mcp_smoke.py") $CliPath
 if ($LASTEXITCODE -ne 0) { throw "MCP smoke test failed" }
 
-& $Launcher uninstall --yes
+$UninstallOutput = & $Launcher uninstall --yes | Out-String
 if ($LASTEXITCODE -ne 0) { throw "Default Windows uninstall failed" }
+if ($UninstallOutput -notmatch "cleanup is scheduled" -or $UninstallOutput -match "uninstall completed") {
+    throw "Windows uninstall feedback incorrectly claims synchronous completion"
+}
+if ($UninstallOutput.Contains($SavedKey) -or $UninstallOutput.Contains($LegacyKey)) { throw "API Key leaked in uninstall output" }
 for ($Attempt = 0; $Attempt -lt 100 -and ((Test-Path $Launcher) -or (Test-Path $CliPath)); $Attempt++) {
     Start-Sleep -Milliseconds 100
 }

@@ -294,7 +294,8 @@ def _mcp_call(name: str, arguments: dict[str, Any]) -> Any:
     return result
 
 
-def run_safe_live_suite(api_key: str, *, account_label: str = "user1") -> dict[str, Any]:
+def run_safe_live_suite(api_key: str, *, account_label: str = "user1",
+                        progress: Callable[[str], None] | None = None) -> dict[str, Any]:
     if not api_key.strip():
         raise ValueError("API Key cannot be empty")
     started = datetime.now(timezone.utc)
@@ -302,6 +303,8 @@ def run_safe_live_suite(api_key: str, *, account_label: str = "user1") -> dict[s
     secrets = {api_key.strip()}
 
     def add_check(check: str, operation: Callable[[], Any], *, allowed_codes: set[int] | None = None) -> Any:
+        if progress:
+            progress(f"Checking: {check}...")
         try:
             result = operation()
             if isinstance(result, dict) and "code" in result:
@@ -309,6 +312,8 @@ def run_safe_live_suite(api_key: str, *, account_label: str = "user1") -> dict[s
                 if result["code"] not in allowed:
                     raise AssertionError(f"command exited with code {result['code']}")
             checks.append({"check": check, "status": "passed"})
+            if progress:
+                progress(f"Passed: {check}")
             return result
         except SafetyViolation:
             checks.append({"check": check, "status": "failed", "reason": "safety guard blocked a request"})
@@ -317,6 +322,8 @@ def run_safe_live_suite(api_key: str, *, account_label: str = "user1") -> dict[s
             reason = str(error) if isinstance(error, AssertionError) else error.__class__.__name__
             checks.append({"check": check, "status": "failed",
                            "reason": reason})
+            if progress:
+                progress(f"Failed: {check}; details are in the sanitized report.")
             return None
 
     def not_applicable(check: str, reason: str) -> None:
@@ -447,7 +454,7 @@ def run_safe_live_suite(api_key: str, *, account_label: str = "user1") -> dict[s
                 assert task_id is not None
                 add_check("task get", lambda: capture_cli(["tasks", "get", task_id]))
                 add_check("task wait", lambda: capture_cli(
-                    ["tasks", "wait", task_id, "--timeout", "0", "--interval", "0"]
+                    ["tasks", "wait", task_id, "--timeout", "0", "--interval", "1"]
                 ), allowed_codes={0, 1, 2})
                 add_check("MCP task get", lambda: _mcp_call("generation_get", {"taskId": task_id}))
 
@@ -538,12 +545,24 @@ def main(argv: list[str] | None = None) -> int:
     if os.environ.get("HOLYCRAB_API_KEY"):
         print("Refusing to run while HOLYCRAB_API_KEY is set; use the hidden prompt instead.", file=sys.stderr)
         return 2
-    api_key = getpass.getpass(f"Paste the {args.account_label} API Key (input hidden): ").strip()
+    try:
+        api_key = getpass.getpass(f"Paste the {args.account_label} API Key (input hidden): ").strip()
+    except KeyboardInterrupt:
+        print("Stopped; no checks were started.", file=sys.stderr)
+        return 130
     if not api_key:
         print("API Key cannot be empty.", file=sys.stderr)
         return 2
+    print(
+        "API Key received. Running safe checks; no generation tasks or uploads will be created.",
+        flush=True,
+    )
     try:
-        report = run_safe_live_suite(api_key, account_label=args.account_label)
+        report = run_safe_live_suite(api_key, account_label=args.account_label,
+                                     progress=lambda message: print(message, file=sys.stderr, flush=True))
+    except KeyboardInterrupt:
+        print("Stopped. Temporary configuration was cleaned; no generation or upload was submitted.", file=sys.stderr)
+        return 130
     except SafetyViolation as error:
         report = {
             "ok": False,
@@ -553,8 +572,29 @@ def main(argv: list[str] | None = None) -> int:
             "onlineDataCreated": False,
         }
     safe_report = sanitize_report(report, secrets={api_key})
-    write_private_report(args.report, safe_report)
-    print(f"Sanitized report written to {args.report.expanduser().resolve()}")
+    try:
+        write_private_report(args.report, safe_report)
+    except KeyboardInterrupt:
+        print("Stopped while saving the report. Checks already ended; no generation or upload was submitted. Check whether the report file exists.", file=sys.stderr)
+        return 130
+    except (OSError, ValueError):
+        print("Checks ended, but the sanitized report could not be saved. Choose a writable report location and contact the test operator.", file=sys.stderr)
+        return 1
+    checks = safe_report.get("checks", [])
+    passed = sum(1 for row in checks if isinstance(row, dict) and row.get("status") == "passed")
+    failed = sum(1 for row in checks if isinstance(row, dict) and row.get("status") == "failed")
+    not_applicable = sum(
+        1 for row in checks if isinstance(row, dict) and row.get("status") == "not_applicable"
+    )
+    safety = safe_report.get("safety", {})
+    generation_calls = safety.get("generationCreateCalls", "unknown") if isinstance(safety, dict) else "unknown"
+    print(f"Completed: {passed} passed, {failed} failed, {not_applicable} not applicable.")
+    print(
+        f"Safety: generation create calls: {generation_calls}; "
+        f"online data created: {'yes' if safe_report.get('onlineDataCreated') else 'no'}."
+    )
+    print(f"Sanitized report: {args.report.expanduser().resolve()}")
+    print("No further terminal action is required. Ask the test operator to review the sanitized report.")
     return 0 if safe_report.get("ok") is True else 1
 
 

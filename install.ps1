@@ -16,10 +16,17 @@ $PathRegistration = $null
 $PathAddedThisRun = $false
 $PreviousPathManaged = $false
 
+function Write-HolyCrabProgress([string]$Message) {
+    if (-not [Console]::IsErrorRedirected) {
+        [Console]::Error.WriteLine($Message)
+        [Console]::Error.Flush()
+    }
+}
+
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "d19ae338ef52cdc9a9de04fee9796047b9681d1ef945e3d72d97fae3496046cb" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "c31679819eb5e918345a7fbfe0a37f0ffaa08b30f02e5ff2a515cccbd27c4d13" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
-    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "74ac0726e3c7b2f3d735ea3d060e1bafd5a3d852d0e78efb19f77d0157c88d01" },
+    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "19393b95c3958ab83cb9467d986a0badf657cf60ccf49b62aa539cbc3a03c499" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
     @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" }
@@ -44,12 +51,14 @@ function Find-HolyCrabPython {
 }
 
 function Copy-ReleaseFile([hashtable]$File) {
+    Write-HolyCrabProgress "Downloading or copying $($File.Relative)..."
     $Destination = Join-Path $TempDir $File.Name
     if ($SourceDir) {
         Copy-Item -LiteralPath (Join-Path $SourceDir $File.Relative) -Destination $Destination
     } else {
         $Url = "https://raw.githubusercontent.com/$Repository/$Version/$($File.Relative)"
         Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Destination
+        Write-HolyCrabProgress "Verifying SHA-256 for $($File.Relative)..."
         $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Destination).Hash.ToLowerInvariant()
         if ($Actual -ne $File.Sha256) {
             throw "SHA-256 verification failed for $($File.Relative); installation stopped."
@@ -119,6 +128,7 @@ function Register-HolyCrabMcp([string]$Agent, [hashtable]$Python, [string]$CliPa
     }
 }
 
+Write-HolyCrabProgress "Checking Python and installation settings..."
 $Python = Find-HolyCrabPython
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 try {
@@ -150,6 +160,7 @@ try {
     if (Test-Path -LiteralPath (Join-Path $HOME ".claude\skills\holycrab")) {
         Copy-Item -LiteralPath (Join-Path $HOME ".claude\skills\holycrab") -Destination (Join-Path $BackupDir "claude-skill") -Recurse
     }
+    Write-HolyCrabProgress "Installing verified program files..."
     $InstallStarted = $true
     New-Item -ItemType Directory -Force -Path $BinDir, (Join-Path $LibDir "references"), (Join-Path $LibDir "vendor") | Out-Null
     $CliPath = Join-Path $LibDir "holycrab_cli.py"
@@ -164,6 +175,7 @@ try {
     $LauncherContent = "@echo off`r`nchcp 65001 >nul`r`nset `"PYTHONUTF8=1`"`r`nset `"PYTHONIOENCODING=utf-8`"`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`nset `"_HOLYCRAB_EXIT_CODE=%ERRORLEVEL%`"`r`nif exist `"%~dp0..\lib\holycrab\holycrab_cli.py`" exit /b %_HOLYCRAB_EXIT_CODE%`r`n(goto) 2>nul & del /f /q `"%~f0`" >nul 2>&1`r`n"
     [IO.File]::WriteAllText($Launcher, $LauncherContent, [Text.UTF8Encoding]::new($false))
 
+    Write-HolyCrabProgress "Configuring current-session and user PATH..."
     $PathResult = Add-HolyCrabPath $BinDir $PreviousPathManaged
     $PathRegistration = $PathResult.Registration
     $PathAddedThisRun = $PathResult.AddedThisRun
@@ -200,6 +212,7 @@ try {
     }
     [IO.File]::WriteAllText((Join-Path $LibDir "installation.json"), ($Manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
 
+    Write-HolyCrabProgress "Installing Skills for the selected Agents..."
     if (",$InstallAgents," -like "*,codex,*") {
         Install-HolyCrabSkill (Join-Path $HOME ".agents\skills\holycrab") @{
             Skill = $Downloaded["SKILL.md"]; Capabilities = $Downloaded["capabilities.json"]; OpenAI = $Downloaded["openai.yaml"]
@@ -212,18 +225,19 @@ try {
     }
 
     if ($InstallMcp -eq "1") {
+        Write-HolyCrabProgress "Checking and registering HolyCrab in the selected Agents..."
         if (",$InstallAgents," -like "*,codex,*") { Register-HolyCrabMcp "codex" $Python $CliPath }
         if (",$InstallAgents," -like "*,claude,*") { Register-HolyCrabMcp "claude" $Python $CliPath }
     }
 
-    Write-Host "HolyCrab CLI, local MCP, and Skill are installed."
-    Write-Host "Command: $Launcher"
-    Write-Host "PATH is active in this PowerShell session and saved for future sessions."
+    Write-HolyCrabProgress "Verifying the installed CLI version and local health..."
     $PreviousNoUpdate = $env:HOLYCRAB_NO_UPDATE_CHECK
     $env:HOLYCRAB_NO_UPDATE_CHECK = "1"
     try {
-        & $Launcher --version | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "holycrab --version failed after installation" }
+        $InstalledVersion = & $Launcher --version
+        if ($LASTEXITCODE -ne 0 -or $InstalledVersion -ne ("holycrab " + $Version.TrimStart("v"))) {
+            throw "Installed CLI version does not match $Version; installation stopped."
+        }
         $Doctor = & $Launcher doctor --json | ConvertFrom-Json
         if ($LASTEXITCODE -ne 0 -or -not $Doctor.ok) {
             Write-Warning ("HolyCrab doctor report: " + ($Doctor | ConvertTo-Json -Depth 8 -Compress))
@@ -233,6 +247,9 @@ try {
         $env:HOLYCRAB_NO_UPDATE_CHECK = $PreviousNoUpdate
     }
     $InstallComplete = $true
+    Write-Host "HolyCrab CLI, local MCP, and Skill are installed."
+    Write-Host "Command: $Launcher"
+    Write-Host "PATH is active in this PowerShell session and saved for future sessions."
     Write-Host "Next: holycrab setup"
 } finally {
     if ($InstallStarted -and -not $InstallComplete) {

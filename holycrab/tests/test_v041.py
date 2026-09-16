@@ -200,7 +200,7 @@ class V041Tests(unittest.TestCase):
         self.assertEqual(send.call_args.kwargs["query"][-3:], [
             ("startDate", "2026-09-01"), ("endDate", "2026-09-14"), ("taskType", "AUDIO")])
         args.end_date = None
-        with self.assertRaisesRegex(SystemExit, "supplied together"):
+        with self.assertRaisesRegex(ValueError, "supplied together"):
             cli.command_task_list(args)
 
     def test_download_rejects_local_network_and_existing_output(self) -> None:

@@ -214,10 +214,14 @@ holycrab real-human wait AUTHORIZATION_ID --interval 5 --timeout 600
 
 状态含义：`CREATED` 等待本人操作，`SUCCEEDED` 授权成功，`FAILED` 验证失败，`EXPIRED` 会话过期。成功返回的 `group.uniqId` 就是后续上传使用的 `GROUP_ID`。等待超时返回退出码 2，保留授权 ID 后可继续查；失败或过期返回退出码 1，不会自动重新授权。
 
+输入 API Key 后，终端会提示正在验证；验证并保存成功后再提示返回 Codex 或 Claude Code。慢操作会显示当前阶段，脚本调用和 MCP 不输出过程文本。结果中的 `nextAction` 只在需要继续或恢复时出现；`command: null` 表示仍需选择文件、保存位置或确认具体请求。
+
+`Ctrl+C` 返回退出码 130，只停止本机等待，不取消线上任务或授权。写入已经开始时，保留已知 ID 和上传批次清单，先查询结果，不重复提交。下载中断会清除临时残片，不破坏已有文件。更新或卸载中断后，按提示检查本机状态，不能假定操作已完成或已全部恢复。
+
 | 状态 | 含义 | 下一步 |
 | --- | --- | --- |
 | `CREATED` | 等本人扫码、验证并最终确认 | `holycrab real-human wait AUTHORIZATION_ID --timeout 600` |
-| `SUCCEEDED` | 只代表可向该人物分组上传 | `holycrab assets upload FILE [FILE ...] --real-human-group GROUP_ID` |
+| `SUCCEEDED` | 人物分组已创建，尚未创建或上传素材 | 选择对应人物的文件，预览清单并确认上传到该分组 |
 | `FAILED` | 本次没有完成 | 解释原因，先问用户是否重试，再新建授权 |
 | `EXPIRED` | 私密链接已过期 | 先征得同意，再新建授权 |
 | wait 超时 | 只是暂时没等到 | 保留 ID，运行 `holycrab real-human get AUTHORIZATION_ID` |

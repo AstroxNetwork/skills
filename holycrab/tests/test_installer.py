@@ -66,6 +66,7 @@ class InstallerTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("Downloading or copying", result.stderr)
             command = Path(home) / ".local" / "bin" / "holycrab"
             self.assertTrue(command.is_file())
             self.assertTrue((Path(home) / ".agents" / "skills" / "holycrab" / "SKILL.md").is_file())
@@ -135,6 +136,38 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(Path(manifest["pathRegistration"]["profile"]).resolve(), profile.resolve())
             self.assertFalse((Path(home) / ".bashrc").exists())
             self.assertFalse((Path(home) / ".bash_profile").exists())
+
+    def test_installer_success_messages_follow_all_verification(self) -> None:
+        for name, marker, success in (("install.sh", "INSTALL_COMPLETE=1", 'echo "HolyCrab CLI, local MCP, and Skill are installed."'),
+                                      ("install.ps1", "$InstallComplete = $true", 'Write-Host "HolyCrab CLI, local MCP, and Skill are installed."')):
+            with self.subTest(installer=name):
+                text = (REPO_ROOT / name).read_text(encoding="utf-8")
+                self.assertLess(text.index(marker), text.index(success))
+                self.assertIn("Verifying the installed CLI version and local health", text)
+                self.assertIn("Installing Skills", text)
+
+    def test_unix_installer_sigint_restores_existing_files_without_success_message(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            env = {**os.environ, "HOME": str(root), "HOLYCRAB_CONFIG_DIR": str(root / "config"),
+                "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT), "HOLYCRAB_INSTALL_AGENTS": "none",
+                "HOLYCRAB_INSTALL_MCP": "0", "HOLYCRAB_INSTALL_PREFIX": str(root / "prefix")}
+            initial = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True)
+            self.assertEqual(initial.returncode, 0, initial.stderr)
+            old = (root / "prefix/lib/holycrab/holycrab_cli.py").read_bytes()
+            fake_bin = root / "fake-bin"
+            fake_bin.mkdir()
+            actual_python = shutil.which("python3")
+            self.assertIsNotNone(actual_python)
+            fake_python = fake_bin / "python3"
+            fake_python.write_text('#!/bin/sh\ncase "$*" in *doctor*) kill -INT "$PPID"; exit 130;; esac\nexec "' + str(actual_python) + '" "$@"\n')
+            fake_python.chmod(0o755)
+            env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
+            interrupted = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True, timeout=15)
+            self.assertEqual(interrupted.returncode, 130, interrupted.stdout + interrupted.stderr)
+            self.assertNotIn("are installed", interrupted.stdout)
+            self.assertEqual((root / "prefix/lib/holycrab/holycrab_cli.py").read_bytes(), old)
+            self.assertIn("restored", interrupted.stderr)
 
     def test_fresh_install_and_v040_upgrade_preserve_state_and_qr_without_pip(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

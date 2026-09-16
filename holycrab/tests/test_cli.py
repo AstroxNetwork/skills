@@ -164,7 +164,7 @@ class OutputRedactionTests(unittest.TestCase):
 
     def test_poll_output_never_writes_signed_result_url(self) -> None:
         signed_url = "https://cdn.example/result.mp4?X-Tos-Signature=terminal-secret"
-        args = argparse.Namespace(uniq_id="task-1", timeout=0.0, interval=0.0)
+        args = argparse.Namespace(uniq_id="task-1", timeout=0.0, interval=1.0)
         output = io.StringIO()
         with patch.object(
             holycrab,

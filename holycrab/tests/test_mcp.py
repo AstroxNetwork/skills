@@ -203,7 +203,7 @@ class McpProtocolTests(unittest.TestCase):
         backend = {
             "code": 0,
             "data": {
-                "uniqId": "task-1",
+                "uniqId": "task1",
                 "step": 2,
                 "imageUrls": ["https://cdn.example/result.jpg"],
                 "provider": "internal-provider",
@@ -216,11 +216,11 @@ class McpProtocolTests(unittest.TestCase):
                     "jsonrpc": "2.0",
                     "id": 9,
                     "method": "tools/call",
-                    "params": {"name": "generation_get", "arguments": {"taskId": "task-1"}},
+                    "params": {"name": "generation_get", "arguments": {"taskId": "task1"}},
                 }
             )
         content = response["result"]["structuredContent"]
-        self.assertEqual(content["uniqId"], "task-1")
+        self.assertEqual(content["uniqId"], "task1")
         self.assertNotIn("provider", content)
         self.assertNotIn("request", content)
 
