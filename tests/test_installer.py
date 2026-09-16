@@ -36,7 +36,7 @@ class InstallerTests(unittest.TestCase):
 
     def test_post_release_smoke_has_no_business_writes_or_real_credentials(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
-        self.assertIn('HOLYCRAB_INSTALL_AGENTS: none', workflow)
+        self.assertIn('HOLYCRAB_INSTALL_AGENTS: codex,claude', workflow)
         self.assertIn('HOLYCRAB_INSTALL_MCP: "0"', workflow)
         self.assertIn('HOLYCRAB_NO_UPDATE_CHECK: "1"', workflow)
         self.assertIn('"name": "cli_status"', workflow)
@@ -62,8 +62,8 @@ class InstallerTests(unittest.TestCase):
     def test_v043_resume_reuses_draft_without_overwriting_and_keeps_required_checks(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn('workflow_dispatch:', workflow)
-        self.assertIn('options: [v0.4.3]', workflow)
-        self.assertIn('Existing v0.4.3 Draft assets will only be verified, never overwritten', workflow)
+        self.assertIn('options: [v0.4.4]', workflow)
+        self.assertIn('Existing v0.4.4 Draft assets will only be verified, never overwritten', workflow)
         self.assertIn('needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]', workflow)
         self.assertIn('needs: [release, verify-draft-install]', workflow)
         self.assertNotIn('--clobber', workflow)
@@ -109,16 +109,16 @@ class InstallerTests(unittest.TestCase):
             result = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             version = subprocess.run([str(root / "prefix/bin/holycrab"), "--version"], env=env, text=True, capture_output=True)
-            self.assertEqual(version.stdout.strip(), "holycrab 0.4.3")
+            self.assertEqual(version.stdout.strip(), "holycrab 0.4.4")
             self.assertIn("Next: connect your account\n  holycrab setup", result.stdout)
-            self.assertIn("HolyCrab 0.4.3 installed", result.stdout)
+            self.assertIn("HolyCrab 0.4.4 installed", result.stdout)
             self.assertNotIn("For Agents:", result.stdout)
             self.assertNotIn("Available workflows after account verification:", result.stdout)
             self.assertNotIn("account is connected", result.stdout)
 
     def test_invalid_download_ref_is_rejected_before_installing(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            for ref in ("main", "../main", "v0.4.3-rc1", "a" * 39, "a?token=secret"):
+            for ref in ("main", "../main", "v0.4.4-rc1", "a" * 39, "a?token=secret"):
                 with self.subTest(ref=ref):
                     env = {**os.environ, "HOME": temporary, "HOLYCRAB_INSTALL_REF": ref,
                            "HOLYCRAB_INSTALL_SOURCE_DIR": str(REPO_ROOT), "HOLYCRAB_INSTALL_AGENTS": "none"}
@@ -130,8 +130,8 @@ class InstallerTests(unittest.TestCase):
     def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         powershell_installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
-        self.assertIn("VERSION=v0.4.3", installer)
-        self.assertIn('$Version = "v0.4.3"', powershell_installer)
+        self.assertIn("VERSION=v0.4.4", installer)
+        self.assertIn('$Version = "v0.4.4"', powershell_installer)
 
         stable_urls = (
             "https://holycrab.ai/cli/install.sh",
@@ -276,7 +276,7 @@ class InstallerTests(unittest.TestCase):
             env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
             interrupted = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True, timeout=15)
             self.assertEqual(interrupted.returncode, 130, interrupted.stdout + interrupted.stderr)
-            self.assertNotIn("HolyCrab 0.4.3 installed", interrupted.stdout)
+            self.assertNotIn("HolyCrab 0.4.4 installed", interrupted.stdout)
             self.assertEqual((root / "prefix/lib/holycrab/holycrab_cli.py").read_bytes(), old)
             self.assertIn("restored", interrupted.stderr)
 
@@ -380,7 +380,7 @@ assert 'real_human_group_delete' in {t['name'] for t in module.MCP_TOOLS}
             result = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env,
                                     text=True, capture_output=True, check=False)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("previous managed files were restored", result.stderr)
+            self.assertIn("SHA-256 verification failed", result.stderr)
             self.assertEqual((old_lib / "old.txt").read_text(encoding="utf-8"), "old-lib")
             self.assertEqual((old_bin / "holycrab").read_text(encoding="utf-8"), "old-launcher")
             self.assertEqual((home / ".agents" / "skills" / "holycrab" / "old.txt").read_text(), "old-skill")
@@ -414,7 +414,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-relative=${url#*/v0.4.3/}
+relative=${url#*/v0.4.4/}
 cp "$FAKE_RELEASE_ROOT/$relative" "$destination"
 if [ "$relative" = "holycrab/scripts/holycrab_cli.py" ]; then
   printf '\\n# tampered\\n' >> "$destination"
@@ -473,7 +473,7 @@ fi
             helper_path = root / "register-mcp.py"
             helper_path.write_text(helper, encoding="utf-8")
             module = root / "fake-cli.py"
-            module.write_text("import json\ndef register_installer_mcp(agent, client, command, args, previous):\n    print(json.dumps([command, *args]))\n", encoding="utf-8")
+            module.write_text("import json\ndef register_installer_mcp(agent, client, command, args, previous, journal=None):\n    print(json.dumps([command, *args]))\n", encoding="utf-8")
             for marker in ("", "\ufeff"):
                 result = subprocess.run([sys.executable, str(helper_path), str(module), "codex", "--discover", "old.json"],
                                         input=marker + json.dumps(server, ensure_ascii=False),
@@ -493,7 +493,7 @@ fi
                     result = subprocess.run([sys.executable, str(script), str(REPO_ROOT / "holycrab/scripts/holycrab_cli.py"), upgrading, "onboarding"],
                                             input=bom + json.dumps(value), text=True, encoding="utf-8", capture_output=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn("HolyCrab 0.4.3 installed", result.stdout)
+                    self.assertIn("HolyCrab 0.4.4 installed", result.stdout)
                     self.assertNotIn("PRIVATE_INTERNAL_RULE", result.stdout)
                     self.assertNotIn("account connected", result.stdout)
                     self.assertEqual("Create product listing images" in result.stdout, upgrading == "0")
@@ -572,8 +572,8 @@ fi
         self.assertNotIn('gh release upload "$release_version"', workflow)
 
     def test_release_notes_have_the_approved_english_title(self) -> None:
-        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.3.md").read_text(encoding="utf-8")
-        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.3\n"))
+        notes = (REPO_ROOT / ".github" / "releases" / "v0.4.4.md").read_text(encoding="utf-8")
+        self.assertTrue(notes.startswith("# HolyCrab Agent Tools v0.4.4\n"))
         self.assertIn("SHA-256", notes)
         self.assertIn("Windows", notes)
         self.assertIn("DPAPI", notes)
@@ -589,11 +589,11 @@ fi
 
     def test_local_generate_exception_is_scoped_to_user_approved_v043(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("steps.contract-version.outputs.version == 'v0.4.3'", workflow)
-        self.assertIn("steps.contract-version.outputs.version != 'v0.4.3'", workflow)
+        self.assertIn("steps.contract-version.outputs.version == 'v0.4.4'", workflow)
+        self.assertIn("steps.contract-version.outputs.version != 'v0.4.4'", workflow)
         self.assertIn("secrets.GENERATE_CONTRACT_SSH_KEY", workflow)
         self.assertIn("repository: AstroxNetwork/seedance-2.0", workflow)
-        self.assertIn("verify_release_acceptance.py v0.4.3 --contract-only", workflow)
+        self.assertIn("verify_release_acceptance.py v0.4.4 --contract-only", workflow)
 
 
 if __name__ == "__main__":

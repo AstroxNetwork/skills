@@ -14,13 +14,17 @@ $env:HOLYCRAB_INSTALL_AGENTS = "none"
 $env:HOLYCRAB_NO_UPDATE_CHECK = "1"
 
 $InstallSummary = & (Join-Path $RepoRoot "install.ps1") 6>&1 | Out-String
-if ($InstallSummary -notmatch "HolyCrab 0.4.3 installed") { throw "Installation summary omitted the version" }
+if ($InstallSummary -notmatch "HolyCrab 0.4.4 installed") { throw "Installation summary omitted the version" }
 if ($InstallSummary -notmatch "Next: connect your account") { throw "Installation summary omitted account setup" }
 if ($InstallSummary -notmatch "Create product listing images") { throw "Installation summary omitted business uses" }
 if ($InstallSummary -match "For Agents:|Available workflows after account verification:") { throw "Installation exposed internal Agent instructions" }
+$env:HOLYCRAB_INSTALL_AGENTS = ""
+$env:HOLYCRAB_INSTALL_MCP = ""
 $RepeatSummary = & (Join-Path $RepoRoot "install.ps1") 6>&1 | Out-String
-if ($RepeatSummary -notmatch "HolyCrab 0.4.3 installed") { throw "Repeat installation did not complete" }
+if ($RepeatSummary -notmatch "HolyCrab 0.4.4 installed") { throw "Repeat installation did not complete" }
 if ($RepeatSummary -match "Create product listing images|What would you like") { throw "Repeat installation repeated first-use guidance" }
+$RepeatRecord = Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\installation.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+if (@($RepeatRecord.agents).Count -ne 0 -or $RepeatRecord.mcp -ne $false) { throw "Blank old-updater settings changed the saved no-Agent choice" }
 
 $BinDir = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "bin"
 $Launcher = Join-Path $BinDir "holycrab.cmd"
@@ -32,7 +36,7 @@ $PathEntries = @($env:Path -split ";" | Where-Object {
 if ($PathEntries.Count -ne 1) { throw "HolyCrab bin directory should occur once in current PATH" }
 
 $Version = & $Launcher --version
-if ($Version -ne "holycrab 0.4.3") { throw "Unexpected version: $Version" }
+if ($Version -ne "holycrab 0.4.4") { throw "Unexpected version: $Version" }
 
 $Doctor = & $Launcher doctor --json | ConvertFrom-Json
 if ($Doctor.ok -ne $true) { throw "HolyCrab doctor did not report ok" }
@@ -48,7 +52,7 @@ if ($env:HOLYCRAB_TEST_INSTALL_REF) {
         $oldRef=$env:HOLYCRAB_INSTALL_REF; try { $env:HOLYCRAB_INSTALL_REF=$ref; & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/AstroxNetwork/skills/$ref/install.ps1"))) } finally { $env:HOLYCRAB_INSTALL_REF=$oldRef }
         if ($env:HOLYCRAB_INSTALL_REF -ne $PreviousRef) { throw "Temporary download ref was not restored" }
         $PinnedVersion = & $Launcher --version
-        if ($LASTEXITCODE -ne 0 -or $PinnedVersion -ne "holycrab 0.4.3") { throw "Fixed-commit Windows installation failed" }
+        if ($LASTEXITCODE -ne 0 -or $PinnedVersion -ne "holycrab 0.4.4") { throw "Fixed-commit Windows installation failed" }
         $PinnedHelp = & $Launcher --help | Out-String
         if ($PinnedHelp -notmatch "uninstall") { throw "Fixed-commit Windows installation omitted uninstall" }
     } finally {
@@ -81,12 +85,12 @@ if (-not ($Config.PSObject.Properties.Name -contains "apiKeyDpapi")) { throw "Wi
 if ($ConfigText.Contains($SavedKey)) { throw "Windows config contains plaintext API Key" }
 
 $OriginalCli = Get-Content -LiteralPath $CliPath -Raw -Encoding UTF8
-foreach ($OldVersion in @("0.4.0", "0.4.1", "0.4.2")) {
-    [IO.File]::WriteAllText($CliPath, $OriginalCli.Replace('VERSION = "0.4.3"', ('VERSION = "' + $OldVersion + '"')), [Text.UTF8Encoding]::new($false))
+foreach ($OldVersion in @("0.4.0", "0.4.1", "0.4.2", "0.4.3")) {
+    [IO.File]::WriteAllText($CliPath, $OriginalCli.Replace('VERSION = "0.4.4"', ('VERSION = "' + $OldVersion + '"')), [Text.UTF8Encoding]::new($false))
     & (Join-Path $RepoRoot "install.ps1")
     if ((Get-Content -LiteralPath $ConfigPath -Raw) -ne $ConfigText) { throw "Upgrade changed the saved DPAPI credential" }
     $UpgradedVersion = & $Launcher --version
-    if ($UpgradedVersion -ne "holycrab 0.4.3") { throw "Older-version upgrade failed" }
+    if ($UpgradedVersion -ne "holycrab 0.4.4") { throw "Older-version upgrade failed" }
     $UpgradedDoctor = & $Launcher doctor --json | ConvertFrom-Json
     if ($UpgradedDoctor.onboarding.state -ne "CONFIGURED") { throw "Offline doctor should report configuration without requiring repeated verification" }
 }

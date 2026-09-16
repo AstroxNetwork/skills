@@ -115,6 +115,20 @@ class AgentCleanupTests(unittest.TestCase):
             result = cli.mcp_registration_check("codex", "/chosen/bin/holycrab")
         self.assertFalse(result["ok"])
 
+    def test_optional_uninstalled_client_is_not_a_broken_registration(self):
+        manifest = self.manifest('claude')
+        manifest['agentRegistrations']['claude'].update(managed=False, executable=None)
+        with patch.object(cli, 'load_installation', return_value=manifest), \
+                patch.object(cli, 'find_agent_client', return_value=None):
+            result = cli.mcp_registration_check('claude', '/chosen/bin/holycrab')
+        self.assertTrue(result['ok'])
+        self.assertFalse(result['installed'])
+        self.assertEqual(result['status'], 'not-installed')
+        manifest['agentRegistrations']['claude']['managed'] = True
+        with patch.object(cli, 'load_installation', return_value=manifest), \
+                patch.object(cli, 'find_agent_client', return_value=None):
+            self.assertFalse(cli.mcp_registration_check('claude', '/chosen/bin/holycrab')['ok'])
+
     @unittest.skipIf(os.name == "nt", "Unix registration fixture; native PowerShell test covers Windows registration")
     def test_installer_records_client_and_preserves_ownership_on_repeat_install(self):
         for previous, owned in (({}, False), (self.manifest(), True)):

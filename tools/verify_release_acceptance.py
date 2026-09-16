@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify release acceptance; local/reused evidence is authorized only for v0.4.3."""
+"""Verify release acceptance; local/reused evidence is authorized only for v0.4.4."""
 from __future__ import annotations
 
 import argparse
@@ -9,14 +9,14 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-LOCAL_EVIDENCE_TAG = "v0.4.3"
+LOCAL_EVIDENCE_TAG = "v0.4.4"
 CONTRACT_FILES = ("holycrab/scripts/holycrab_cli.py", "holycrab/references/capabilities.json",
                   "tools/validate_generate_contract.py")
 
 
 def validate_contract(record, root):
     if record.get("version") != LOCAL_EVIDENCE_TAG:
-        raise ValueError("Local contract evidence is authorized only for v0.4.3")
+        raise ValueError("Local contract evidence is authorized only for v0.4.4")
     contract = record.get("generateMainContract")
     if not isinstance(contract, dict) or contract.get("status") != "passed" or contract.get("mode") != "local-synced-main":
         raise ValueError("A passed local Generate main contract record is required")
@@ -40,7 +40,7 @@ def validate(record, tag, *, root=None, contract_only=False):
         validate_contract(record, root)
     if contract_only:
         if tag != LOCAL_EVIDENCE_TAG or root is None:
-            raise ValueError("Local contract mode is authorized only for v0.4.3")
+            raise ValueError("Local contract mode is authorized only for v0.4.4")
         return
     flow = record.get("realHumanCoreFlow")
     if not isinstance(flow, dict):
@@ -61,7 +61,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tag")
     parser.add_argument("--record", type=Path)
-    parser.add_argument("--contract-only", action="store_true", help="Verify the v0.4.3 synchronized local main evidence")
+    parser.add_argument("--contract-only", action="store_true", help="Verify the v0.4.4 synchronized local main evidence")
     args = parser.parse_args()
     path = args.record or Path(__file__).resolve().parents[1] / f"docs/release-acceptance/{args.tag}.json"
     try:

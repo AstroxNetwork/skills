@@ -6,9 +6,9 @@
 - 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
 - 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.4.3` 内置 `2026-09-14` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
+它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.4.4` 内置 `2026-09-14` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
 
-`v0.4.3` 修复 Agent 客户端不在 PATH 时的卸载登记清理，保留安装后的业务场景引导以及独立的测试下载引用。官方稳定入口仅在对应 Release 发布并验证后同步，不安装 Draft 或测试分支。
+`v0.4.4` 修复重装和更新时丢失 Agent 选择的问题，提供更新失败原因，并完善程序和 Agent 连接的回滚。保留业务场景引导、客户端发现及独立的测试下载引用。官方稳定入口仅在对应 Release 发布并验证后同步，不安装 Draft 或测试分支。
 
 `v0.4.1` 增加启动自检、每日更新提示、付费提交防重、严格下载防护和真人素材两阶段批量上传。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
@@ -42,7 +42,7 @@ holycrab update
 holycrab update --yes
 ```
 
-安装器和更新器都校验 SHA-256，在同一位置替换程序，保留 API Key、本地 attempt、上传计划和用户设置。替换前会临时备份托管文件，自检失败时恢复；安装成功后删除临时备份，不保留两个可运行版本。`v0.4.0` 没有更新器，因此旧用户仍需手动运行一键安装命令升级一次。离线或受管环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
+安装器和更新器都校验 SHA-256，在同一位置替换程序，保留 API Key、本地 attempt、上传计划和原有 Agent 设置。替换前会临时备份托管文件，自检失败时恢复程序及本次改动的 Agent 连接；恢复不完整时保留备份并说明位置。安装成功后删除临时备份，不保留两个可运行版本。`v0.4.0` 没有更新器，因此旧用户仍需手动运行一键安装命令升级一次。离线或受管环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
 
 交互式卸载会先列出影响范围，并且只确认一次；脚本环境在确认后使用 `--yes`：
 
@@ -91,7 +91,7 @@ holycrab auth status
 $ref='COMMIT_SHA'; $oldRef=$env:HOLYCRAB_INSTALL_REF; try { $env:HOLYCRAB_INSTALL_REF=$ref; & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/AstroxNetwork/skills/$ref/install.ps1"))) } finally { $env:HOLYCRAB_INSTALL_REF=$oldRef }
 ```
 
-此命令面向原生 Windows PowerShell，先确认电脑已有 Python 3.10+。测试安装仍校验 `0.4.3` 版本与文件哈希；正式更新会清除临时下载引用，仅安装通过发布校验的稳定版。
+此命令面向原生 Windows PowerShell，先确认电脑已有 Python 3.10+。测试安装仍校验 `0.4.4` 版本与文件哈希；正式更新会清除临时下载引用，仅安装通过发布校验的稳定版。
 
 ## 常用命令
 

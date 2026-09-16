@@ -36,6 +36,9 @@ class V041Tests(unittest.TestCase):
         })
         self.env.start()
         self.addCleanup(self.env.stop)
+        manifest = {"managedBy": cli.INSTALLATION_MANAGER,
+                    "prefix": str(cli.installation_path().parent.parent.parent), "agents": [], "mcp": False}
+        self.update_manifest = manifest
 
     @staticmethod
     def image_request() -> dict[str, object]:
@@ -364,29 +367,29 @@ class V041Tests(unittest.TestCase):
 
     def test_update_rejects_unstable_versions_and_missing_digest(self) -> None:
         with self.assertRaises(ValueError):
-            cli.release_update_info({"tag_name": "v0.4.4-rc1", "draft": False, "prerelease": True,
-                                     "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.4-rc1"})
+            cli.release_update_info({"tag_name": "v0.4.5-rc1", "draft": False, "prerelease": True,
+                                     "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.5-rc1"})
         installer_name = "install.ps1" if os.name == "nt" else "install.sh"
         with self.assertRaisesRegex(SystemExit, "missing its GitHub SHA-256"):
-            cli.release_installer({"tag_name": "v0.4.4", "assets": [{"name": installer_name, "browser_download_url":
-                f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.4/{installer_name}", "digest": None}]})
+            cli.release_installer({"tag_name": "v0.4.5", "assets": [{"name": installer_name, "browser_download_url":
+                f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.5/{installer_name}", "digest": None}]})
         older = cli.release_update_info({"tag_name": "v0.4.0", "draft": False, "prerelease": False,
                                          "html_url": cli.RELEASE_PAGE_PREFIX + "v0.4.0"})
         self.assertFalse(older["updateAvailable"])
         bad_asset_name = "install.ps1" if os.name == "nt" else "install.sh"
         with self.assertRaisesRegex(SystemExit, "invalid download URL"):
-            cli.release_installer({"tag_name": "v0.4.4", "assets": [{"name": bad_asset_name,
+            cli.release_installer({"tag_name": "v0.4.5", "assets": [{"name": bad_asset_name,
                 "browser_download_url": "https://evil.example/install", "digest": "sha256:" + "0" * 64}]})
 
     def test_update_cache_limits_automatic_checks_to_once_per_day(self) -> None:
-        release = {"checkedAt": cli.utc_now(), "latestVersion": "0.4.4", "updateAvailable": True,
-                   "releasePage": cli.RELEASE_PAGE_PREFIX + "v0.4.4", "release": {"tag_name": "v0.4.4"}}
+        release = {"checkedAt": cli.utc_now(), "latestVersion": "0.4.5", "updateAvailable": True,
+                   "releasePage": cli.RELEASE_PAGE_PREFIX + "v0.4.5", "release": {"tag_name": "v0.4.5"}}
         with patch.dict(os.environ, {"HOLYCRAB_NO_UPDATE_CHECK": "0"}), \
                 patch.object(cli, "fetch_latest_release", return_value=release) as fetch:
             first = cli.check_for_update()
             second = cli.check_for_update()
         self.assertTrue(first["updateAvailable"])
-        self.assertEqual(second["latestVersion"], "0.4.4")
+        self.assertEqual(second["latestVersion"], "0.4.5")
         fetch.assert_called_once()
 
     def test_failed_automatic_update_check_is_also_cached_for_one_day(self) -> None:
@@ -400,14 +403,14 @@ class V041Tests(unittest.TestCase):
 
     def test_update_requires_confirmation_and_verifies_digest_before_execution(self) -> None:
         name = "install.ps1" if os.name == "nt" else "install.sh"
-        marker = '$Version = "v0.4.4"\n' if os.name == "nt" else "VERSION=v0.4.4\n"
+        marker = '$Version = "v0.4.5"\n' if os.name == "nt" else "VERSION=v0.4.5\n"
         body = marker.encode()
-        release = {"tag_name": "v0.4.4", "assets": [{"name": name,
-            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.4/{name}",
+        release = {"tag_name": "v0.4.5", "assets": [{"name": name,
+            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.5/{name}",
             "digest": "sha256:" + cli.hashlib.sha256(body).hexdigest()}]}
         state = {"release": release}
         args = argparse.Namespace(check=False, yes=False)
-        with patch.object(cli, "check_for_update", return_value={"latestVersion": "0.4.4", "updateAvailable": True}), \
+        with patch.object(cli, "check_for_update", return_value={"latestVersion": "0.4.5", "updateAvailable": True}), \
                 patch.object(cli, "read_update_state", return_value=state), \
                 patch.object(cli.sys.stdin, "isatty", return_value=False), \
                 patch.object(cli, "run_update") as run, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
@@ -418,7 +421,8 @@ class V041Tests(unittest.TestCase):
         bad_release["assets"][0]["digest"] = "sha256:" + "0" * 64
         remote = MagicMock()
         remote.__enter__.return_value.read.side_effect = [body, b""]
-        with patch.object(cli, "open_download", return_value=remote), patch.object(cli.subprocess, "run") as run:
+        with patch.object(cli, "load_installation", return_value=self.update_manifest), \
+                patch.object(cli, "open_download", return_value=remote), patch.object(cli.subprocess, "run") as run:
             with self.assertRaisesRegex(SystemExit, "digest mismatch"):
                 cli.run_update(bad_release)
         run.assert_not_called()
@@ -428,12 +432,30 @@ class V041Tests(unittest.TestCase):
         completed = MagicMock(returncode=0)
         with patch.dict(os.environ, {"HOLYCRAB_INSTALL_SOURCE_DIR": "/unsafe/source", "HOLYCRAB_INSTALL_REF": "a" * 40}), \
                 patch.object(cli, "open_download", return_value=remote), \
-                patch.object(cli, "load_installation", return_value={"prefix": "/chosen", "agents": ["codex"], "mcp": False}), \
+                patch.object(cli, "installation_path", return_value=Path("/chosen/lib/holycrab/installation.json")), \
+                patch.object(cli, "load_installation", return_value={"managedBy": cli.INSTALLATION_MANAGER, "prefix": "/chosen", "agents": ["codex"], "mcp": False}), \
                 patch.object(cli.subprocess, "run", return_value=completed) as run:
             cli.run_update(release)
         self.assertNotIn("HOLYCRAB_INSTALL_SOURCE_DIR", run.call_args.kwargs["env"])
         self.assertNotIn("HOLYCRAB_INSTALL_REF", run.call_args.kwargs["env"])
         self.assertEqual(run.call_args.kwargs["env"]["HOLYCRAB_INSTALL_PREFIX"], "/chosen")
+
+    def test_update_preserves_explicit_no_agent_selection(self) -> None:
+        name = "install.ps1" if os.name == "nt" else "install.sh"
+        marker = '$Version = "v0.4.5"\n' if os.name == "nt" else "VERSION=v0.4.5\n"
+        body = marker.encode()
+        release = {"tag_name": "v0.4.5", "assets": [{"name": name,
+            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.5/{name}",
+            "digest": "sha256:" + cli.hashlib.sha256(body).hexdigest()}]}
+        remote = MagicMock()
+        remote.__enter__.return_value.read.side_effect = [body, b""]
+        with patch.object(cli, "load_installation", return_value=self.update_manifest), \
+                patch.object(cli, "open_download", return_value=remote), \
+                patch.object(cli.subprocess, "run", return_value=MagicMock(returncode=0)) as run:
+            cli.run_update(release)
+        environment = run.call_args.kwargs["env"]
+        self.assertEqual(environment["HOLYCRAB_INSTALL_AGENTS"], "none")
+        self.assertEqual(environment["HOLYCRAB_INSTALL_MCP"], "0")
 
     def test_corrupt_update_cache_is_discarded_and_online_doctor_checks_selected_mcp(self) -> None:
         cli.update_state_path().write_text("{truncated", encoding="utf-8")

@@ -15,7 +15,7 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
-      HOLYCRAB_INSTALL_AGENTS: none
+      HOLYCRAB_INSTALL_AGENTS: codex,claude
       HOLYCRAB_INSTALL_MCP: "0"
       HOLYCRAB_NO_UPDATE_CHECK: "1"
     steps:
@@ -94,6 +94,9 @@ jobs:
           expected = {'holycrab_cli.py', 'installation.json', 'references/capabilities.json', 'vendor/segno-1.6.6-py3-none-any.whl', 'vendor/LICENSE.segno'}
           files = {p.relative_to(library).as_posix() for p in library.rglob('*') if p.is_file() and '__pycache__' not in p.parts}
           assert files == expected, 'Non-runtime file found in installed CLI'
+          for directory in ('.agents', '.claude'):
+              skill = pathlib.Path.home() / directory / 'skills/holycrab'
+              assert {p.relative_to(skill).as_posix() for p in skill.rglob('*') if p.is_file()} == {'SKILL.md', 'agents/openai.yaml', 'references/capabilities.json'}
           messages = [
               {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'website-smoke', 'version': '1'}}},
               {'jsonrpc': '2.0', 'method': 'notifications/initialized'},

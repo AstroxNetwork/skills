@@ -425,8 +425,9 @@ class FeedbackTests(unittest.TestCase):
 
     def test_update_interrupt_before_install_does_not_execute_and_removes_download(self) -> None:
         name = "install.ps1" if os.name == "nt" else "install.sh"
-        release = {"tag_name": "v0.4.4", "assets": [{"name": name, "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.4/{name}", "digest": "sha256:" + "0" * 64}]}
-        with patch.object(cli, "load_installation", return_value={}), patch.object(cli, "open_download", side_effect=KeyboardInterrupt), \
+        release = {"tag_name": "v0.4.5", "assets": [{"name": name, "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.5/{name}", "digest": "sha256:" + "0" * 64}]}
+        manifest = {"managedBy": cli.INSTALLATION_MANAGER, "prefix": str(cli.installation_path().parent.parent.parent), "agents": [], "mcp": False}
+        with patch.object(cli, "load_installation", return_value=manifest), patch.object(cli, "open_download", side_effect=KeyboardInterrupt), \
                 patch.object(cli.subprocess, "run") as run, self.assertRaises(KeyboardInterrupt):
             cli.run_update(release)
         run.assert_not_called()
@@ -451,7 +452,7 @@ class FeedbackTests(unittest.TestCase):
 
     def test_update_cancel_is_once_and_never_runs_installer(self) -> None:
         with patch.object(cli, "check_for_update", return_value={"updateAvailable": True}), \
-                patch.object(cli, "read_update_state", return_value={"release": {"tag_name": "v0.4.4"}}), \
+                patch.object(cli, "read_update_state", return_value={"release": {"tag_name": "v0.4.5"}}), \
                 patch.object(cli.sys.stdin, "isatty", return_value=True), patch("builtins.input", return_value="n") as confirm, \
                 patch.object(cli, "run_update") as install:
             code, output, errors = self.invoke(["update"])
@@ -463,13 +464,14 @@ class FeedbackTests(unittest.TestCase):
 
     def test_update_install_interrupt_reports_no_unverified_rollback_promise(self) -> None:
         name = "install.ps1" if os.name == "nt" else "install.sh"
-        body = (('$Version = "v0.4.4"' if os.name == "nt" else 'VERSION=v0.4.4') + '\n').encode()
-        release = {"tag_name": "v0.4.4", "assets": [{"name": name,
-            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.4/{name}",
+        body = (('$Version = "v0.4.5"' if os.name == "nt" else 'VERSION=v0.4.5') + '\n').encode()
+        release = {"tag_name": "v0.4.5", "assets": [{"name": name,
+            "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.5/{name}",
             "digest": "sha256:" + cli.hashlib.sha256(body).hexdigest()}]}
         remote = MagicMock()
         remote.__enter__.return_value.read.side_effect = [body, b""]
-        with patch.object(cli, "load_installation", return_value={}), patch.object(cli, "open_download", return_value=remote), \
+        manifest = {"managedBy": cli.INSTALLATION_MANAGER, "prefix": str(cli.installation_path().parent.parent.parent), "agents": [], "mcp": False}
+        with patch.object(cli, "load_installation", return_value=manifest), patch.object(cli, "open_download", return_value=remote), \
                 patch.object(cli.subprocess, "run", side_effect=KeyboardInterrupt), self.assertRaises(cli.CommandInterrupted) as interrupted:
             cli.run_update(release)
         self.assertIn("Do not assume rollback", interrupted.exception.result["nextAction"]["instruction"])

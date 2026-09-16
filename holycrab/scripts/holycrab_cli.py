@@ -48,7 +48,7 @@ except ImportError:  # pragma: no cover - POSIX runtime
     msvcrt = None
 
 
-VERSION = "0.4.3"
+VERSION = "0.4.4"
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
 PUBLIC_ACCOUNT_URL = "https://generate.holycrab.ai/user-tokens"
 REAL_HUMAN_CALLBACK_URL = "https://generate.holycrab.ai/real-human-authorization/callback"
@@ -3090,7 +3090,10 @@ def load_installation() -> dict[str, Any] | None:
 
 def run_update(release: dict[str, Any], *, progress: Callable[[str], None] | None = None) -> None:
     name, url, expected = release_installer(release)
-    manifest = load_installation() or {}
+    manifest = load_installation()
+    if not manifest:
+        raise SystemExit("Installation record is missing. Run the installer to repair this installation before updating.")
+    settings = installer_settings(manifest, str(installation_path().parent.parent.parent))
     descriptor, temporary_name = tempfile.mkstemp(prefix="holycrab-update-", suffix=Path(name).suffix)
     temporary = Path(temporary_name)
     installing = False
@@ -3120,13 +3123,9 @@ def run_update(release: dict[str, Any], *, progress: Callable[[str], None] | Non
         environment = os.environ.copy()
         environment.pop("HOLYCRAB_INSTALL_SOURCE_DIR", None)
         environment.pop("HOLYCRAB_INSTALL_REF", None)
-        if isinstance(manifest.get("prefix"), str):
-            environment["HOLYCRAB_INSTALL_PREFIX"] = manifest["prefix"]
-        agents = manifest.get("agents")
-        if isinstance(agents, list):
-            environment["HOLYCRAB_INSTALL_AGENTS"] = ",".join(str(item) for item in agents)
-        if isinstance(manifest.get("mcp"), bool):
-            environment["HOLYCRAB_INSTALL_MCP"] = "1" if manifest["mcp"] else "0"
+        environment["HOLYCRAB_INSTALL_PREFIX"] = manifest["prefix"]
+        environment["HOLYCRAB_INSTALL_AGENTS"] = settings["agents"]
+        environment["HOLYCRAB_INSTALL_MCP"] = settings["mcp"]
         command = (["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(temporary)]
                    if os.name == "nt" else ["sh", str(temporary)])
         installing = True
@@ -3137,6 +3136,13 @@ def run_update(release: dict[str, Any], *, progress: Callable[[str], None] | Non
                                    stdout=sys.stderr if interactive else subprocess.PIPE,
                                    stderr=None if interactive else subprocess.PIPE)
         if completed.returncode != 0:
+            if not interactive:
+                diagnostic = completed.stderr or completed.stdout or b""
+                if isinstance(diagnostic, bytes):
+                    diagnostic = diagnostic.decode("utf-8", errors="replace")
+                safe = terminal_safe_text(sanitize_text_for_output(diagnostic))
+                if safe.strip():
+                    print("Installer details:\n" + safe[-4000:].strip(), file=sys.stderr)
             raise SystemExit("HolyCrab installer failed. Run `holycrab doctor --json`; reinstall if necessary. Review local state before assuming restoration completed")
         if progress:
             progress("Update completed; the installer's version and health checks passed.")
@@ -3181,6 +3187,78 @@ def command_update(args: argparse.Namespace) -> int:
 
 def _normalized_path(value: str | Path) -> Path:
     return Path(value).expanduser().resolve(strict=False)
+
+
+def installer_settings(previous: dict[str, Any], prefix: str,
+                       agents: str = "", mcp: str = "") -> dict[str, str]:
+    """Resolve installer settings only after the release source is verified."""
+    if not isinstance(previous, dict):
+        raise ValueError("Invalid installation record; repair it before installing")
+    if previous:
+        if (previous.get("managedBy") != INSTALLATION_MANAGER
+                or not isinstance(previous.get("prefix"), str)
+                or _normalized_path(previous["prefix"]) != _normalized_path(prefix)
+                or not isinstance(previous.get("agents"), list)
+                or any(not isinstance(item, str) or item not in {"codex", "claude"} for item in previous["agents"])
+                or not isinstance(previous.get("mcp"), bool)):
+            raise ValueError("Installation record does not match this installation; repair it before updating")
+    chosen = agents.strip() or (",".join(previous["agents"]) or "none" if previous else "codex,claude")
+    selected = chosen.split(",")
+    if chosen != "none" and (any(item not in {"codex", "claude"} for item in selected)
+                              or len(selected) != len(set(selected))):
+        raise ValueError("HOLYCRAB_INSTALL_AGENTS must be codex, claude, codex,claude, or none")
+    selected_mcp = mcp.strip() or ("1" if previous.get("mcp", True) else "0")
+    if selected_mcp not in {"0", "1"}:
+        raise ValueError("HOLYCRAB_INSTALL_MCP must be 0 or 1")
+    return {"agents": chosen, "mcp": selected_mcp}
+
+
+def restore_installer_files(backup: Path, prefix: Path, agents: list[str]) -> None:
+    """Restore only installer-owned filenames; retain unrelated files and backups on failure."""
+    runtime = ("holycrab_cli.py", "installation.json", "references/capabilities.json",
+               "vendor/segno-1.6.6-py3-none-any.whl", "vendor/LICENSE.segno")
+    launcher = "holycrab.cmd" if os.name == "nt" else "holycrab"
+    pairs = [(backup / "lib" / name, prefix / "lib/holycrab" / name) for name in runtime]
+    pairs.append((backup / launcher, prefix / "bin" / launcher))
+    for agent in agents:
+        if agent not in {"codex", "claude"}:
+            raise ValueError("Unknown installer Agent")
+        directory = ".agents" if agent == "codex" else ".claude"
+        for name in ("SKILL.md", "references/capabilities.json", "agents/openai.yaml"):
+            pairs.append((backup / (agent + "-skill") / name,
+                          Path.home() / directory / "skills/holycrab" / name))
+    for source, target in pairs:
+        if source.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        elif target.is_file():
+            target.unlink()
+    restore_installer_mcp(backup / "mcp-transaction.json")
+
+
+def restore_installer_mcp(journal: Path, *, only_agent: str | None = None) -> None:
+    entries = read_json_file(journal, {})
+    for agent, entry in entries.items():
+        if only_agent is not None and agent != only_agent:
+            continue
+        executable, before, after = entry["executable"], entry["before"], entry["after"]
+        current, absent, _ = inspect_agent_registration(executable, agent)
+        if current == before and (before is not None or absent):
+            continue
+        if not absent and current != after:
+            raise RuntimeError(f"{agent} connection changed or cannot be inspected; backup retained")
+        scope = ["--scope", "user"] if agent == "claude" else []
+        if current is not None:
+            if run_agent_client(executable, ["mcp", "remove", *scope, "holycrab"]).returncode:
+                raise RuntimeError(f"Could not restore {agent} connection; backup retained")
+        if before is not None:
+            result = run_agent_client(executable, ["mcp", "add", *scope, "holycrab", "--",
+                                                   before["command"], *before["args"]])
+            if result.returncode:
+                raise RuntimeError(f"Could not restore {agent} connection; backup retained")
+        checked, missing, _ = inspect_agent_registration(executable, agent)
+        if checked != before or (before is None and not missing):
+            raise RuntimeError(f"Could not verify restored {agent} connection; backup retained")
 
 
 def validated_uninstall_manifest() -> tuple[dict[str, Any], Path, Path, Path]:
@@ -3339,7 +3417,7 @@ def inspect_agent_registration(executable: str, agent: str) -> tuple[dict[str, A
 
 
 def register_installer_mcp(agent: str, preferred: str | None, command: str, arguments: list[str],
-                           previous_path: str) -> None:
+                           previous_path: str, journal_path: str | None = None) -> None:
     """Internal installer entry point; no public command, credential or arbitrary Agent mutation."""
     manifest = load_installation() or {}
     previous = read_json_file(Path(previous_path), {}) if previous_path else {}
@@ -3361,14 +3439,26 @@ def register_installer_mcp(agent: str, preferred: str | None, command: str, argu
             record["executable"] = executable
     elif previous.get("mcp") is True and agent in previous.get("agents", []):
         record["managed"] = True
+    original_record = dict(record)
+    change_recorded = False
     try:
         if not executable:
             raise RuntimeError(f"{agent} is unavailable; its HolyCrab MCP registration was not checked")
         current, absent, _ = inspect_agent_registration(executable, agent)
+        def remember_change() -> None:
+            nonlocal change_recorded
+            if journal_path:
+                journal = Path(journal_path)
+                entries = read_json_file(journal, {})
+                entries.setdefault(agent, {"executable": executable, "before": current,
+                    "after": {"command": command, "args": arguments, "scope": "user"}})
+                write_private_json(journal, entries)
+                change_recorded = True
         if current is not None and registration_matches(current, previous, agent, expected) and (
             previous.get("mcp") is True and agent in previous.get("agents", [])
             and (current["command"] != command or current["args"] != arguments)
         ):
+            remember_change()
             remove = ["mcp", "remove"] + (["--scope", "user"] if agent == "claude" else [])
             if run_agent_client(executable, [*remove, "holycrab"]).returncode != 0:
                 raise RuntimeError(f"Could not repair the managed {agent} MCP entry; it was kept")
@@ -3381,6 +3471,7 @@ def register_installer_mcp(agent: str, preferred: str | None, command: str, argu
             if not owned:
                 print(f"Info: the existing {agent} HolyCrab MCP entry was kept; it is not installer-managed.", file=sys.stderr)
         elif absent:
+            remember_change()
             add = ["mcp", "add"] + (["--scope", "user"] if agent == "claude" else [])
             result = run_agent_client(executable, [*add, "holycrab", "--", command, *arguments])
             if result.returncode != 0:
@@ -3392,6 +3483,9 @@ def register_installer_mcp(agent: str, preferred: str | None, command: str, argu
         else:
             raise RuntimeError(f"The {agent} MCP entry could not be verified as this installation; it was not changed")
     except (OSError, subprocess.SubprocessError, RuntimeError) as error:
+        if change_recorded and journal_path:
+            restore_installer_mcp(Path(journal_path), only_agent=agent)
+            record = original_record
         print(f"Warning: {sanitize_text_for_output(str(error))}", file=sys.stderr)
     manifest.setdefault("agentRegistrations", {})[agent] = record
     write_private_json(installation_path(), manifest)
@@ -3876,6 +3970,10 @@ def mcp_registration_check(agent: str, expected_command: str) -> dict[str, Any]:
     manifest = load_installation() or {}
     executable = find_agent_client(agent, manifest)
     if executable is None:
+        record = agent_registration(manifest, agent)
+        if record is not None and record.get("managed") is False and not record.get("executable"):
+            return {"selected": True, "installed": False, "ok": True, "status": "not-installed",
+                    "instruction": f"{agent} is not installed. Its Skill is available; run the installer again after installing the client to connect MCP."}
         return {"selected": True, "installed": False, "ok": False}
     try:
         registration, _, exit_code = inspect_agent_registration(executable, agent)
@@ -4005,7 +4103,8 @@ def local_health_report(*, online: bool = False) -> dict[str, Any]:
                 if agent in {"codex", "claude"}:
                     registrations[agent] = mcp_registration_check(agent, expected)
                     if not registrations[agent]["ok"]:
-                        repairs.append("holycrab update --yes")
+                        repairs.append("irm https://holycrab.ai/cli/install.ps1 | iex" if os.name == "nt" else
+                                       "curl -fsSL https://holycrab.ai/cli/install.sh | sh")
             checks["mcpRegistrations"] = registrations
     update = (check_for_update(force=True, timeout=30.0) if online else
               read_update_state().get("update", {"checkedAt": None, "latestVersion": VERSION,

@@ -1,14 +1,14 @@
 $ErrorActionPreference = "Stop"
 
 $Repository = "AstroxNetwork/skills"
-$Version = "v0.4.3"
+$Version = "v0.4.4"
 $SourceRef = if ($env:HOLYCRAB_INSTALL_REF) { $env:HOLYCRAB_INSTALL_REF } else { $Version }
 if ($SourceRef -cnotmatch '^(?:[0-9a-f]{40}|v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$') {
     throw "HOLYCRAB_INSTALL_REF must be a full commit hash or stable version tag; installation stopped."
 }
 $SourceDir = $env:HOLYCRAB_INSTALL_SOURCE_DIR
-$InstallMcp = if ($env:HOLYCRAB_INSTALL_MCP) { $env:HOLYCRAB_INSTALL_MCP } else { "1" }
-$InstallAgents = if ($env:HOLYCRAB_INSTALL_AGENTS) { $env:HOLYCRAB_INSTALL_AGENTS } else { "codex,claude" }
+$InstallMcp = [string]$env:HOLYCRAB_INSTALL_MCP
+$InstallAgents = [string]$env:HOLYCRAB_INSTALL_AGENTS
 $Prefix = if ($env:HOLYCRAB_INSTALL_PREFIX) { $env:HOLYCRAB_INSTALL_PREFIX } else { Join-Path $HOME ".local" }
 $BinDir = Join-Path $Prefix "bin"
 $LibDir = Join-Path $Prefix "lib\holycrab"
@@ -55,7 +55,7 @@ else:
 }
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "9cbdb353ebefeaa3a8679ed0b62b4550136cd77fcfd4878607d6ac407cfff960" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "d849a1360864960d14f04a5848f7e7a754d15589349019353f3fb44edf22c28f" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "75b18984adacec0444252a8e8a841520fe0f2ceddf05b3d0f9aeba0bb59c4308" },
     @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "9e90c6ca370e552569f0f6e4389263a845bb79319b54c47c43927dea9b93fae3" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
@@ -91,10 +91,10 @@ function Copy-ReleaseFile([hashtable]$File) {
     } else {
         $Url = "https://raw.githubusercontent.com/$Repository/$SourceRef/$($File.Relative)"
         Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $Destination
-        $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Destination).Hash.ToLowerInvariant()
-        if ($Actual -ne $File.Sha256) {
-            throw "SHA-256 verification failed for $($File.Relative); installation stopped."
-        }
+    }
+    $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $Destination).Hash.ToLowerInvariant()
+    if ($Actual -ne $File.Sha256) {
+        throw "SHA-256 verification failed for $($File.Relative); installation stopped."
     }
     return $Destination
 }
@@ -141,7 +141,8 @@ server = json.loads(sys.stdin.read().lstrip("\ufeff"))
 spec = importlib.util.spec_from_file_location("holycrab_installer", script)
 cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)
-cli.register_installer_mcp(agent, client or None, server[0], server[1:], previous)
+cli.register_installer_mcp(agent, client or None, server[0], server[1:], previous,
+                         str(__import__("pathlib").Path(previous).parent.parent / "mcp-transaction.json"))
 '@
     $HelperPath = Join-Path $TempDir "register-mcp.py"
     [IO.File]::WriteAllText($HelperPath, $Helper, [Text.UTF8Encoding]::new($false))
@@ -154,7 +155,7 @@ cli.register_installer_mcp(agent, client or None, server[0], server[1:], previou
         $OutputEncoding = $PreviousOutputEncoding
     }
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "$Agent MCP registration failed. Run the installer again after checking $Agent."
+        throw "$Agent connection recovery failed; rolling back installation."
     }
 }
 
@@ -166,6 +167,28 @@ try {
     foreach ($File in $ReleaseFiles) {
         $Downloaded[$File.Name] = Copy-ReleaseFile $File
     }
+
+    $SettingsHelper = @'
+import importlib.util, json, pathlib, sys
+spec = importlib.util.spec_from_file_location("holycrab_settings", sys.argv[1])
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+settings = json.loads(sys.stdin.read().lstrip("\ufeff"))
+previous = cli.read_json_file(pathlib.Path(settings["prefix"]) / "lib/holycrab/installation.json", {})
+print(json.dumps(cli.installer_settings(previous, **settings)))
+'@
+    $SettingsHelperPath = Join-Path $TempDir "settings.py"
+    [IO.File]::WriteAllText($SettingsHelperPath, $SettingsHelper, [Text.UTF8Encoding]::new($false))
+    $SettingsArguments = @($Python.Arguments) + @("-X", "utf8", $SettingsHelperPath, $Downloaded["holycrab_cli.py"])
+    $SavedOutputEncoding = $OutputEncoding
+    try {
+        $OutputEncoding = [Text.UTF8Encoding]::new($false)
+        $Settings = @{ prefix = $Prefix; agents = $InstallAgents; mcp = $InstallMcp } |
+            ConvertTo-Json -Compress | & $Python.Executable @SettingsArguments | ConvertFrom-Json
+        if ($LASTEXITCODE -ne 0) { throw "Could not resolve the existing installation settings" }
+    } finally { $OutputEncoding = $SavedOutputEncoding }
+    $InstallAgents = $Settings.agents
+    $InstallMcp = $Settings.mcp
 
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
     $PreviousManifestPath = Join-Path $LibDir "installation.json"
@@ -184,10 +207,10 @@ try {
     if (Test-Path -LiteralPath $LibDir) { Copy-Item -LiteralPath $LibDir -Destination (Join-Path $BackupDir "lib") -Recurse }
     $ExistingLauncher = Join-Path $BinDir "holycrab.cmd"
     if (Test-Path -LiteralPath $ExistingLauncher) { Copy-Item -LiteralPath $ExistingLauncher -Destination (Join-Path $BackupDir "holycrab.cmd") }
-    if (Test-Path -LiteralPath (Join-Path $HOME ".agents\skills\holycrab")) {
+    if (",$InstallAgents," -like "*,codex,*" -and (Test-Path -LiteralPath (Join-Path $HOME ".agents\skills\holycrab"))) {
         Copy-Item -LiteralPath (Join-Path $HOME ".agents\skills\holycrab") -Destination (Join-Path $BackupDir "codex-skill") -Recurse
     }
-    if (Test-Path -LiteralPath (Join-Path $HOME ".claude\skills\holycrab")) {
+    if (",$InstallAgents," -like "*,claude,*" -and (Test-Path -LiteralPath (Join-Path $HOME ".claude\skills\holycrab"))) {
         Copy-Item -LiteralPath (Join-Path $HOME ".claude\skills\holycrab") -Destination (Join-Path $BackupDir "claude-skill") -Recurse
     }
     Write-HolyCrabProgress "[3/5] Installing verified program files and configuring PATH..."
@@ -285,24 +308,39 @@ try {
     Write-Host ""
     Write-Host "PATH is ready in this PowerShell session and future sessions."
 } finally {
+    $RecoveryComplete = $true
     if ($InstallStarted -and -not $InstallComplete) {
-        Remove-Item -LiteralPath $LibDir -Recurse -Force -ErrorAction SilentlyContinue
-        if (Test-Path -LiteralPath (Join-Path $BackupDir "lib")) { Copy-Item -LiteralPath (Join-Path $BackupDir "lib") -Destination $LibDir -Recurse }
-        Remove-Item -LiteralPath (Join-Path $BinDir "holycrab.cmd") -Force -ErrorAction SilentlyContinue
-        if (Test-Path -LiteralPath (Join-Path $BackupDir "holycrab.cmd")) { Copy-Item -LiteralPath (Join-Path $BackupDir "holycrab.cmd") -Destination (Join-Path $BinDir "holycrab.cmd") }
-        foreach ($Skill in @(@{ Backup = "codex-skill"; Target = (Join-Path $HOME ".agents\skills\holycrab") },
-                              @{ Backup = "claude-skill"; Target = (Join-Path $HOME ".claude\skills\holycrab") })) {
-            Remove-Item -LiteralPath $Skill.Target -Recurse -Force -ErrorAction SilentlyContinue
-            if (Test-Path -LiteralPath (Join-Path $BackupDir $Skill.Backup)) { Copy-Item -LiteralPath (Join-Path $BackupDir $Skill.Backup) -Destination $Skill.Target -Recurse }
+        try {
+            $RestoreHelper = @'
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("holycrab_rollback", sys.argv[1])
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+cli.restore_installer_files(pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]),
+    [a for a in sys.argv[4].split(",") if a != "none"])
+'@
+            $RestorePath = Join-Path $TempDir "restore.py"
+            [IO.File]::WriteAllText($RestorePath, $RestoreHelper, [Text.UTF8Encoding]::new($false))
+            $RestoreArguments = @($Python.Arguments) + @("-X", "utf8", $RestorePath, $Downloaded["holycrab_cli.py"], $BackupDir, $Prefix, $InstallAgents)
+            & $Python.Executable @RestoreArguments
+            if ($LASTEXITCODE -ne 0) { throw "Could not restore all managed files and Agent connections" }
+        } catch {
+            $RecoveryComplete = $false
+            Write-Warning $_.Exception.Message
         }
-        if ($PathAddedThisRun) {
+        try { if ($PathAddedThisRun) {
             $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
             $Kept = @($UserPath -split ";" | Where-Object {
                 $_ -and $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ine $BinDir.TrimEnd([IO.Path]::DirectorySeparatorChar)
             })
             [Environment]::SetEnvironmentVariable("Path", ($Kept -join ";"), "User")
+            $env:Path = (@($env:Path -split ";" | Where-Object { $_ -and $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ine $BinDir.TrimEnd([IO.Path]::DirectorySeparatorChar) }) -join ";")
+        } } catch { $RecoveryComplete = $false; Write-Warning $_.Exception.Message }
+        if ($RecoveryComplete) {
+            Write-Warning "HolyCrab installation failed; previous managed files were restored."
+        } else {
+            Write-Warning "HolyCrab installation failed; recovery is incomplete. Backup retained: $BackupDir"
         }
-        Write-Warning "HolyCrab installation failed; previous managed files were restored."
     }
-    Remove-Item -LiteralPath $TempDir -Recurse -Force -ErrorAction SilentlyContinue
+    if ($RecoveryComplete) { Remove-Item -LiteralPath $TempDir -Recurse -Force -ErrorAction SilentlyContinue }
 }
