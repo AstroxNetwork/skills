@@ -6,3 +6,4 @@
 /holycrab/references/*.json text eol=lf
 /holycrab/scripts/*.py text eol=lf
 /holycrab/scripts/vendor/LICENSE.segno text eol=lf
+/tools/validate_generate_contract.py text eol=lf
