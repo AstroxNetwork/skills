@@ -93,7 +93,7 @@ macOS/Linux 上这个文件只有当前电脑用户可读写；Windows 使用当
 
 ### 连接账号后向 Agent 提出需求
 
-`v0.4.4` 会在连接成功后介绍可用场景，并询问你想先完成哪项工作。例如：
+`v0.5.0` 会在连接成功后介绍可用场景，并询问你想先完成哪项工作。例如：
 
 > 帮我把这些产品照片制作成电商商品主图，突出产品卖点，风格简洁。
 >
@@ -126,7 +126,7 @@ holycrab models show dreamina-seedance-2-5-260628
 holycrab models show MiniMax-H3
 ```
 
-先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.4.4` 的模型快照版本为 `2026-09-14`。`estimate` 和 `create` 共用同一套本地校验，已知非法组合不会发到服务端。
+先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.5.0` 的模型快照版本为 `2026-10-09`。`estimate` 和 `create` 共用同一套本地校验，已知非法组合不会发到服务端。
 
 ## 4. 第一次生成图片
 
@@ -199,7 +199,7 @@ CLI 先显示解析后的真实路径、名称、类型、大小和已知时长�
 
 ### 真人素材：先扫码授权，再上传
 
-本节对应 `v0.4.4`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
+本节对应 `v0.5.0`。线上需要配套 API 和官方回调页；不要把单元测试通过当成真实授权通过。
 
 固定七步：
 
@@ -286,7 +286,7 @@ holycrab generate estimate --kind video \
 
 ```bash
 holycrab tasks list
-holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type AUDIO
+holycrab tasks list --start-date 2026-09-01 --end-date 2026-10-09 --type AUDIO
 holycrab tasks get TASK_ID
 holycrab tasks wait TASK_ID --timeout 600
 holycrab download TASK_ID --output ./result.mp4
@@ -353,7 +353,7 @@ holycrab update
 holycrab update --yes
 ```
 
-只接受版本更高、非 Draft、非 prerelease 的严格语义版本。更新器校验 GitHub Release 的 SHA-256 `digest`，安装器再校验内部文件；更新后的 `doctor` 不通过会恢复旧托管文件和原配置。`v0.4.0` 没有更新命令，需要重新运行正式安装命令升级至 `v0.4.4`。受管或离线环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
+只接受版本更高、非 Draft、非 prerelease 的严格语义版本。更新器校验 GitHub Release 的 SHA-256 `digest`，安装器再校验内部文件；更新后的 `doctor` 不通过会恢复旧托管文件和原配置。`v0.4.0` 没有更新命令，需要重新运行正式安装命令升级至 `v0.5.0`。受管或离线环境可设置 `HOLYCRAB_NO_UPDATE_CHECK=1`。
 
 ## 11. 安全卸载
 
@@ -399,3 +399,13 @@ HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政
 - [Privacy Policy](https://holycrab.ai/privacy/)
 - [Terms of Service](https://holycrab.ai/terms/)
 - 普通使用问题：`cs@holycrab.ai`
+
+## 新增模型（v0.5.0）
+
+先运行 `holycrab models list` 或 `holycrab models show MODEL_ID`。本版有 7 个视频、4 个图片、1 个音频模型，模型列表无需联网。
+
+- MiniMax H3 Max：`MiniMax-H3-Max`，480P / 768P，5–15 整数秒；使用 `duration/resolution`。仅音频参考不支持。
+- Agnes Video 2.5：`agnes-video-2.5`，720P / 1080P / 1K / 2K，4–12 整数秒；使用 `seconds/size/ratio`。1K 仅 1:1，允许仅音频及仅尾帧。
+- Agnes Image 2.5 Flash：`agnes-image-2.5-flash`，1K / 2K / 3K / 4K；使用 `size/ratio/imageAssetIds`，不支持 `outputFormat` 或自定义尺寸。
+
+账户状态中的 `disabled_models` 只描述本次查询。缺失或异常表示权限未知；先估算积分，遇到无权限时停止，不换模型重发。新增模型的完整请求见 [API 文档](holycrab/references/api.md)。

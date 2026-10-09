@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "source": {
     "name": "HolyCrab Public Capability Registry",
-    "version": "2026-09-14",
-    "publishedAt": "2026-09-14"
+    "version": "2026-10-09",
+    "publishedAt": "2026-10-09"
   },
   "requestSchemas": {
     "seedanceVideo": {
@@ -41,6 +41,212 @@
         "audioAssetIds": {"type": "array", "maxItems": 3, "items": {"type": "string"}, "uniqueItems": true},
         "firstFrameAssetId": {"type": "string"},
         "lastFrameAssetId": {"type": "string"}
+      }
+    },
+    "minimaxMaxVideo": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt",
+        "duration",
+        "resolution"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "MiniMax-H3-Max"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "480P",
+            "768P"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 15
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "adaptive",
+            "21:9",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16"
+          ]
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "maxItems": 9,
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "videoAssetIds": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "audioAssetIds": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "firstFrameAssetId": {
+          "type": "string"
+        },
+        "lastFrameAssetId": {
+          "type": "string"
+        }
+      }
+    },
+    "agnesVideo": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt",
+        "size",
+        "ratio",
+        "seconds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "agnes-video-2.5"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "720P",
+            "1080P",
+            "1K",
+            "2K"
+          ]
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1",
+            "4:3",
+            "3:4",
+            "21:9"
+          ]
+        },
+        "seconds": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 12
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "videoAssetIds": {
+          "type": "array",
+          "maxItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "audioAssetIds": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "firstFrameAssetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lastFrameAssetId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "agnesImage": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt",
+        "size",
+        "ratio"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "agnes-image-2.5-flash"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "1K",
+            "2K",
+            "3K",
+            "4K"
+          ]
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "1:1",
+            "3:4",
+            "4:3",
+            "16:9",
+            "9:16",
+            "2:3",
+            "3:2",
+            "21:9"
+          ]
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "maxItems": 14,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
       }
     },
     "imageGeneration": {
@@ -167,6 +373,91 @@
         "audioOnlyReference": false,
         "generateAudioSupported": false
       }
+    },
+    {
+      "id": "MiniMax-H3-Max",
+      "label": "MiniMax H3 Max",
+      "requestSchemaRef": "minimaxMaxVideo",
+      "resolutions": [
+        "480P",
+        "768P"
+      ],
+      "durationSeconds": {
+        "min": 5,
+        "max": 15
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "adaptive",
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audio": 3,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15
+      },
+      "rules": {
+        "textOnlyRequiresConcreteRatio": true,
+        "frameModeForcesAdaptive": true,
+        "lastFrameWithoutFirstFrame": true,
+        "framesAndReferencesMutuallyExclusive": true,
+        "audioOnlyReference": false,
+        "generateAudioSupported": false
+      }
+    },
+    {
+      "id": "agnes-video-2.5",
+      "label": "Agnes Video 2.5",
+      "requestSchemaRef": "agnesVideo",
+      "resolutions": [
+        "720P",
+        "1080P",
+        "1K",
+        "2K"
+      ],
+      "resolutionFieldInRequest": "size",
+      "durationFieldInRequest": "seconds",
+      "durationSeconds": {
+        "min": 4,
+        "max": 12
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "21:9"
+      ],
+      "referenceLimits": {
+        "images": 8,
+        "videos": 1,
+        "audio": 3,
+        "combinedVideoSeconds": 12,
+        "combinedAudioSecondsMin": 2,
+        "combinedAudioSeconds": 12
+      },
+      "rules": {
+        "lastFrameWithoutFirstFrame": true,
+        "framesAndReferencesMutuallyExclusive": true,
+        "audioOnlyReference": true,
+        "generateAudioSupported": false,
+        "size1KRequiresSquareRatio": true
+      }
     }
   ],
   "imageModels": [
@@ -203,6 +494,34 @@
       "referenceLimits": {"images": 14, "maxBytesEach": 31457280, "minEdgePixelsExclusive": 14, "maxPixelsEach": 36000000},
       "referenceFormats": ["jpeg", "png", "webp", "bmp", "tiff", "gif", "heic", "heif"],
       "outputFormatSupported": false
+    },
+    {
+      "id": "agnes-image-2.5-flash",
+      "label": "Agnes Image 2.5 Flash",
+      "requestSchemaRef": "agnesImage",
+      "sizes": [
+        "1K",
+        "2K",
+        "3K",
+        "4K"
+      ],
+      "ratios": [
+        "1:1",
+        "3:4",
+        "4:3",
+        "16:9",
+        "9:16",
+        "2:3",
+        "3:2",
+        "21:9"
+      ],
+      "referenceLimits": {
+        "images": 14,
+        "imageCountLimitSource": "HolyCrab product limit"
+      },
+      "referenceFieldInRequest": "imageAssetIds",
+      "outputFormatSupported": false,
+      "customSizeSupported": false
     }
   ],
   "audioModels": [

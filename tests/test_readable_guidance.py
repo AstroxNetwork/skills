@@ -139,7 +139,7 @@ class ReadableGuidanceTests(unittest.TestCase):
         with patch.object(cli, "send") as transport:
             guidance = cli.local_health_report()["onboarding"]
         text = cli.format_onboarding(guidance, installed=True)
-        self.assertIn("HolyCrab 0.4.4 installed", text)
+        self.assertIn("HolyCrab 0.5.0 installed", text)
         self.assertIn("Next: verify your account", text)
         self.assertIn("holycrab auth status", text)
         self.assertNotIn("account connected", text)
@@ -233,7 +233,7 @@ class ReadableGuidanceTests(unittest.TestCase):
             with self.subTest(configured=configured):
                 guidance = cli.onboarding_guidance(configured=configured)
                 text = cli.format_onboarding(guidance, installed=True)
-                self.assertIn("HolyCrab 0.4.4 installed", text)
+                self.assertIn("HolyCrab 0.5.0 installed", text)
                 self.assertIn(guidance["command"], text)
                 self.assertIn("Create product listing images", text)
                 self.assertNotIn("For Agents", text)
@@ -392,7 +392,7 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_upgrade_summary_does_not_repeat_first_use_introduction(self):
         output = cli.format_onboarding(cli.onboarding_guidance(configured=True), installed=True, upgrading=True)
-        self.assertIn("HolyCrab 0.4.4 installed", output)
+        self.assertIn("HolyCrab 0.5.0 installed", output)
         self.assertIn("holycrab auth status", output)
         self.assertNotIn("Create product listing images", output)
         self.assertNotIn("What would you like", output)

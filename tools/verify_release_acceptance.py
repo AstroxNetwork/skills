@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Verify release acceptance; local/reused evidence is authorized only for v0.4.4."""
+"""Verify release acceptance and explicitly scoped, unchanged-core reuse evidence."""
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import re
@@ -10,6 +11,43 @@ from datetime import datetime
 from pathlib import Path
 
 LOCAL_EVIDENCE_TAG = "v0.4.4"
+REUSED_CORE_TAG = "v0.5.0"
+REUSED_CORE_HASH = "dde70a8d891d97c6837276e9a3daa32016f7ca987e9cc92adec620e0912da94a"
+MODEL_UPDATE_NODES = {"VERSION", "GENERATION_ROUTES", "MODEL_GENERATION_ROUTES", "PUBLIC_ACCOUNT_FIELDS",
+                      "public_account_data", "format_terminal_result", "validate_generation_request", "generation_endpoints"}
+
+
+def unchanged_core_fingerprint(source):
+    tree = ast.parse(source)
+    tree.body = [node for node in tree.body if not (
+        isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in MODEL_UPDATE_NODES
+        or isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id in MODEL_UPDATE_NODES for target in node.targets)
+    )]
+    # AST dump defaults changed in 3.13; serialize stable fields explicitly.
+    def canonical(value):
+        if isinstance(value, ast.AST):
+            return [type(value).__name__, [[name, canonical(item)] for name, item in ast.iter_fields(value)
+                    if name != "type_params" or item]]
+        if isinstance(value, list):
+            return [canonical(item) for item in value]
+        if isinstance(value, bytes):
+            return ["bytes", value.hex()]
+        if value is Ellipsis:
+            return ["ellipsis"]
+        return value
+    return hashlib.sha256(json.dumps(canonical(tree), ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def validate_unchanged_core(flow, root):
+    evidence = flow.get("unchangedCore")
+    if root is None or not isinstance(evidence, dict) or evidence.get("baselineVersion") != "v0.4.4":
+        raise ValueError("v0.5.0 reuse requires the checked v0.4.4 core baseline and local source")
+    if evidence.get("sha256") != REUSED_CORE_HASH:
+        raise ValueError("Unchanged-core evidence does not match the verified baseline")
+    actual = unchanged_core_fingerprint((root / "holycrab/scripts/holycrab_cli.py").read_text(encoding="utf-8"))
+    if actual != REUSED_CORE_HASH:
+        raise ValueError("Real-person/upload or other non-model core code changed; fresh acceptance is required")
+
 CONTRACT_FILES = ("holycrab/scripts/holycrab_cli.py", "holycrab/references/capabilities.json",
                   "tools/validate_generate_contract.py")
 
@@ -49,6 +87,12 @@ def validate(record, tag, *, root=None, contract_only=False):
         if not all(isinstance(flow.get(k), str) and flow[k].strip() for k in ("operator", "confirmedAt", "notes")):
             raise ValueError("Reused acceptance requires explicit operator confirmation")
         datetime.fromisoformat(flow["confirmedAt"].replace("Z", "+00:00"))
+        return
+    if tag == REUSED_CORE_TAG and flow.get("status") == "previously-accepted" and flow.get("retestWaived") is True:
+        if not all(isinstance(flow.get(k), str) and flow[k].strip() for k in ("operator", "confirmedAt", "notes")):
+            raise ValueError("Reused acceptance requires explicit operator confirmation")
+        datetime.fromisoformat(flow["confirmedAt"].replace("Z", "+00:00"))
+        validate_unchanged_core(flow, root)
         return
     if flow.get("status") != "passed":
         raise ValueError("Actual real-person authorization and upload acceptance is still pending; do not release")

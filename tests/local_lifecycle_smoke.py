@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,6 +13,7 @@ import sys
 def main():
     root = Path(sys.argv[1]).resolve()
     source = Path(__file__).resolve().parents[1]
+    expected_version = re.search(r'^VERSION = "([^"]+)"$', (source / 'holycrab/scripts/holycrab_cli.py').read_text(), re.MULTILINE).group(1)
     prefix = Path.home() / '.local'
     config = Path.home() / '.config/holycrab'
     launcher = prefix / 'bin/holycrab'
@@ -32,7 +34,7 @@ def main():
     def install():
         result = subprocess.run(['sh', str(source / 'install.sh')], env=env, text=True, capture_output=True)
         assert result.returncode == 0, 'Installation failed; local recovery backup retained'
-        assert subprocess.check_output([str(launcher), '--version'], env=env, text=True).strip() == 'holycrab 0.4.4'
+        assert subprocess.check_output([str(launcher), '--version'], env=env, text=True).strip() == 'holycrab ' + expected_version
     install()
     print('PASS local candidate installation', flush=True)
     try:

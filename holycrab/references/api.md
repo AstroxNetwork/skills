@@ -4,7 +4,7 @@
 >
 > Base URL：`https://abgzfc.holycrab.ai`
 >
-> 更新日期：2026-09-14（与本版 CLI 能力快照同步）
+> 更新日期：2026-10-09（与本版 CLI 能力快照同步）
 >
 > 机器可读快照：[capabilities.json](capabilities.json)
 
@@ -311,7 +311,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/generation' \
 
 返回：`frozenCredit: integer`。该接口只预估，不创建任务。
 
-### 5.3 提交 MiniMax H3 视频生成任务
+### 5.3 提交 MiniMax H3 / H3 Max 视频生成任务
 
 `POST /api/tasks/minimax-generation`
 
@@ -319,16 +319,16 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/generation' \
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `model` | string | 是 | 仅支持 `MiniMax-H3` |
+| `model` | string | 是 | `MiniMax-H3` 或 `MiniMax-H3-Max` |
 | `prompt` | string | 是 | 非空提示词 |
-| `resolution` | string | 是 | `768P` 或 `2K` |
-| `duration` | integer | 是 | `4`–`15` 秒 |
+| `resolution` | string | 是 | H3：`768P` / `2K`；Max：`480P` / `768P` |
+| `duration` | integer | 是 | H3：`4`–`15` 秒；Max：`5`–`15` 秒 |
 | `ratio` | string | 条件必填 | `adaptive`、`21:9`、`16:9`、`4:3`、`1:1`、`3:4`、`9:16` |
 | `imageAssetIds` | string[] | 否 | 最多 9 张账户图片素材 |
 | `videoAssetIds` | string[] | 否 | 最多 3 段账户视频素材 |
 | `audioAssetIds` | string[] | 否 | 最多 3 段账户音频素材 |
 | `firstFrameAssetId` | string | 否 | 首帧图片素材；可单独使用 |
-| `lastFrameAssetId` | string | 否 | 尾帧图片素材；H3 允许没有首帧 |
+| `lastFrameAssetId` | string | 否 | 尾帧图片素材；H3 和 Max 均允许没有首帧 |
 
 规则：
 
@@ -337,7 +337,8 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/generation' \
 3. 提供任一首尾帧时强制使用 `adaptive`，且不能再提供图片、视频或音频参考列表。
 4. 音频不能作为唯一参考类型；必须同时提供至少一张图片或一段视频。
 5. 每段参考视频和音频为 2–15 秒；两类素材的合计时长分别不能超过 15 秒。
-6. H3 不支持 `generateAudio`，请求中不要发送该字段。
+6. 两个模型均不接受 `generateAudio`，请求中不要发送该字段。Max 不接受提示词扩写参数。
+7. Max 的账户权限由服务端预估和提交接口校验；被拒绝时不能改用 H3 重发。
 
 ```bash
 curl -sS 'https://abgzfc.holycrab.ai/api/tasks/minimax-generation' \
@@ -352,13 +353,38 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/minimax-generation' \
   }'
 ```
 
-### 5.4 预估 MiniMax H3 冻结积分
+### 5.4 预估 MiniMax H3 / H3 Max 冻结积分
 
 `POST /api/tasks/minimax-generation/freeze-credit`
 
 鉴权：API Key
 
 请求体必须与 5.3 的正式提交完全一致，包括 `prompt`、画幅和全部素材字段；服务端运行同一套请求与素材校验。返回：`frozenCredit: integer`。该接口只预估，不创建任务。
+
+---
+
+### 5.5 Agnes 视频与图片生成
+
+`POST /api/tasks/agnes-generation/freeze-credit` 预估，`POST /api/tasks/agnes-generation` 提交。均使用 API Key；预估请求与提交请求完全一致。预估返回 `frozenCredit: integer`，不创建任务。每次提交创建一个任务，费用完全由服务端预估与结算。
+
+| 参数 | Agnes Video 2.5 | Agnes Image 2.5 Flash |
+| --- | --- | --- |
+| `model` | `agnes-video-2.5` | `agnes-image-2.5-flash` |
+| `prompt` | 必填非空字符串 | 必填非空字符串 |
+| `size` | `720P` / `1080P` / `1K` / `2K` | `1K` / `2K` / `3K` / `4K` |
+| `ratio` | `16:9` / `9:16` / `1:1` / `4:3` / `3:4` / `21:9`；1K 仅 1:1 | 同左，另支持 `2:3` / `3:2` |
+| `seconds` | 必填 4–12 整数秒 | 不接受 |
+| `imageAssetIds` | 最多 8 张账户图片素材 | 最多 14 张（HolyCrab 产品上限） |
+| `videoAssetIds` | 最多 1 个，2–12 秒 | 不接受 |
+| `audioAssetIds` | 最多 3 段，合计 2–12 秒；允许仅音频参考 | 不接受 |
+| `firstFrameAssetId` / `lastFrameAssetId` | 任意一个即可；与参考数组互斥 | 不接受 |
+
+不要把其他模型的 `duration`、`resolution`、`videoTaskType`、`generateAudio`、`imageUrls` 或 `outputFormat` 发送给 Agnes。素材 ID 必须属于当前账户；实际时长和素材规则以服务端校验为准。已下架的 `agnes-video-v2.0` 和 `agnes-video-2.5-flash` 不支持新建。
+
+```bash
+holycrab generate estimate --kind video --json '{"model":"agnes-video-2.5","prompt":"A red crab walks along a sunny beach","size":"720P","seconds":4,"ratio":"16:9"}'
+holycrab generate estimate --kind image --json '{"model":"agnes-image-2.5-flash","prompt":"A red crab on a sunny beach","size":"1K","ratio":"1:1"}'
+```
 
 ---
 
@@ -504,7 +530,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/audio-generation' \
 
 ## 9. 真人授权与真人素材
 
-本节对应 `v0.4.4` 工具能力，需要配套 API 和官方回调页已部署。工具不替本人完成验证；真人授权也不代替素材上传确认或生成任务的积分确认。所有账户操作使用现有 API Key，公共 ID 为 1–64 位字母或数字。
+本节对应 `v0.5.0` 工具能力，需要配套 API 和官方回调页已部署。工具不替本人完成验证；真人授权也不代替素材上传确认或生成任务的积分确认。所有账户操作使用现有 API Key，公共 ID 为 1–64 位字母或数字。
 
 ### 9.1 发起授权
 
@@ -598,3 +624,7 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 - Seedream 5.0 Pro / Lite / 4.5 的图片尺寸、参考图、格式约束。
 - 语音生成的参考对象、配置字段与兼容别名。
 - 素材预签名上传、登记和按 URL 创建的完整流程。
+
+## 账户模型权限
+
+`GET /api/user/me` 的公开账户输出包含有效的 `disabled_models` 字符串数组。空数组表示这次账户查询没有声明禁用模型；字段缺失或格式异常表示权限未知，不表示全部开放。目录仅说明版本能力；始终以预估和提交接口的权限校验为准，权限错误不触发模型替换。

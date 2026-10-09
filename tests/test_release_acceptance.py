@@ -103,3 +103,36 @@ class LocalContractEvidenceTests(unittest.TestCase):
                 "status": "previously-accepted", "operator": "user", "retestWaived": True,
                 "confirmedAt": "2026-09-16T15:56:01Z", "notes": "Prior acceptance",
             }}, "v0.4.4", root=self.root)
+
+
+class ModelOnlyReuseTests(unittest.TestCase):
+    def setUp(self):
+        import json
+        self.root = Path(__file__).parents[1]
+        self.record = json.loads((self.root / "docs/release-acceptance/v0.5.0.json").read_text())
+
+    def test_explicit_current_confirmation_with_unchanged_core_passes(self):
+        validate(self.record, "v0.5.0", root=self.root)
+
+    def test_missing_proof_confirmation_or_wrong_version_fails(self):
+        for field in ("unchangedCore", "confirmedAt", "retestWaived"):
+            record = copy.deepcopy(self.record)
+            record["realHumanCoreFlow"].pop(field)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                validate(record, "v0.5.0", root=self.root)
+        record = copy.deepcopy(self.record)
+        record["version"] = "v0.5.1"
+        with self.assertRaises(ValueError):
+            validate(record, "v0.5.1", root=self.root)
+        with self.assertRaises(ValueError):
+            validate(self.record, "v0.5.0", root=self.root, contract_only=True)
+
+    def test_upload_core_change_invalidates_reuse(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            file = root / "holycrab/scripts/holycrab_cli.py"
+            file.parent.mkdir(parents=True)
+            source = (self.root / "holycrab/scripts/holycrab_cli.py").read_text()
+            file.write_text(source.replace('def create_authorization(name: str)', 'def create_authorization(name: bytes)'))
+            with self.assertRaisesRegex(ValueError, "core code changed"):
+                validate(self.record, "v0.5.0", root=root)

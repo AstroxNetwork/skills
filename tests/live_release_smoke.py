@@ -71,7 +71,7 @@ class LiveRun:
             raise RuntimeError('Real-person live tools are excluded')
         messages = [
             {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25',
-                'capabilities': {}, 'clientInfo': {'name': 'release-acceptance', 'version': '0.4.4'}}},
+                'capabilities': {}, 'clientInfo': {'name': 'release-acceptance', 'version': '0.5.0'}}},
             {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
             {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'},
             {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': name, 'arguments': arguments}},

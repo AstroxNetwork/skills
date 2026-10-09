@@ -6,9 +6,9 @@
 - 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
 - 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.4.4` 内置 `2026-09-14` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
+它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.5.0` 内置 `2026-10-09` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
 
-`v0.4.4` 修复重装和更新时丢失 Agent 选择的问题，提供更新失败原因，并完善程序和 Agent 连接的回滚。保留业务场景引导、客户端发现及独立的测试下载引用。官方稳定入口仅在对应 Release 发布并验证后同步，不安装 Draft 或测试分支。
+`v0.5.0` 新增 MiniMax H3 Max、Agnes Video 2.5 和 Agnes Image 2.5 Flash，CLI 与本地 MCP 共用 12 个模型的能力与参数校验。账户查询返回有效的 `disabled_models`；缺失或异常表示权限未知，最终权限和积分以预估接口为准。保留既有安装、更新回滚与重复提交保护。官方稳定入口仅在对应 Release 发布并验证后同步，不安装 Draft 或测试分支。
 
 `v0.4.1` 增加启动自检、每日更新提示、付费提交防重、严格下载防护和真人素材两阶段批量上传。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
@@ -91,7 +91,7 @@ holycrab auth status
 $ref='COMMIT_SHA'; $oldRef=$env:HOLYCRAB_INSTALL_REF; try { $env:HOLYCRAB_INSTALL_REF=$ref; & ([scriptblock]::Create((irm "https://raw.githubusercontent.com/AstroxNetwork/skills/$ref/install.ps1"))) } finally { $env:HOLYCRAB_INSTALL_REF=$oldRef }
 ```
 
-此命令面向原生 Windows PowerShell，先确认电脑已有 Python 3.10+。测试安装仍校验 `0.4.4` 版本与文件哈希；正式更新会清除临时下载引用，仅安装通过发布校验的稳定版。
+此命令面向原生 Windows PowerShell，先确认电脑已有 Python 3.10+。测试安装仍校验 `0.5.0` 版本与文件哈希；正式更新会清除临时下载引用，仅安装通过发布校验的稳定版。
 
 ## 常用命令
 
@@ -109,7 +109,7 @@ holycrab generate create --kind image \
   --json '{"prompt":"A crab astronaut","model":"seedream-5-0-lite-260128","size":"2K"}'
 
 holycrab tasks list
-holycrab tasks list --start-date 2026-09-01 --end-date 2026-09-14 --type VIDEO
+holycrab tasks list --start-date 2026-09-01 --end-date 2026-10-09 --type VIDEO
 holycrab tasks get TASK_ID
 holycrab tasks wait TASK_ID --timeout 600
 holycrab generate attempts list

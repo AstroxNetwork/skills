@@ -1,0 +1,15 @@
+{
+  "version": "v0.5.0",
+  "realHumanCoreFlow": {
+    "status": "previously-accepted",
+    "operator": "Ken",
+    "retestWaived": true,
+    "testedAt": null,
+    "confirmedAt": "2026-10-09T12:43:48.233484+00:00",
+    "notes": "User confirms this flow was tested previously and approves reuse for this model-only release because real-person authorization and upload code is unchanged. No new live real-person test is claimed; v0.4.4 local Generate contract exception is not reused.",
+    "unchangedCore": {
+      "baselineVersion": "v0.4.4",
+      "sha256": "dde70a8d891d97c6837276e9a3daa32016f7ca987e9cc92adec620e0912da94a"
+    }
+  }
+}

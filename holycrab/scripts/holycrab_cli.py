@@ -48,7 +48,7 @@ except ImportError:  # pragma: no cover - POSIX runtime
     msvcrt = None
 
 
-VERSION = "0.4.4"
+VERSION = "0.5.0"
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
 PUBLIC_ACCOUNT_URL = "https://generate.holycrab.ai/user-tokens"
 REAL_HUMAN_CALLBACK_URL = "https://generate.holycrab.ai/real-human-authorization/callback"
@@ -89,6 +89,23 @@ GENERATION_ROUTES = {
         "/api/tasks/audio-generation/freeze-credit",
         "/api/tasks/audio-generation",
     ),
+    "agnesGeneration": (
+        "/api/tasks/agnes-generation/freeze-credit",
+        "/api/tasks/agnes-generation",
+    ),
+}
+MODEL_GENERATION_ROUTES = {
+    "seedance-2-0": "seedanceVideo",
+    "seedance-2-0-fast": "seedanceVideo",
+    "seedance-2-0-mini": "seedanceVideo",
+    "dreamina-seedance-2-5-260628": "seedanceVideo",
+    "MiniMax-H3": "minimaxVideo",
+    "MiniMax-H3-Max": "minimaxVideo",
+    "seedream-5-0-pro-260628": "imageGeneration",
+    "seedream-5-0-lite-260128": "imageGeneration",
+    "seedream-4-5-251128": "imageGeneration",
+    "agnes-video-2.5": "agnesGeneration",
+    "agnes-image-2.5-flash": "agnesGeneration",
 }
 LATEST_INITIALIZE_PROTOCOL = "2025-11-25"
 SUPPORTED_INITIALIZE_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
@@ -124,7 +141,7 @@ URL_IN_TEXT_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 PRIVATE_FIELD_IN_TEXT = re.compile(
     r'''(?i)((?:byted[_-]?token|ark[_-]?(?:group|asset|account)[_-]?id|api[_-]?key|object[_-]?key)\s*["']?\s*[:=]\s*["']?)([^\s,;"'&<>}]+)'''
 )
-PUBLIC_ACCOUNT_FIELDS = ("username", "nickname", "credit")
+PUBLIC_ACCOUNT_FIELDS = ("username", "nickname", "credit", "disabled_models")
 PUBLIC_TASK_FIELDS = (
     "uniqId",
     "taskId",
@@ -674,7 +691,11 @@ def public_envelope(response: Any, projector: Any) -> Any:
 def public_account_data(value: Any) -> Any:
     if not isinstance(value, dict):
         return value
-    return {key: value[key] for key in PUBLIC_ACCOUNT_FIELDS if key in value}
+    output = {key: value[key] for key in PUBLIC_ACCOUNT_FIELDS if key in value and key != "disabled_models"}
+    disabled = value.get("disabled_models")
+    if isinstance(disabled, list) and all(isinstance(item, str) and item.strip() for item in disabled):
+        output["disabled_models"] = list(dict.fromkeys(item.strip() for item in disabled))
+    return output
 
 
 def valid_account_payload(value: Any) -> bool:
@@ -1062,9 +1083,11 @@ def format_terminal_result(value: Any, *, introduce_onboarding: bool = False, vi
                  [format_onboarding(value["onboarding"], introduce=introduce_onboarding)])
         account = value.get("account", value)
         if isinstance(account, dict):
-            details = {key: account[key] for key in PUBLIC_ACCOUNT_FIELDS if key in account}
+            details = public_account_data(account)
             if details:
                 lines += [""] + terminal_fields(details)
+            if "disabled_models" not in details:
+                lines += ["Model permissions: unknown; check a generation estimate before submitting."]
         if value.get("nextAction") and (account_failed or
                 value["nextAction"].get("command") != value["onboarding"].get("command")):
             lines += terminal_next_action(value["nextAction"])
@@ -1389,10 +1412,10 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
             raise SystemExit(f"Image resolution {resolution} is not supported by {model['id']}")
 
     if kind == "video":
-        resolution = payload.get("resolution")
+        resolution = payload.get(model.get("resolutionFieldInRequest", "resolution"))
         if resolution not in model.get("resolutions", []):
             raise SystemExit(f"Resolution {resolution} is not supported by {model['id']}")
-        duration = payload.get("duration")
+        duration = payload.get(model.get("durationFieldInRequest", "duration"))
         explicit_task_type = payload.get("videoTaskType")
         task_type = explicit_task_type or ("frames" if payload.get("firstFrameAssetId") else "reference")
         if task_type not in model.get("taskTypes", ["reference", "frames"]):
@@ -1411,29 +1434,32 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
         last_frame = bool(payload.get("lastFrameAssetId"))
         frame_mode = first_frame or last_frame
         references = bool(images or videos or audios)
-        if last_frame and not first_frame and model["id"] != "MiniMax-H3":
+        rules = model.get("rules", {})
+        if last_frame and not first_frame and not rules.get("lastFrameWithoutFirstFrame", False):
             raise SystemExit("lastFrameAssetId requires firstFrameAssetId")
         if frame_mode and references:
             raise SystemExit("Frame assets and reference assets cannot be combined")
-        if task_type == "frames" and not first_frame and model["id"] != "MiniMax-H3":
+        if task_type == "frames" and not first_frame and not rules.get("lastFrameWithoutFirstFrame", False):
             raise SystemExit("Video frame requests require firstFrameAssetId")
         limits = model.get("referenceLimits", {})
         for label, values, key in (("image", images, "images"), ("video", videos, "videos"), ("audio", audios, "audio")):
             maximum = limits.get(key)
             if type(maximum) is int and len(set(values)) > maximum:
                 raise SystemExit(f"Too many {label} references for {model['id']}")
-        if model["id"] == "MiniMax-H3":
+        if rules.get("textOnlyRequiresConcreteRatio", False):
             ratio = payload.get("ratio")
             if frame_mode:
                 payload["ratio"] = "adaptive"
             if not frame_mode and not references and (ratio is None or ratio == "adaptive"):
-                raise SystemExit("MiniMax H3 text-only requests require a concrete ratio")
+                raise SystemExit(f"{model['label']} text-only requests require a concrete ratio")
             if references and ratio is None:
                 payload["ratio"] = "adaptive"
             if audios and not images and not videos:
-                raise SystemExit("MiniMax H3 cannot use audio-only references")
-        elif audios and not images and not videos and model["id"] != "dreamina-seedance-2-5-260628":
+                raise SystemExit(f"{model['label']} cannot use audio-only references")
+        elif audios and not images and not videos and not rules.get("audioOnlyReference", False) and model["id"] != "dreamina-seedance-2-5-260628":
             raise SystemExit("Audio references require at least one visual reference")
+        if rules.get("size1KRequiresSquareRatio") and resolution == "1K" and payload.get("ratio") != "1:1":
+            raise SystemExit("Agnes Video 2.5 size 1K requires ratio 1:1")
         source = bool(payload.get("sourceVideoAssetId"))
         if (task_type in {"edit", "extend"}) != source:
             raise SystemExit("Seedance edit/extend requests require sourceVideoAssetId")
@@ -1464,7 +1490,9 @@ def generation_endpoints(kind: str, payload: dict[str, Any]) -> tuple[str, str]:
     model = find_model(model_id)
     if model["kind"] != kind:
         raise SystemExit(f"Model {model_id} is a {model['kind']} model, not {kind}")
-    route = "minimaxVideo" if model_id == "MiniMax-H3" else "seedanceVideo" if kind == "video" else "imageGeneration"
+    route = MODEL_GENERATION_ROUTES.get(model_id)
+    if route is None:
+        raise SystemExit(f"No generation route for public model: {model_id}")
     return GENERATION_ROUTES[route]
 
 

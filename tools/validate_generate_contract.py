@@ -24,6 +24,23 @@ def typescript_array(text: str, name: str) -> list[str]:
     return quoted_values(match.group(1)) if match else []
 
 
+def typescript_constants(text: str) -> dict[str, str]:
+    return dict(re.findall(r"export const\s+([A-Z0-9_]+)\s*=\s*['\"]([^'\"]+)['\"]", text))
+
+
+def option_model_ids(body: str, constants: dict[str, str], errors: list[str]) -> set[str]:
+    values = re.findall(r"\bvalue:\s*(['\"][^'\"]+['\"]|[A-Z][A-Z0-9_]*)", body)
+    ids = set()
+    for value in values:
+        if value[0] in "\"'":
+            ids.add(value[1:-1])
+        elif value in constants:
+            ids.add(constants[value])
+        else:
+            errors.append("Generate contract drift: unresolved option constant: " + value)
+    return ids
+
+
 def java_string_set(text: str, name: str) -> set[str]:
     match = re.search(rf"\b{name}\s*=\s*Set\.of\((.*?)\);", text, re.DOTALL)
     if not match:
@@ -35,15 +52,72 @@ def java_string_set(text: str, name: str) -> set[str]:
     return values
 
 
+def validate_new_model_snapshot(manifest: dict) -> list[str]:
+    """Check the CLI side of the independently verified public contract."""
+    errors: list[str] = []
+    models = {row["id"]: row for group in ("videoModels", "imageModels") for row in manifest[group]}
+    cases = (
+        ("MiniMax-H3-Max", "minimaxMaxVideo", "resolution", "duration", 5, 15, {"images": 9, "videos": 3, "audio": 3},
+         {"textOnlyRequiresConcreteRatio": True, "frameModeForcesAdaptive": True, "lastFrameWithoutFirstFrame": True,
+          "framesAndReferencesMutuallyExclusive": True, "audioOnlyReference": False, "generateAudioSupported": False}),
+        ("agnes-video-2.5", "agnesVideo", "size", "seconds", 4, 12, {"images": 8, "videos": 1, "audio": 3},
+         {"lastFrameWithoutFirstFrame": True, "framesAndReferencesMutuallyExclusive": True,
+          "audioOnlyReference": True, "generateAudioSupported": False, "size1KRequiresSquareRatio": True}),
+        ("agnes-image-2.5-flash", "agnesImage", "size", None, None, None, {"images": 14}, {}),
+    )
+    for model_id, schema_name, size_key, duration_key, minimum, maximum, limits, rules in cases:
+        model = models.get(model_id, {})
+        schema = manifest["requestSchemas"].get(schema_name, {})
+        properties = schema.get("properties", {})
+        if model.get("requestSchemaRef") != schema_name or schema.get("additionalProperties") is not False:
+            errors.append(f"CLI snapshot drift: {model_id} independent schema")
+        required = {"model", "prompt", size_key}
+        if model_id != "MiniMax-H3-Max":
+            required.add("ratio")
+        if duration_key:
+            required.add(duration_key)
+            if (properties.get(duration_key, {}).get("type") != "integer"
+                    or model.get("durationSeconds") != {"min": minimum, "max": maximum}
+                    or model.get("durationFieldInRequest", "duration") != duration_key
+                    or model.get("resolutionFieldInRequest", "resolution") != size_key):
+                errors.append(f"CLI snapshot drift: {model_id} duration or request field metadata")
+        if set(schema.get("required", [])) != required:
+            errors.append(f"CLI snapshot drift: {model_id} required fields")
+        for field, limit in limits.items():
+            schema_field = {"images": "imageAssetIds", "videos": "videoAssetIds", "audio": "audioAssetIds"}[field]
+            if (properties.get(schema_field, {}).get("maxItems") != limit
+                    or model.get("referenceLimits", {}).get(field) != limit):
+                errors.append(f"CLI snapshot drift: {model_id} {field} reference limit")
+        for rule, expected in rules.items():
+            if model.get("rules", {}).get(rule) is not expected:
+                errors.append(f"CLI snapshot drift: {model_id} {rule}")
+        if model_id == "agnes-image-2.5-flash":
+            if set(properties) != required | {"imageAssetIds"} or model.get("referenceFieldInRequest") != "imageAssetIds":
+                errors.append("CLI snapshot drift: Agnes image request fields")
+            if model.get("outputFormatSupported") is not False or model.get("customSizeSupported") is not False:
+                errors.append("CLI snapshot drift: Agnes image output settings")
+        elif model_id == "agnes-video-2.5":
+            expected_fields = required | {"imageAssetIds", "videoAssetIds", "audioAssetIds", "firstFrameAssetId", "lastFrameAssetId"}
+            if set(properties) != expected_fields:
+                errors.append("CLI snapshot drift: Agnes video request fields")
+        values_key = "resolutions" if duration_key else "sizes"
+        if set(model.get(values_key, [])) != set(properties.get(size_key, {}).get("enum", [])) or set(model.get("ratios", [])) != set(properties.get("ratio", {}).get("enum", [])):
+            errors.append(f"CLI snapshot drift: {model_id} capability enums")
+    return errors
+
+
 def validate(generate_root: Path, cli_root: Path) -> list[str]:
     errors: list[str] = []
     manifest = json.loads((cli_root / "holycrab/references/capabilities.json").read_text(encoding="utf-8"))
+    errors.extend(validate_new_model_snapshot(manifest))
     image = (generate_root / "client/user-front/src/utils/imageGenerationParams.ts").read_text(encoding="utf-8")
     video_options = (generate_root / "client/user-front/src/utils/generationOptions.ts").read_text(encoding="utf-8")
     task_api = (generate_root / "client/user-front/src/api/tasks.ts").read_text(encoding="utf-8")
     seed_audio = (generate_root / "client/user-front/src/utils/seedAudioRules.ts").read_text(encoding="utf-8")
     seedance = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/GenerationRequestValidator.java").read_text(encoding="utf-8")
     minimax = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxGenerationRequestValidator.java").read_text(encoding="utf-8")
+    agnes_options = (generate_root / "client/user-front/src/utils/agnesModels.ts").read_text(encoding="utf-8")
+    agnes = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/AgnesGenerationRequestValidator.java").read_text(encoding="utf-8")
     controller = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/controller/UserTaskController.java").read_text(encoding="utf-8")
     upload = "\n".join((generate_root / path).read_text(encoding="utf-8") for path in (
         "client/user-front/src/utils/assetUploadLimits.ts",
@@ -52,19 +126,18 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
 
     model_ids = {row["id"] for group in ("videoModels", "imageModels", "audioModels") for row in manifest[group]}
     for model in model_ids - {"seed-audio-1.0"}:
-        if model not in image + seedance + minimax + controller:
+        if model.lower() not in (image + agnes_options + seedance + minimax + agnes + controller).lower():
             errors.append(f"Generate contract drift: model id missing: {model}")
 
-    video_constants = dict(re.findall(r"export const\s+([A-Z0-9_]+_MODEL_VALUE)\s*=\s*['\"]([^'\"]+)['\"]", video_options))
+    constants = typescript_constants(video_options + agnes_options)
     options_match = re.search(r"VIDEO_MODEL_OPTIONS\s*=\s*\[(.*?)\]\s*as\s+const", video_options, re.DOTALL)
-    option_names = re.findall(r"value:\s*([A-Z0-9_]+_MODEL_VALUE)", options_match.group(1)) if options_match else []
-    generate_video_ids = {video_constants[name] for name in option_names if name in video_constants}
+    generate_video_ids = option_model_ids(options_match.group(1), constants, errors) if options_match else set()
     snapshot_video_ids = {row["id"] for row in manifest["videoModels"]}
     if generate_video_ids != snapshot_video_ids:
         errors.append("CLI snapshot drift: video model ids")
 
     image_options_match = re.search(r"IMAGE_MODEL_OPTIONS.*?=\s*\[(.*?)\]\s*\n\s*export const DEFAULT_IMAGE_MODEL", image, re.DOTALL)
-    generate_image_ids = set(re.findall(r"\bvalue:\s*['\"]([^'\"]+)['\"]", image_options_match.group(1))) if image_options_match else set()
+    generate_image_ids = option_model_ids(image_options_match.group(1), constants, errors) if image_options_match else set()
     snapshot_image_ids = {row["id"] for row in manifest["imageModels"]}
     if generate_image_ids != snapshot_image_ids:
         errors.append("CLI snapshot drift: image model ids")
@@ -115,6 +188,43 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     expected_image_fields = {"prompt", "model", "size", "aspectRatio", "resolution", "outputFormat", "imageUrls"}
     if image_fields != expected_image_fields:
         errors.append("CLI snapshot drift: image request fields")
+    # Compare independent schemas and cross-field rules, rather than broadening the H3 schema.
+    expected_schemas = {
+        "minimaxMaxVideo": ("MiniMax-H3-Max", {"480P", "768P"}, "duration", 5, 15),
+        "agnesVideo": ("agnes-video-2.5", {"720P", "1080P", "1K", "2K"}, "seconds", 4, 12),
+        "agnesImage": ("agnes-image-2.5-flash", {"1K", "2K", "3K", "4K"}, None, None, None),
+    }
+    for name, (model_id, sizes, duration_key, minimum, maximum) in expected_schemas.items():
+        schema = manifest["requestSchemas"].get(name, {})
+        properties = schema.get("properties", {})
+        size_key = "resolution" if name == "minimaxMaxVideo" else "size"
+        if properties.get("model", {}).get("const") != model_id or set(properties.get(size_key, {}).get("enum", [])) != sizes:
+            errors.append("CLI snapshot drift: " + name + " model or size")
+        if duration_key and (properties.get(duration_key, {}).get("minimum"), properties.get(duration_key, {}).get("maximum")) != (minimum, maximum):
+            errors.append("CLI snapshot drift: " + name + " duration")
+    max_schema = manifest["requestSchemas"].get("minimaxMaxVideo", {}).get("properties", {})
+    if set(max_schema.get("ratio", {}).get("enum", [])) != java_string_set(minimax, "RATIOS"):
+        errors.append("CLI snapshot drift: MiniMax Max ratios")
+    if set(typescript_array(video_options, "MINIMAX_H3_MAX_RESOLUTION_OPTIONS")) != {"480P", "768P"}:
+        errors.append("Generate contract drift: MiniMax Max frontend resolutions")
+    require(minimax, r'"480P",\s*"768P"', "Max backend resolutions", errors)
+    require(minimax, r'getDuration\(\)\s*<\s*\(max\s*\?\s*5\s*:\s*4\)', "Max minimum duration", errors)
+    require(minimax, r'getDuration\(\)\s*>\s*15', "MiniMax maximum duration", errors)
+    for name, ratio_set in (("agnesVideo", "VIDEO_RATIOS"), ("agnesImage", "RATIOS")):
+        properties = manifest["requestSchemas"].get(name, {}).get("properties", {})
+        if set(properties.get("ratio", {}).get("enum", [])) != java_string_set(agnes, ratio_set):
+            errors.append("CLI snapshot drift: " + name + " ratios")
+    for pattern, label in (
+        (r'getSeconds\(\)\s*<\s*4.*?getSeconds\(\)\s*>\s*12', "Agnes video duration"),
+        (r'"1K"\.equals\(size\).*?"1:1"\.equals\(ratio\)', "Agnes 1K square restriction"),
+        (r'clean\(request\.getImageAssetIds\(\),\s*video\s*\?\s*8\s*:\s*14', "Agnes image reference limits"),
+        (r'clean\(request\.getVideoAssetIds\(\),\s*video\s*\?\s*1\s*:\s*0', "Agnes video reference limit"),
+        (r'clean\(request\.getAudioAssetIds\(\),\s*video\s*\?\s*3\s*:\s*0', "Agnes audio reference limit"),
+        (r'frames\s*&&\s*references', "Agnes frame/reference exclusivity"),
+    ):
+        require(agnes, pattern, label, errors)
+    require(controller, r'@PostMapping\("/agnes-generation"\)', "Agnes submit route", errors)
+    require(controller, r'@PostMapping\("/agnes-generation/freeze-credit"\)', "Agnes estimate route", errors)
     return errors
 
 

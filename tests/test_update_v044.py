@@ -145,7 +145,7 @@ class UpdateRecoveryTests(unittest.TestCase):
             first = subprocess.run(['sh', str(ROOT / 'install.sh')], env=env, capture_output=True, text=True)
             self.assertEqual(first.returncode, 0, first.stderr)
             program = root / 'prefix/lib/holycrab/holycrab_cli.py'
-            program.write_bytes(program.read_bytes().replace(b'VERSION = "0.4.4"', b'VERSION = "0.4.3"'))
+            program.write_bytes(program.read_bytes().replace(b'VERSION = "0.5.0"', b'VERSION = "0.4.3"'))
             old = program.read_bytes()
             note = program.parent / 'user-note.txt'
             note.write_text('preserve')
@@ -157,7 +157,7 @@ class UpdateRecoveryTests(unittest.TestCase):
             env['PATH'] = str(fake) + os.pathsep + env['PATH']
             failed = subprocess.run(['sh', str(ROOT / 'install.sh')], env=env, capture_output=True, text=True)
             self.assertNotEqual(failed.returncode, 0)
-            self.assertNotIn('HolyCrab 0.4.4 installed', failed.stdout)
+            self.assertNotIn('HolyCrab 0.5.0 installed', failed.stdout)
             self.assertIn('restored', failed.stderr)
             self.assertEqual(program.read_bytes(), old)
             self.assertEqual(note.read_text(), 'preserve')

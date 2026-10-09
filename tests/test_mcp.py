@@ -124,13 +124,13 @@ class McpProtocolTests(unittest.TestCase):
         content = json.loads(result["content"][0]["text"])
         self.assertNotIn("endpoints", content)
         self.assertIn("requestSchema", content)
-        self.assertEqual(content["capabilitySnapshotVersion"], "2026-09-14")
+        self.assertEqual(content["capabilitySnapshotVersion"], "2026-10-09")
         self.assertIn("1K", content["sizes"])
 
     def test_capabilities_list_identifies_the_versioned_snapshot(self) -> None:
         result = holycrab.mcp_tool_call("capabilities_list", {})
-        self.assertEqual(result["snapshotVersion"], "2026-09-14")
-        self.assertEqual(result["publishedAt"], "2026-09-14")
+        self.assertEqual(result["snapshotVersion"], "2026-10-09")
+        self.assertEqual(result["publishedAt"], "2026-10-09")
         self.assertGreater(len(result["models"]), 0)
 
     def test_generation_create_without_confirmation_only_returns_estimate(self) -> None:
