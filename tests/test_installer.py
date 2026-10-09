@@ -605,7 +605,8 @@ fi
         self.assertIn("steps.contract-version.outputs.version != 'v0.4.4'", workflow)
         self.assertIn("secrets.GENERATE_CONTRACT_SSH_KEY", workflow)
         self.assertIn("repository: AstroxNetwork/seedance-2.0", workflow)
-        self.assertIn("verify_release_acceptance.py v0.4.4 --contract-only", workflow)
+        self.assertIn('verify_release_acceptance.py "${{ steps.contract-version.outputs.version }}" --contract-only', workflow)
+        self.assertIn("steps.contract-version.outputs.version == 'v0.5.0'", workflow)
 
 
 if __name__ == "__main__":

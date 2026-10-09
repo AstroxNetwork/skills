@@ -6,10 +6,23 @@
     "retestWaived": true,
     "testedAt": null,
     "confirmedAt": "2026-10-09T12:43:48.233484+00:00",
-    "notes": "User confirms this flow was tested previously and approves reuse for this model-only release because real-person authorization and upload code is unchanged. No new live real-person test is claimed; v0.4.4 local Generate contract exception is not reused.",
+    "notes": "User confirms this flow was tested previously and approves reuse for this model-only release because real-person authorization and upload code is unchanged. No new live real-person test is claimed; Generate uses its separately refreshed, user-authorized v0.5.0 local contract record.",
     "unchangedCore": {
       "baselineVersion": "v0.4.4",
       "sha256": "dde70a8d891d97c6837276e9a3daa32016f7ca987e9cc92adec620e0912da94a"
     }
+  },
+  "generateMainContract": {
+    "status": "passed",
+    "mode": "local-synced-main",
+    "localMainCommit": "87763ef41f5f0660303e2fbb9cfb0783205d4568",
+    "remoteMainCommit": "87763ef41f5f0660303e2fbb9cfb0783205d4568",
+    "verifiedAt": "2026-10-09T19:22:18.428581+00:00",
+    "files": {
+      "holycrab/scripts/holycrab_cli.py": "2b4599022d1657cc023b82a79bcd515c503ca9d1f82b3c78335c0466635a8de8",
+      "holycrab/references/capabilities.json": "7070c245eae8b022f0dfd678acb660a61a58c65644f3c0076edae8e4eec65eb4",
+      "tools/validate_generate_contract.py": "aded9440149af17c8a04ee1cfae60ca93b93d9b45f0c2fa7a8de696211c4dc00"
+    },
+    "notes": "User explicitly authorized the previously successful local verification release path for v0.5.0. Fetched Generate origin/main, independently confirmed remote SHA equality, extracted immutable main into an isolated directory, and passed the full contract validator. This is fresh evidence for v0.5.0; no private CI credentials were created."
   }
 }

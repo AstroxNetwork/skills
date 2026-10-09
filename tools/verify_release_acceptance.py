@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 LOCAL_EVIDENCE_TAG = "v0.4.4"
+LOCAL_EVIDENCE_TAGS = {LOCAL_EVIDENCE_TAG, "v0.5.0"}
 REUSED_CORE_TAG = "v0.5.0"
 REUSED_CORE_HASH = "dde70a8d891d97c6837276e9a3daa32016f7ca987e9cc92adec620e0912da94a"
 MODEL_UPDATE_NODES = {"VERSION", "GENERATION_ROUTES", "MODEL_GENERATION_ROUTES", "PUBLIC_ACCOUNT_FIELDS",
@@ -53,8 +54,8 @@ CONTRACT_FILES = ("holycrab/scripts/holycrab_cli.py", "holycrab/references/capab
 
 
 def validate_contract(record, root):
-    if record.get("version") != LOCAL_EVIDENCE_TAG:
-        raise ValueError("Local contract evidence is authorized only for v0.4.4")
+    if record.get("version") not in LOCAL_EVIDENCE_TAGS:
+        raise ValueError("Local contract evidence requires an explicitly authorized release version")
     contract = record.get("generateMainContract")
     if not isinstance(contract, dict) or contract.get("status") != "passed" or contract.get("mode") != "local-synced-main":
         raise ValueError("A passed local Generate main contract record is required")
@@ -74,11 +75,11 @@ def validate_contract(record, root):
 def validate(record, tag, *, root=None, contract_only=False):
     if not isinstance(record, dict) or record.get("version") != tag:
         raise ValueError("Manual acceptance version must match the release tag")
-    if tag == LOCAL_EVIDENCE_TAG and root is not None:
+    if tag in LOCAL_EVIDENCE_TAGS and root is not None:
         validate_contract(record, root)
     if contract_only:
-        if tag != LOCAL_EVIDENCE_TAG or root is None:
-            raise ValueError("Local contract mode is authorized only for v0.4.4")
+        if tag not in LOCAL_EVIDENCE_TAGS or root is None:
+            raise ValueError("Local contract mode requires an explicitly authorized release version")
         return
     flow = record.get("realHumanCoreFlow")
     if not isinstance(flow, dict):
@@ -105,7 +106,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("tag")
     parser.add_argument("--record", type=Path)
-    parser.add_argument("--contract-only", action="store_true", help="Verify the v0.4.4 synchronized local main evidence")
+    parser.add_argument("--contract-only", action="store_true", help="Verify synchronized local main evidence for an explicitly authorized release")
     args = parser.parse_args()
     path = args.record or Path(__file__).resolve().parents[1] / f"docs/release-acceptance/{args.tag}.json"
     try:

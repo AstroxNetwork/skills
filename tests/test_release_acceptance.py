@@ -124,15 +124,37 @@ class ModelOnlyReuseTests(unittest.TestCase):
         record["version"] = "v0.5.1"
         with self.assertRaises(ValueError):
             validate(record, "v0.5.1", root=self.root)
+        record = copy.deepcopy(self.record)
+        record.pop("generateMainContract")
         with self.assertRaises(ValueError):
-            validate(self.record, "v0.5.0", root=self.root, contract_only=True)
+            validate(record, "v0.5.0", root=self.root, contract_only=True)
 
     def test_upload_core_change_invalidates_reuse(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             file = root / "holycrab/scripts/holycrab_cli.py"
-            file.parent.mkdir(parents=True)
-            source = (self.root / "holycrab/scripts/holycrab_cli.py").read_text()
+            for relative in CONTRACT_FILES:
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((self.root / relative).read_bytes())
+            source = file.read_text()
             file.write_text(source.replace('def create_authorization(name: str)', 'def create_authorization(name: bytes)'))
+            record = copy.deepcopy(self.record)
+            record["generateMainContract"]["files"]["holycrab/scripts/holycrab_cli.py"] = hashlib.sha256(file.read_bytes()).hexdigest()
             with self.assertRaisesRegex(ValueError, "core code changed"):
-                validate(self.record, "v0.5.0", root=root)
+                validate(record, "v0.5.0", root=root)
+
+
+class V050LocalContractTests(LocalContractEvidenceTests):
+    def setUp(self):
+        super().setUp()
+        self.record["version"] = "v0.5.0"
+
+    def test_valid_evidence_verifies_real_input_files_offline(self):
+        validate(self.record, "v0.5.0", root=self.root, contract_only=True)
+
+    def test_future_versions_cannot_use_local_mode(self):
+        record = copy.deepcopy(self.record)
+        record["version"] = "v0.5.1"
+        with self.assertRaises(ValueError):
+            validate(record, "v0.5.1", root=self.root, contract_only=True)

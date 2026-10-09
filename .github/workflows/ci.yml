@@ -111,11 +111,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Identify the version for the explicitly authorized v0.4.4 local check
+      - name: Identify the version for explicitly authorized local checks
         id: contract-version
         run: echo "version=$(sed -n 's/^VERSION=//p' install.sh)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        if: steps.contract-version.outputs.version != 'v0.4.4'
+        if: steps.contract-version.outputs.version != 'v0.4.4' && steps.contract-version.outputs.version != 'v0.5.0'
         with:
           repository: AstroxNetwork/seedance-2.0
           ref: main
@@ -125,11 +125,11 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compare models, enums, limits, and request fields
-        if: steps.contract-version.outputs.version != 'v0.4.4'
+        if: steps.contract-version.outputs.version != 'v0.4.4' && steps.contract-version.outputs.version != 'v0.5.0'
         run: python3 tools/validate_generate_contract.py generate-contract
-      - name: Verify the user-approved v0.4.4 synchronized local main evidence
-        if: steps.contract-version.outputs.version == 'v0.4.4'
-        run: python3 tools/verify_release_acceptance.py v0.4.4 --contract-only
+      - name: Verify the user-approved synchronized local main evidence
+        if: steps.contract-version.outputs.version == 'v0.4.4' || steps.contract-version.outputs.version == 'v0.5.0'
+        run: python3 tools/verify_release_acceptance.py "${{ steps.contract-version.outputs.version }}" --contract-only
 
   install-and-mcp:
     name: Install and MCP (${{ matrix.os }})
