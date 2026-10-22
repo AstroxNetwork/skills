@@ -106,6 +106,20 @@ def validate_new_model_snapshot(manifest: dict) -> list[str]:
     return errors
 
 
+def validate_central_asset_rules(rules: str, errors: list[str]) -> None:
+    """Check the shared server rules after asset validation moved out of the UI."""
+    for pattern, label in (
+        (r'maxImages\s*=\s*SEEDANCE_25.equals\(model\)\s*\?\s*30[^;]*"agnes-image-2.5-flash".equals\(model\)\s*\?\s*14\s*:\s*agnes\(model\)\s*\?\s*8', "Seedance and Agnes image reference limits"),
+        (r'maxVideos\s*=\s*SEEDANCE_25.equals\(model\)\s*\?\s*10[^;]*"agnes-image-2.5-flash".equals\(model\)\s*\?\s*0\s*:\s*agnes\(model\)\s*\?\s*1', "Seedance and Agnes video reference limits"),
+        (r'maxAudios\s*=\s*SEEDANCE_25.equals\(model\)\s*\?\s*10[^;]*"agnes-image-2.5-flash".equals\(model\)\s*\?\s*0\s*:\s*3', "Seedance and Agnes audio reference limits"),
+        (r'if\s*\(\(first\s*\|\|\s*last\)\s*&&\s*references\).*?throw combination', "frame/reference exclusivity"),
+        (r'if\s*\(SEEDANCE_25.equals\(model\)\)\s*range\([^;]*0,\s*50,\s*true,\s*true', "Seedance combined reference limit"),
+    ):
+        require(rules, pattern, label, errors)
+    for name in ("maxImages", "maxVideos", "maxAudios"):
+        require(rules, rf'range\(errors,[^;]*\b{name},\s*true,\s*true', name + " inclusive validation", errors)
+
+
 def validate(generate_root: Path, cli_root: Path) -> list[str]:
     errors: list[str] = []
     manifest = json.loads((cli_root / "holycrab/references/capabilities.json").read_text(encoding="utf-8"))
@@ -119,10 +133,22 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     agnes_options = (generate_root / "client/user-front/src/utils/agnesModels.ts").read_text(encoding="utf-8")
     agnes = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/AgnesGenerationRequestValidator.java").read_text(encoding="utf-8")
     controller = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/controller/UserTaskController.java").read_text(encoding="utf-8")
-    upload = "\n".join((generate_root / path).read_text(encoding="utf-8") for path in (
-        "client/user-front/src/utils/assetUploadLimits.ts",
-        "client/user-front/src/utils/assetUploadValidation.ts",
-    ))
+    upload = (generate_root / "client/user-front/src/utils/assetUploadLimits.ts").read_text(encoding="utf-8")
+    old_upload_rules = generate_root / "client/user-front/src/utils/assetUploadValidation.ts"
+    if old_upload_rules.exists():
+        upload += "\n" + old_upload_rules.read_text(encoding="utf-8")
+    else:
+        # Upload constraints now belong to the server. Still compare the exact
+        # size and inclusive boundary; a missing/moved rule must fail closed.
+        rules = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java").read_text(encoding="utf-8")
+        constants = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java").read_text(encoding="utf-8")
+        require(rules, r'if\s*\(real\s*&&\s*video\)\s*\{\s*maxBytes\s*=\s*50\s*\*\s*MIB;\s*inclusive\s*=\s*true;', "real-human video size and inclusive boundary", errors)
+        require(constants, r'MIB\s*=\s*1024L?\s*\*\s*1024', "asset size unit", errors)
+
+    central_rules = generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java"
+    centralized = "TaskAssetValidator.validateSelection" in seedance and "TaskAssetValidator.validateSelection" in agnes
+    if centralized:
+        validate_central_asset_rules(central_rules.read_text(encoding="utf-8"), errors)
 
     model_ids = {row["id"] for group in ("videoModels", "imageModels", "audioModels") for row in manifest[group]}
     for model in model_ids - {"seed-audio-1.0"}:
@@ -134,7 +160,7 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     generate_video_ids = option_model_ids(options_match.group(1), constants, errors) if options_match else set()
     snapshot_video_ids = {row["id"] for row in manifest["videoModels"]}
     if generate_video_ids != snapshot_video_ids:
-        errors.append("CLI snapshot drift: video model ids")
+        errors.append("CLI snapshot drift: video model ids (missing in CLI: " + ", ".join(sorted(generate_video_ids - snapshot_video_ids)) + "; absent from Generate: " + ", ".join(sorted(snapshot_video_ids - generate_video_ids)) + ")")
 
     image_options_match = re.search(r"IMAGE_MODEL_OPTIONS.*?=\s*\[(.*?)\]\s*\n\s*export const DEFAULT_IMAGE_MODEL", image, re.DOTALL)
     generate_image_ids = option_model_ids(image_options_match.group(1), constants, errors) if image_options_match else set()
@@ -150,9 +176,11 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     require(task_api, r"interface ImageGenerationParams[\s\S]*prompt:\s*string[\s\S]*model:\s*string[\s\S]*size:\s*string[\s\S]*aspectRatio:\s*string[\s\S]*resolution:\s*string[\s\S]*outputFormat:\s*string[\s\S]*imageUrls\?:\s*string\[\]", "image request fields", errors)
     require(minimax, r"ratio\s*=\s*references\s*\?\s*\"adaptive\"\s*:\s*null", "H3 reference ratio default", errors)
     require(minimax, r"!frames\s*&&\s*!references\s*&&\s*\"adaptive\"", "H3 text-only ratio restriction", errors)
-    require(seedance, r"imageCount\s*>\s*30\s*\|\|\s*videoCount\s*>\s*10\s*\|\|\s*audioCount\s*>\s*10", "Seedance 2.5 reference limits", errors)
+    if not centralized:
+        require(seedance, r"imageCount\s*>\s*30\s*\|\|\s*videoCount\s*>\s*10\s*\|\|\s*audioCount\s*>\s*10", "Seedance 2.5 reference limits", errors)
     require(upload, r"ASSET_UPLOAD_BATCH_LIMIT\s*=\s*10", "asset batch limit", errors)
-    require(upload, r"MAX_REAL_HUMAN_VIDEO_UPLOAD_BYTES\s*=\s*50\s*\*\s*1024\s*\*\s*1024", "real-human video size", errors)
+    if old_upload_rules.exists():
+        require(upload, r"MAX_REAL_HUMAN_VIDEO_UPLOAD_BYTES\s*=\s*50\s*\*\s*1024\s*\*\s*1024", "real-human video size", errors)
     require(controller, r"TaskType\.parseNullable\(taskType\)", "task type parsing", errors)
 
     seedance_schema = manifest["requestSchemas"]["seedanceVideo"]["properties"]
@@ -222,7 +250,8 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
         (r'clean\(request\.getAudioAssetIds\(\),\s*video\s*\?\s*3\s*:\s*0', "Agnes audio reference limit"),
         (r'frames\s*&&\s*references', "Agnes frame/reference exclusivity"),
     ):
-        require(agnes, pattern, label, errors)
+        if not centralized or label in {"Agnes video duration", "Agnes 1K square restriction"}:
+            require(agnes, pattern, label, errors)
     require(controller, r'@PostMapping\("/agnes-generation"\)', "Agnes submit route", errors)
     require(controller, r'@PostMapping\("/agnes-generation/freeze-credit"\)', "Agnes estimate route", errors)
     return errors
@@ -233,7 +262,11 @@ def main() -> int:
     parser.add_argument("generate_root", type=Path)
     args = parser.parse_args()
     cli_root = Path(__file__).resolve().parents[1]
-    errors = validate(args.generate_root.resolve(), cli_root)
+    try:
+        errors = validate(args.generate_root.resolve(), cli_root)
+    except (OSError, KeyError, ValueError) as error:
+        print(f"ERROR: Could not verify the Generate source contract: {error}", file=sys.stderr)
+        return 1
     for error in errors:
         print(f"ERROR: {error}", file=sys.stderr)
     if errors:

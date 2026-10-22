@@ -13,7 +13,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).parents[1] / "holycrab/scripts/holycrab_cli.py"
 
 
-@unittest.skipIf(os.name == "nt", "Unix PTY; native Windows hidden input is manual acceptance")
+@unittest.skipIf(os.name == "nt", "Unix PTY only; Windows console input is not covered by this test")
 class TerminalFeedbackTests(unittest.TestCase):
     def test_installer_in_real_terminal_groups_phases_and_has_one_short_summary(self):
         import pty
@@ -33,7 +33,7 @@ class TerminalFeedbackTests(unittest.TestCase):
             self.assertEqual(process.wait(timeout=5), 0)
             for number in range(1, 6):
                 self.assertEqual(output.count(f"[{number}/5]".encode()), 1)
-            self.assertEqual(output.count(b"HolyCrab 0.5.0 installed"), 1)
+            self.assertEqual(output.count(b"HolyCrab 0.6.0 installed"), 1)
             self.assertIn(b"Next: connect your account", output)
             self.assertNotIn(b"For Agents:", output)
             self.assertNotIn(b"Verifying SHA-256 for", output)
@@ -65,7 +65,7 @@ class TerminalFeedbackTests(unittest.TestCase):
 
     def test_hidden_input_immediately_acknowledges_and_guides_to_agent(self):
         with tempfile.TemporaryDirectory() as root:
-            body = "def fixture_send(*a,**k):\n time.sleep(0.3)\n return 200,{'code':200,'data':{'credit':10,'username':'Fixture'}}\ncli.send=fixture_send"
+            body = "def fixture_send(*a,**k):\n time.sleep(0.3)\n return 200,{'code':200,'data':{'credit':10,'username':'Fixture'}}\ncli._owner('send').send=fixture_send"
             process, master = self.child(root, ["setup"], body)
             output = self.read_until(master, b"Paste API Key (input hidden):")
             os.write(master, b"hc_test_pty_hidden_input\n")
@@ -81,7 +81,7 @@ class TerminalFeedbackTests(unittest.TestCase):
 
     def test_real_sigint_wait_exits_130_without_traceback(self):
         with tempfile.TemporaryDirectory() as root:
-            body = "cli.send=lambda *a,**k:(200,{'code':200,'data':{'uniqId':'task1','step':1}})"
+            body = "cli._owner('send').send=lambda *a,**k:(200,{'code':200,'data':{'uniqId':'task1','step':1}})"
             process, master = self.child(root, ["tasks", "wait", "task1", "--interval", "10"], body)
             output = self.read_until(master, b'Status: Processing')
             os.kill(process.pid, signal.SIGINT)
@@ -92,9 +92,9 @@ class TerminalFeedbackTests(unittest.TestCase):
     def test_real_sigint_generation_preserves_unknown_attempt(self):
         with tempfile.TemporaryDirectory() as root:
             body = ("def fixture_send(method,path,**k):\n"
-                    " if 'freeze-credit' in path: return 200,{'code':200,'data':{'credit':5}}\n"
+                    " if 'freeze-credit' in path: return 200,{'code':200,'data':{'frozenCredit':5}}\n"
                     " cli.command_progress('Fixture submission started')\n time.sleep(30)\n"
-                    " return 200,{'code':200,'data':{'uniqId':'task1'}}\ncli.send=fixture_send")
+                    " return 200,{'code':200,'data':{'uniqId':'task1'}}\ncli._owner('send').send=fixture_send")
             request = json.dumps({"model": "seedream-5-0-lite-260128", "prompt": "fixture", "size": "2K"})
             argv = ["generate", "create", "--kind", "image", "--json", request, "--yes", "--attempt-id", "pty-interrupt"]
             process, master = self.child(root, argv, body)

@@ -8,10 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Verify and resume the existing immutable v0.4.4 Draft after the tag-endpoint fix
+        description: Stable version tag for an immutable Draft; the selected workflow ref must match that tag
         required: true
-        type: choice
-        options: [v0.4.4]
+        type: string
+      publish_release:
+        description: Publish the verified Draft only after the release owner approves production publication
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -41,55 +45,23 @@ jobs:
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: ${{ matrix.python }}
-      - name: Unit and public-boundary tests (Unix)
-        if: runner.os != 'Windows'
-        run: python3 -m unittest discover -s tests -v
-      - name: Unit and public-boundary tests (Windows)
-        if: runner.os == 'Windows'
-        run: >-
-          python -m unittest -v
-          tests.test_capabilities
-          tests.test_cli
-          tests.test_transport_security
-          tests.test_mcp
-          tests.test_public_boundary
-          tests.test_real_human
-          tests.test_safe_live_smoke
-          tests.test_v041
-          tests.test_feedback
-          tests.test_command_matrix
-          tests.test_onboarding
-          tests.test_readable_guidance
-          tests.test_agent_cleanup
-          tests.test_cleanup_contract
-          tests.test_public_guidance
-          tests.test_release_acceptance
-          tests.test_update_v044
-          tests.test_models_v050
-          tests.test_generate_contract_v050
-      - name: Compile Python entry points (Unix)
-        if: runner.os != 'Windows'
-        run: python3 -m py_compile holycrab/scripts/holycrab_cli.py tools/validate_capabilities.py tools/validate_generate_contract.py tests/safe_live_smoke.py
-      - name: Compile Python entry points (Windows)
-        if: runner.os == 'Windows'
-        run: python -m py_compile holycrab/scripts/holycrab_cli.py tools/validate_capabilities.py tools/validate_generate_contract.py tests/safe_live_smoke.py
-      - name: Validate the capability snapshot (Unix)
-        if: runner.os != 'Windows'
-        run: python3 tools/validate_capabilities.py
-      - name: Validate the capability snapshot (Windows)
-        if: runner.os == 'Windows'
-        run: python tools/validate_capabilities.py
-      - name: Check shell entry points
-        if: runner.os != 'Windows'
-        run: sh -n install.sh bin/holycrab
-      - name: Check patch whitespace
-        run: git diff --check
+      - name: Run the shared offline validation entry point
+        run: python tools/run_checks.py --report build/validation/report.json
       - name: Decode offline QR fixtures independently
         if: matrix.python == '3.14' && runner.os == 'Linux'
         run: |
           python3 -m venv "${RUNNER_TEMP}/qr-validator"
           "${RUNNER_TEMP}/qr-validator/bin/python" -m pip install --only-binary=:all: -r tests/requirements-qr-test.txt
           "${RUNNER_TEMP}/qr-validator/bin/python" tools/validate_qr.py
+
+      - name: Upload validation reports and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: validation-${{ matrix.os }}-python-${{ matrix.python }}
+          path: build/validation/
+          if-no-files-found: error
+          retention-days: 14
 
   official-skill-validation:
     name: Official Skill validator
@@ -145,6 +117,7 @@ jobs:
           python-version: "3.10"
       - name: Install from the checked-out release source
         env:
+          HOLYCRAB_EXPECTED_VERSION: "0.6.0"
           HOLYCRAB_INSTALL_SOURCE_DIR: ${{ github.workspace }}
           HOLYCRAB_INSTALL_MCP: "0"
           HOLYCRAB_INSTALL_AGENTS: codex,claude
@@ -155,7 +128,7 @@ jobs:
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
           test -f "${HOME}/.claude/skills/holycrab/agents/openai.yaml"
-          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.5.0'
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep "${HOLYCRAB_EXPECTED_VERSION}"
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json > "${RUNNER_TEMP}/doctor.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["checks"]["config"]["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"
@@ -176,8 +149,8 @@ jobs:
         run: .\tests\test_windows_installer.ps1
 
   release:
-    name: Publish release assets
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
+    name: Prepare verified Draft assets
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]
     permissions:
       contents: write
@@ -192,6 +165,8 @@ jobs:
           set -euo pipefail
           release_version="$RELEASE_VERSION"
           grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$release_version"
+          git fetch --no-tags origin "refs/tags/$release_version:refs/tags/$release_version"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$release_version^{commit}")"
           grep -Fx "VERSION=$release_version" install.sh
           grep -Fx '$Version = "'"$release_version"'"' install.ps1
           test -f ".github/releases/$release_version.md"
@@ -201,21 +176,15 @@ jobs:
       - name: Create the immutable GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RESUME_EXISTING_DRAFT: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
         run: |
           set -euo pipefail
           release_version="$RELEASE_VERSION"
-          if [ "$RESUME_EXISTING_DRAFT" = "true" ]; then
-            test "$release_version" = v0.4.4
+          if gh release view "$release_version" >/dev/null 2>&1; then
             test "$(gh release view "$release_version" --json isDraft --jq .isDraft)" = true
             test "$(gh release view "$release_version" --json isPrerelease --jq .isPrerelease)" = false
-            echo "Existing v0.4.4 Draft assets will only be verified, never overwritten."
+            echo "Existing Draft assets will only be verified, never overwritten."
             exit 0
-          fi
-          if gh release view "$release_version" >/dev/null 2>&1; then
-            echo "Release $release_version already exists; refusing to overwrite published assets." >&2
-            exit 1
           fi
           gh release create "$release_version" install.sh install.ps1 SHA256SUMS \
             --verify-tag \
@@ -250,7 +219,7 @@ jobs:
 
   verify-draft-install:
     name: Verify draft installation (${{ matrix.os }})
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: [release]
     # GitHub only exposes Draft assets to identities with push access. This
     # job does not mutate releases; no token is passed to the installer.
@@ -333,7 +302,7 @@ jobs:
 
   publish-verified-release:
     name: Publish verified release as Latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
     needs: [release, verify-draft-install]
     runs-on: ubuntu-latest
     permissions:

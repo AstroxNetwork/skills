@@ -100,7 +100,7 @@ class NewModelsTests(unittest.TestCase):
         result = cli.mcp_tool_call('capabilities_list', {})
         self.assertEqual(len(result['models']), 12)
         self.assertEqual(cli.mcp_tool_call('capability_get', {'model':MAX['model']})['id'], MAX['model'])
-        with patch.object(cli, 'send', return_value=(200, {'code':200, 'data':{'credit':10,'disabled_models':[MAX['model']]}})):
+        with patch.object(cli._owner('send'), 'send', return_value=(200, {'code':200, 'data':{'credit':10,'disabled_models':[MAX['model']]}})):
             self.assertEqual(cli.mcp_tool_call('account_get', {})['disabled_models'], [MAX['model']])
 
 
@@ -114,7 +114,7 @@ class SubmissionTests(unittest.TestCase):
 
     def test_estimate_and_create_use_same_route_and_native_payload(self):
         for kind, request in [('video', MAX), ('video', VIDEO), ('image', IMAGE)]:
-            with self.subTest(model=request['model']), patch.object(cli, 'send', side_effect=[(200, {'code':200,'data':{'frozenCredit':2}}), (200, {'code':200,'data':{'uniqId':'task'}})]) as send:
+            with self.subTest(model=request['model']), patch.object(cli._owner('send'), 'send', side_effect=[(200, {'code':200,'data':{'frozenCredit':2}}), (200, {'code':200,'data':{'uniqId':'task'}})]) as send:
                 result = cli.create_generation(kind, request, confirmed=True)
                 self.assertEqual(result['state'], 'created')
                 self.assertEqual([c.args[1] for c in send.call_args_list], list(cli.generation_endpoints(kind, request)))
@@ -122,7 +122,7 @@ class SubmissionTests(unittest.TestCase):
 
     def test_failed_estimate_and_permission_denial_never_create(self):
         for kind, request in [('video', MAX), ('video', VIDEO), ('image', IMAGE)]:
-            with self.subTest(model=request['model']), patch.object(cli, 'send', return_value=(403, {'message':'Model disabled'})) as send:
+            with self.subTest(model=request['model']), patch.object(cli._owner('send'), 'send', return_value=(403, {'message':'Model disabled'})) as send:
                 with self.assertRaisesRegex(SystemExit, 'Model disabled'):
                     cli.create_generation(kind, request, confirmed=True)
                 self.assertEqual(send.call_count, 1)
@@ -131,7 +131,7 @@ class SubmissionTests(unittest.TestCase):
     def test_uncertain_submission_keeps_attempt_and_does_not_retry(self):
         for kind, request in [('video', MAX), ('video', VIDEO), ('image', IMAGE)]:
             attempt = 'test-' + request['model'].replace('.', '-')
-            with self.subTest(model=request['model']), patch.object(cli, 'send', side_effect=[(200, {'code':200,'data':{'frozenCredit':2}}), TimeoutError()]) as send:
+            with self.subTest(model=request['model']), patch.object(cli._owner('send'), 'send', side_effect=[(200, {'code':200,'data':{'frozenCredit':2}}), TimeoutError()]) as send:
                 result = cli.create_generation(kind, request, confirmed=True, attempt_id=attempt)
                 self.assertEqual(result['state'], 'unknown')
                 self.assertEqual(send.call_count, 2)

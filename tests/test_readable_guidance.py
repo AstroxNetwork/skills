@@ -24,7 +24,7 @@ class ReadableGuidanceTests(unittest.TestCase):
                                                "HOLYCRAB_NO_UPDATE_CHECK": "1"}, clear=True)
         environment.start()
         self.addCleanup(environment.stop)
-        secrets = patch.object(cli, "SENSITIVE_OUTPUT_VALUES", set())
+        secrets = patch.object(cli._owner("SENSITIVE_OUTPUT_VALUES"), "SENSITIVE_OUTPUT_VALUES", set())
         secrets.start()
         self.addCleanup(secrets.stop)
 
@@ -32,14 +32,14 @@ class ReadableGuidanceTests(unittest.TestCase):
         output = TerminalBuffer() if terminal else io.StringIO()
         errors = TerminalBuffer() if terminal else io.StringIO()
         with patch.object(cli.sys, "argv", ["holycrab", *argv]), \
-                patch.object(cli, "startup_maintenance"), \
+                patch.object(cli._owner("startup_maintenance"), "startup_maintenance"), \
                 redirect_stdout(output), redirect_stderr(errors):
             code = cli.main()
         return code, output.getvalue(), errors.getvalue()
 
     def test_setup_terminal_has_one_short_welcome_and_no_internal_json(self):
         with patch.object(cli.getpass, "getpass", return_value="hc_fixture_hidden_key"), \
-                patch.object(cli, "send", return_value=ok({"username": "Fixture", "credit": 10})):
+                patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture", "credit": 10})):
             code, output, errors = self.invoke(["setup"])
         self.assertEqual(code, 0)
         self.assertIn("account connected", output)
@@ -53,7 +53,7 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_piped_setup_keeps_complete_existing_json(self):
         with patch.object(cli.getpass, "getpass", return_value="hc_fixture_hidden_key"), \
-                patch.object(cli, "send", return_value=ok({"username": "Fixture", "credit": 10})):
+                patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture", "credit": 10})):
             code, output, errors = self.invoke(["setup"], terminal=False)
         result = json.loads(output)
         self.assertEqual(code, 0)
@@ -66,7 +66,7 @@ class ReadableGuidanceTests(unittest.TestCase):
     def test_reconnection_and_status_do_not_repeat_business_welcome(self):
         cli.save_config({"apiKey": "hc_fixture_existing"})
         with patch.object(cli.getpass, "getpass", return_value="hc_fixture_hidden_key"), \
-                patch.object(cli, "send", return_value=ok({"username": "Fixture"})):
+                patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture"})):
             for argv in (["setup"], ["auth", "status"]):
                 with self.subTest(argv=argv):
                     code, output, errors = self.invoke(argv)
@@ -80,7 +80,7 @@ class ReadableGuidanceTests(unittest.TestCase):
         for environment, argv in cases:
             with self.subTest(argv=argv), patch.dict(os.environ, environment), \
                     patch.object(cli.getpass, "getpass", return_value="hc_fixture_hidden_key"), \
-                    patch.object(cli, "send", return_value=ok({"username": "Fixture"})):
+                    patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture"})):
                 code, output, errors = self.invoke(argv)
             self.assertEqual(code, 0)
             self.assertNotIn("account connected", output + errors)
@@ -107,7 +107,7 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_local_doctor_after_auth_success_does_not_request_reverification(self):
         cli.save_config({"apiKey": "hc_fixture_existing"})
-        with patch.object(cli, "send", return_value=ok({"username": "Fixture"})) as transport:
+        with patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture"})) as transport:
             auth_code, auth_output, _ = self.invoke(["auth", "status"])
             code, output, errors = self.invoke(["doctor"])
             json_code, json_output, _ = self.invoke(["doctor", "--json"])
@@ -126,7 +126,7 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_local_doctor_environment_key_is_configured_not_verified(self):
         with patch.dict(os.environ, {"HOLYCRAB_API_KEY": "hc_fixture_environment"}), \
-                patch.object(cli, "send") as transport:
+                patch.object(cli._owner("send"), "send") as transport:
             code, output, errors = self.invoke(["doctor"])
         self.assertEqual(code, 0)
         self.assertIn("API Key: configured", output)
@@ -136,10 +136,10 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_installer_still_guides_configured_account_verification(self):
         cli.save_config({"apiKey": "hc_fixture_existing"})
-        with patch.object(cli, "send") as transport:
+        with patch.object(cli._owner("send"), "send") as transport:
             guidance = cli.local_health_report()["onboarding"]
         text = cli.format_onboarding(guidance, installed=True)
-        self.assertIn("HolyCrab 0.5.0 installed", text)
+        self.assertIn("HolyCrab 0.6.0 installed", text)
         self.assertIn("Next: verify your account", text)
         self.assertIn("holycrab auth status", text)
         self.assertNotIn("account connected", text)
@@ -149,8 +149,8 @@ class ReadableGuidanceTests(unittest.TestCase):
     def test_online_doctor_keeps_actual_account_verification_feedback(self):
         cli.save_config({"apiKey": "hc_fixture_existing"})
         for payload, valid in (({"username": "Fixture"}, True), ({}, False)):
-            with self.subTest(valid=valid), patch.object(cli, "send", return_value=ok(payload)) as transport, \
-                    patch.object(cli, "check_for_update", return_value={"updateAvailable": False}):
+            with self.subTest(valid=valid), patch.object(cli._owner("send"), "send", return_value=ok(payload)) as transport, \
+                    patch.object(cli._owner("check_for_update"), "check_for_update", return_value={"updateAvailable": False}):
                 code, output, errors = self.invoke(["doctor", "--online"])
             self.assertEqual(code, 0 if valid else 1)
             self.assertIn("account connected" if valid else "Account not verified", output)
@@ -160,7 +160,7 @@ class ReadableGuidanceTests(unittest.TestCase):
     def test_authorization_success_keeps_person_and_explicit_upload_next_step(self):
         reply = {"authorizationId": "auth1", "status": "SUCCEEDED",
                  "group": {"uniqId": "group1", "name": "Fixture person"}}
-        with patch.object(cli, "send", return_value=ok(reply)):
+        with patch.object(cli._owner("send"), "send", return_value=ok(reply)):
             code, output, _ = self.invoke(["real-human", "get", "auth1"])
         self.assertEqual(code, 0)
         for fragment in ("Fixture person", "group1", "No materials", "upload", "Next:"):
@@ -169,7 +169,7 @@ class ReadableGuidanceTests(unittest.TestCase):
         self.assertTrue(all(len(line) <= 80 for line in output.splitlines()))
 
     def test_empty_person_assets_explains_upload_not_just_an_empty_list(self):
-        with patch.object(cli, "send", return_value=ok({"total": 0, "records": [], "current": 1, "pages": 0})):
+        with patch.object(cli._owner("send"), "send", return_value=ok({"total": 0, "records": [], "current": 1, "pages": 0})):
             code, output, _ = self.invoke(["real-human", "assets", "list", "--group", "group1"])
         self.assertEqual(code, 0)
         self.assertIn("No materials", output)
@@ -178,19 +178,19 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_processing_asset_and_timeout_keep_same_recovery_command(self):
         reply = {"uniqId": "asset1", "step": "UPLOADED", "name": "Fixture image"}
-        with patch.object(cli, "send", return_value=ok(reply)):
+        with patch.object(cli._owner("send"), "send", return_value=ok(reply)):
             code, output, _ = self.invoke(["assets", "get", "asset1"])
         self.assertEqual(code, 0)
         self.assertIn("holycrab assets wait asset1 --timeout 600", output)
         self.assertIn("Do not upload", output)
-        with patch.object(cli, "send", return_value=ok(reply)):
+        with patch.object(cli._owner("send"), "send", return_value=ok(reply)):
             code, output, errors = self.invoke(["assets", "wait", "asset1", "--timeout", "0"])
         self.assertEqual(code, 2)
         self.assertIn("holycrab assets get asset1", output)
         self.assertEqual((output + errors).count("Wait timed out"), 1)
 
     def test_task_query_and_timeout_are_readable_and_do_not_resubmit(self):
-        with patch.object(cli, "send", return_value=ok({"uniqId": "task1", "step": 1})) as transport:
+        with patch.object(cli._owner("send"), "send", return_value=ok({"uniqId": "task1", "step": 1})) as transport:
             code, output, _ = self.invoke(["tasks", "wait", "task1", "--timeout", "0"])
         self.assertEqual(code, 2)
         self.assertIn("Status: Processing", output)
@@ -213,9 +213,9 @@ class ReadableGuidanceTests(unittest.TestCase):
             path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"fixture")
             paths.append(str(path))
         with patch.object(cli.sys, "stdin", TerminalBuffer()), \
-                patch.object(cli, "find_real_human_group", return_value={"uniqId": "group1", "name": "Fixture person"}), \
-                patch.object(cli, "read_confirmation", return_value="n") as confirm, \
-                patch.object(cli, "send") as transport:
+                patch.object(cli._owner("find_real_human_group"), "find_real_human_group", return_value={"uniqId": "group1", "name": "Fixture person"}), \
+                patch.object(cli._owner("read_confirmation"), "read_confirmation", return_value="n") as confirm, \
+                patch.object(cli._owner("send"), "send") as transport:
             code, output, _ = self.invoke(["assets", "upload", *paths, "--real-human-group", "group1"])
         self.assertEqual(code, 2)
         self.assertIn("Upload preview", output)
@@ -233,7 +233,7 @@ class ReadableGuidanceTests(unittest.TestCase):
             with self.subTest(configured=configured):
                 guidance = cli.onboarding_guidance(configured=configured)
                 text = cli.format_onboarding(guidance, installed=True)
-                self.assertIn("HolyCrab 0.5.0 installed", text)
+                self.assertIn("HolyCrab 0.6.0 installed", text)
                 self.assertIn(guidance["command"], text)
                 self.assertIn("Create product listing images", text)
                 self.assertNotIn("For Agents", text)
@@ -262,7 +262,7 @@ class ReadableGuidanceTests(unittest.TestCase):
         tasks = [{"uniqId": f"task{i}", "step": 1, "taskType": "VIDEO",
                   "model": "A lengthy fixture model label " * 30} for i in range(20)]
         reply = {"records": tasks, "total": 40, "current": 1, "size": 20, "pages": 2}
-        with patch.object(cli, "send", return_value=ok(reply)):
+        with patch.object(cli._owner("send"), "send", return_value=ok(reply)):
             code, output, _ = self.invoke(["tasks", "list"])
             _, wire, _ = self.invoke(["tasks", "list"], terminal=False)
         self.assertEqual(code, 0)
@@ -279,7 +279,7 @@ class ReadableGuidanceTests(unittest.TestCase):
                     (["real-human", "groups", "rename", "group1", "--name", "Fixture"],
                      {"uniqId": "group1", "name": "Fixture"}, "Person renamed")]
         for argv, reply, heading in fixtures:
-            with self.subTest(argv=argv), patch.object(cli, "send", return_value=ok(reply)):
+            with self.subTest(argv=argv), patch.object(cli._owner("send"), "send", return_value=ok(reply)):
                 code, output, _ = self.invoke(argv)
             self.assertEqual(code, 0)
             self.assertIn(heading, output)
@@ -289,7 +289,7 @@ class ReadableGuidanceTests(unittest.TestCase):
     def test_completed_task_has_output_count_not_raw_urls_and_duplicate_audio_ids(self):
         reply = {"uniqId": "task1", "step": 2, "taskType": "AUDIO",
                  "audioIds": '["https://cdn.example/one.mp3", "https://cdn.example/two.mp3"]'}
-        with patch.object(cli, "send", return_value=ok(reply)):
+        with patch.object(cli._owner("send"), "send", return_value=ok(reply)):
             code, output, _ = self.invoke(["tasks", "get", "task1"])
             _, wire, _ = self.invoke(["tasks", "get", "task1"], terminal=False)
         self.assertEqual(code, 0)
@@ -304,7 +304,7 @@ class ReadableGuidanceTests(unittest.TestCase):
             "intact.py": {"exists": True, "hashMatches": True, "sha256": "a" * 64},
             "broken.py": {"exists": True, "hashMatches": False, "error": "Hash mismatch"}}},
                  "repairs": ["holycrab update"]}
-        with patch.object(cli, "local_health_report", return_value=reply):
+        with patch.object(cli._owner("local_health_report"), "local_health_report", return_value=reply):
             code, output, _ = self.invoke(["doctor"])
         self.assertEqual(code, 1)
         self.assertIn("broken.py", output)
@@ -339,7 +339,7 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_authorization_failure_expiry_and_unknown_upload_keep_honest_recovery(self):
         for status in ("FAILED", "EXPIRED"):
-            with self.subTest(status=status), patch.object(cli, "send", return_value=ok({
+            with self.subTest(status=status), patch.object(cli._owner("send"), "send", return_value=ok({
                     "authorizationId": "auth1", "status": status})):
                 code, output, _ = self.invoke(["real-human", "get", "auth1"])
             self.assertEqual(code, 0)
@@ -353,8 +353,8 @@ class ReadableGuidanceTests(unittest.TestCase):
                                ({"updateAvailable": True, "latestVersion": "0.4.5",
                                  "releasePage": "https://github.com/AstroxNetwork/skills/releases/tag/v0.4.5"},
                                 "Update available")):
-            with self.subTest(reply=reply), patch.object(cli, "check_for_update", return_value=reply), \
-                    patch.object(cli, "run_update") as install:
+            with self.subTest(reply=reply), patch.object(cli._owner("check_for_update"), "check_for_update", return_value=reply), \
+                    patch.object(cli._owner("run_update"), "run_update") as install:
                 code, output, _ = self.invoke(["update", "--check"])
             self.assertEqual(code, 0)
             self.assertIn(heading, output)
@@ -364,8 +364,8 @@ class ReadableGuidanceTests(unittest.TestCase):
     def test_generation_confirmation_shows_exact_request_but_input_json_does_not_force_json_output(self):
         payload = {"model": "seedream-5-0-lite-260128", "prompt": "A blue fixture product", "size": "2K"}
         with patch.object(cli.sys, "stdin", TerminalBuffer()), \
-                patch.object(cli, "send", return_value=ok({"frozenCredit": 5})) as transport, \
-                patch.object(cli, "read_confirmation", return_value="n") as confirm:
+                patch.object(cli._owner("send"), "send", return_value=ok({"frozenCredit": 5})) as transport, \
+                patch.object(cli._owner("read_confirmation"), "read_confirmation", return_value="n") as confirm:
             code, output, errors = self.invoke(["generate", "create", "--kind", "image", "--json", json.dumps(payload)])
         self.assertEqual(code, 2)
         for fragment in (payload["model"], payload["prompt"], payload["size"], "Credits: 5"):
@@ -392,7 +392,7 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_upgrade_summary_does_not_repeat_first_use_introduction(self):
         output = cli.format_onboarding(cli.onboarding_guidance(configured=True), installed=True, upgrading=True)
-        self.assertIn("HolyCrab 0.5.0 installed", output)
+        self.assertIn("HolyCrab 0.6.0 installed", output)
         self.assertIn("holycrab auth status", output)
         self.assertNotIn("Create product listing images", output)
         self.assertNotIn("What would you like", output)

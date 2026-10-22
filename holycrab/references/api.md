@@ -604,7 +604,7 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 - 生成提交只在收到合法任务 ID 时记为 `created`；明确 4xx 业务拒绝记为 `failed`；408、5xx、断网、异常 2xx 和缺少任务 ID 都记为 `unknown`，不会重试。用 `generate attempts list|get` 或 MCP `generation_attempt_list|get` 查询本地记录。
 - 授权、素材、估算、任务及需要恢复的 attempt 结果包含 `nextAction: {code, instruction, command}`。缺少文件、输出位置或请求时 `command` 为 `null`，Agent 应询问用户，不应拼接占位命令。即时查询无需额外建议。轮询仅在状态变化和结束时输出。
 - CLI 过程提示仅在交互终端写入 stderr；JSON stdout 和 MCP 消息不含过程文本。`Ctrl+C` 返回 130：只读等待停止本机轮询；写入开始后保留已知 ID，生成 attempt 记为 `unknown`，上传计划保留已执行边界和批次记录，不自动重试。下载残片会被清理，已有文件保留。
-- MCP 上传仅提供 `asset_upload_prepare` 和 `asset_upload_execute`：前者只检查并预览，后者必须接收 `uploadPlanId + confirmed: true`。
+- MCP 上传操作提供 `asset_upload_prepare` 和 `asset_upload_execute`：前者只检查并预览，后者必须接收 `uploadPlanId + confirmed: true`。
 - 下载只接受无内嵌凭据、无 fragment、非本机/内网地址的 HTTPS；每次重定向重新校验，限制跳转和总大小，先写私有临时文件再原子落盘，默认不覆盖现有文件。
 - 任务接口原始字符串 `audioIds` 由 CLI 解析为 `audioUrls`，音频结果可由 `holycrab download` 下载。
 - 普通 `doctor` 只看本地状态和版本缓存；`doctor --online` 额外刷新版本并验证 API Key。更新只接受更高的稳定语义版本，需用户运行 `holycrab update`，不会静默安装。
@@ -628,3 +628,12 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 ## 账户模型权限
 
 `GET /api/user/me` 的公开账户输出包含有效的 `disabled_models` 字符串数组。空数组表示这次账户查询没有声明禁用模型；字段缺失或格式异常表示权限未知，不表示全部开放。目录仅说明版本能力；始终以预估和提交接口的权限校验为准，权限错误不触发模型替换。
+
+## v0.6.0 本地恢复约定
+
+- `holycrab assets uploads get PLAN_ID` / MCP `asset_upload_plan_get({uploadPlanId})` 只读本机上传记录，不调用线上写接口。
+- `frozenCredit` 必须为非负整数，缺失、布尔值、字符串、小数或异常成功响应均阻止生成；用户批准的估算绑定同一份规范化请求。
+- 上传执行先锁定计划并冻结整批文件字节，再持久化 `executing`，之后才允许网络写入。同一计划跨进程也只能执行一次。成功和失败记录均保留；程序退出不能证明线上未执行。
+- 已收到的任务或素材 ID 不因本地落盘失败而丢失；此时返回 `localStateSaved: false` 和恢复提示。部分批次会停止剩余文件。
+- MCP 将变更操作的失败或不明确结果标为 `isError: true`，保留原有结构化结果；这不是重试许可。只读查询的成功与被查询任务的业务成败分别判断。
+- 安装清单 schema 3 的 `enabledAgents` / `enabledMcp` 表示当前启用设置，`agents` / `agentRegistrations` / `retainedFiles` 保留仍由安装器管理的资源信息。

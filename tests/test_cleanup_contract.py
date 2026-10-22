@@ -27,8 +27,8 @@ class CleanupContractTests(unittest.TestCase):
         self.addCleanup(env.stop)
 
     def test_command_reads_one_manifest_and_releases_snapshot(self):
-        with patch.object(cli, "read_json_file", wraps=cli.read_json_file) as read, \
-                patch.object(cli, "startup_maintenance"), redirect_stdout(io.StringIO()):
+        with patch.object(cli._owner("read_json_file"), "read_json_file", wraps=cli.read_json_file) as read, \
+                patch.object(cli._owner("startup_maintenance"), "startup_maintenance"), redirect_stdout(io.StringIO()):
             for _ in range(2):
                 with patch.object(cli.sys, "argv", ["holycrab", "models", "list", "--json"]):
                     self.assertEqual(cli.main(), 0)
@@ -36,7 +36,7 @@ class CleanupContractTests(unittest.TestCase):
             self.assertEqual(len(reads), 2)
 
     def test_mcp_reads_one_manifest_per_call(self):
-        with patch.object(cli, "read_json_file", wraps=cli.read_json_file) as read:
+        with patch.object(cli._owner("read_json_file"), "read_json_file", wraps=cli.read_json_file) as read:
             for identifier in (1, 2):
                 response = cli.mcp_dispatch({"jsonrpc": "2.0", "id": identifier, "method": "tools/call",
                     "params": {"name": "capabilities_list", "arguments": {}}})
@@ -45,8 +45,8 @@ class CleanupContractTests(unittest.TestCase):
             self.assertEqual(len(reads), 2)
 
     def test_mcp_multi_validation_shares_snapshot_without_submitting(self):
-        with patch.object(cli, "read_json_file", wraps=cli.read_json_file) as read, \
-                patch.object(cli, "send", return_value=(200, {"code": 200, "data": {"frozenCredit": 5}})) as send:
+        with patch.object(cli._owner("read_json_file"), "read_json_file", wraps=cli.read_json_file) as read, \
+                patch.object(cli._owner("send"), "send", return_value=(200, {"code": 200, "data": {"frozenCredit": 5}})) as send:
             for _ in range(2):
                 result = cli.mcp_tool_call("generation_create", {"kind": "image", "request": {
                     "model": "seedream-5-0-lite-260128", "prompt": "fixture", "size": "2K"},
@@ -68,7 +68,7 @@ class CleanupContractTests(unittest.TestCase):
         self.assertEqual(cli.find_model(original["id"]), original)
 
     def test_scope_releases_after_exception(self):
-        with patch.object(cli, "read_json_file", wraps=cli.read_json_file) as read:
+        with patch.object(cli._owner("read_json_file"), "read_json_file", wraps=cli.read_json_file) as read:
             with self.assertRaises(ValueError), cli.capability_operation():
                 cli.all_models()
                 raise ValueError("fixture")
@@ -78,7 +78,7 @@ class CleanupContractTests(unittest.TestCase):
 
     def test_qr_scan_throttled_by_config_directory(self):
         with patch.object(cli.time, "monotonic", side_effect=[10, 12, 14, 15]), \
-                patch.object(cli, "_cleanup_authorization_qrs") as scan:
+                patch.object(cli._owner("_cleanup_authorization_qrs"), "_cleanup_authorization_qrs") as scan:
             cli.cleanup_authorization_qrs()
             cli.cleanup_authorization_qrs()
             with patch.dict(os.environ, {"HOLYCRAB_CONFIG_DIR": str(self.root / "other")}):
@@ -88,7 +88,7 @@ class CleanupContractTests(unittest.TestCase):
 
     def test_qr_cleanup_failure_is_nonblocking_and_throttled(self):
         with patch.object(cli.time, "monotonic", side_effect=[10, 11]), \
-                patch.object(cli, "_cleanup_authorization_qrs", side_effect=OSError("fixture")) as scan:
+                patch.object(cli._owner("_cleanup_authorization_qrs"), "_cleanup_authorization_qrs", side_effect=OSError("fixture")) as scan:
             self.assertIn("Could not clean", cli.cleanup_authorization_qrs())
             self.assertIsNone(cli.cleanup_authorization_qrs())
             self.assertEqual(scan.call_count, 1)
@@ -99,7 +99,7 @@ class CleanupContractTests(unittest.TestCase):
         (directory / "qr.png").write_bytes(b"fixture")
         (directory / "metadata.json").write_text(json.dumps({"deleteAfter": 9999999999}))
         cli.cleanup_authorization_qrs()
-        with patch.object(cli, "send", return_value=(200, {"code": 200, "data": {
+        with patch.object(cli._owner("send"), "send", return_value=(200, {"code": 200, "data": {
             "authorizationId": "auth1", "status": "SUCCEEDED", "group": {"uniqId": "group1", "name": "Fixture"}}})):
             result = cli.get_authorization("auth1")
         self.assertFalse(directory.exists())

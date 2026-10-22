@@ -25,6 +25,7 @@ class McpProtocolTests(unittest.TestCase):
             {
                 "HOLYCRAB_CONFIG_DIR": self.temp.name,
                 "HOLYCRAB_API_KEY": "test-secret",
+                "HOLYCRAB_NO_UPDATE_CHECK": "1",
             },
             clear=False,
         )
@@ -72,7 +73,7 @@ class McpProtocolTests(unittest.TestCase):
                                 "real_human_groups_list", "real_human_group_rename",
                                 "real_human_group_delete", "real_human_assets_list",
                                 "real_human_asset_delete", "asset_upload_prepare", "asset_upload_execute",
-                                "asset_get"})
+                                "asset_get", "asset_upload_plan_get"})
 
     def test_delete_tools_require_confirmation_and_are_destructive(self) -> None:
         response = holycrab.mcp_dispatch(
@@ -96,8 +97,8 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("asset_upload_execute", names)
 
     def test_removed_direct_upload_calls_fail_without_network(self) -> None:
-        with patch.object(holycrab, "send") as send, \
-                patch.object(holycrab, "open_presigned_upload") as upload:
+        with patch.object(holycrab._owner("send"), "send") as send, \
+                patch.object(holycrab._owner("open_presigned_upload"), "open_presigned_upload") as upload:
             response = holycrab.mcp_dispatch({
                 "jsonrpc": "2.0", "id": 23, "method": "tools/call",
                 "params": {"name": "asset_upload", "arguments": {"file": "unused.jpg"}},
@@ -147,8 +148,7 @@ class McpProtocolTests(unittest.TestCase):
                 "attemptId": "quote-attempt",
             },
         }
-        with patch.object(
-            holycrab,
+        with patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 0, "data": {"frozenCredit": 5}}),
         ) as send:
@@ -166,7 +166,7 @@ class McpProtocolTests(unittest.TestCase):
             "request": {"model": "seedream-5-0-lite-260128", "prompt": "a crab", "size": "2k"},
             "confirmed": True,
         }
-        with patch.object(holycrab, "send") as send:
+        with patch.object(holycrab._owner("send"), "send") as send:
             response = holycrab.mcp_dispatch(
                 {
                     "jsonrpc": "2.0",
@@ -188,9 +188,9 @@ class McpProtocolTests(unittest.TestCase):
         }
         replies = [
             (200, {"code": 0, "data": {"frozenCredit": 5}}),
-            (200, {"code": 0, "data": {"uniqId": "task-1"}}),
+            (200, {"code": 0, "data": {"uniqId": "task1"}}),
         ]
-        with patch.object(holycrab, "send", side_effect=replies) as send:
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send:
             first = holycrab.mcp_dispatch(
                 {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "generation_create", "arguments": arguments}}
             )
@@ -231,7 +231,7 @@ class McpProtocolTests(unittest.TestCase):
                 "request": {"prompt": "private prompt"},
             },
         }
-        with patch.object(holycrab, "send", return_value=(200, backend)):
+        with patch.object(holycrab._owner("send"), "send", return_value=(200, backend)):
             response = holycrab.mcp_dispatch(
                 {
                     "jsonrpc": "2.0",

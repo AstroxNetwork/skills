@@ -18,6 +18,7 @@ PUBLIC_FILES = (
     REPO_ROOT / "holycrab" / "references" / "api.md",
     REPO_ROOT / "holycrab" / "references" / "capabilities.json",
     REPO_ROOT / "holycrab" / "scripts" / "holycrab_cli.py",
+    *sorted((REPO_ROOT / "holycrab/scripts/holycrab_runtime").glob("*.py")),
 )
 
 
@@ -43,7 +44,7 @@ class PublicBoundaryTests(unittest.TestCase):
     def test_readme_distinguishes_test_safety_from_real_paid_generation(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("本仓库不会自动提交真实付费生成任务", readme)
-        self.assertIn("测试和开发验证不会调用正式生成接口或产生费用", readme)
+        self.assertIn("默认自动化入口会隔离用户配置并禁止 Python 网络请求，不会调用正式生成接口或产生费用", readme)
         self.assertIn("用户确认后会提交真实付费任务", readme)
 
     def test_public_docs_use_the_approved_privacy_wording_and_links(self) -> None:

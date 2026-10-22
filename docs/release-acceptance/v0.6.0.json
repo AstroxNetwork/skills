@@ -1,0 +1,26 @@
+{
+  "version": "v0.6.0",
+  "candidateSha256": "27aee6e5623fb63a35de9b900d2ae4da3042bb2cf098c1d714fc3202f0005973",
+  "realHumanCoreFlow": {
+    "status": "pending",
+    "operator": null,
+    "testedAt": null,
+    "notes": "Fresh acceptance has not been performed. Historical v0.4.4/v0.5.0 waivers do not apply to the changed upload and state core."
+  },
+  "generateContractCheck": {
+    "status": "blocked",
+    "verifiedMainCommit": "fb101a9c0ef84a33fc6af0bceec9328cb3119ec3",
+    "mode": "read-only-immutable-checkout",
+    "missingModels": [
+      "berry-1.0",
+      "berry-1.0-pro",
+      "berry-1.0-pro-turbo",
+      "berry-1.0-turbo"
+    ],
+    "notes": "Existing supported model constraints pass the adapted source checks. Strict catalogue equality remains blocked; this record is not a release exemption."
+  },
+  "publication": {
+    "status": "awaiting-user-confirmation",
+    "notes": "No tag push, remote Draft, published Release or website deployment has been performed."
+  }
+}

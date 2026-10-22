@@ -27,6 +27,13 @@ def jpeg(path: Path, marker: bytes = b"a") -> None:
 
 class V041Tests(unittest.TestCase):
     def setUp(self) -> None:
+        try:
+            from .network_fixtures import getaddrinfo
+        except ImportError:
+            from network_fixtures import getaddrinfo
+        dns = patch.object(cli.socket, 'getaddrinfo', side_effect=getaddrinfo)
+        dns.start()
+        self.addCleanup(dns.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.env = patch.dict(os.environ, {
@@ -56,14 +63,14 @@ class V041Tests(unittest.TestCase):
             with self.subTest(outcome=outcome):
                 attempt = f"attempt{index}"
                 replies = [(200, {"code": 200, "data": {"frozenCredit": 5}}), outcome]
-                with patch.object(cli, "send", side_effect=replies) as send:
+                with patch.object(cli._owner("send"), "send", side_effect=replies) as send:
                     result = cli.create_generation("image", self.image_request(), confirmed=True,
                                                    attempt_id=attempt)
                 self.assertEqual(result["state"], "unknown")
                 self.assertEqual(send.call_count, 2)
                 self.assertEqual(cli.attempt_record(attempt)["state"], "unknown")
                 self.assertIn("cannot prove", result["nextAction"]["instruction"])
-                with patch.object(cli, "send") as second:
+                with patch.object(cli._owner("send"), "send") as second:
                     with self.assertRaisesRegex(SystemExit, "already exists"):
                         cli.create_generation("image", self.image_request(), confirmed=True,
                                               attempt_id=attempt)
@@ -72,7 +79,7 @@ class V041Tests(unittest.TestCase):
     def test_explicit_business_rejection_is_failed(self) -> None:
         replies = [(200, {"code": 200, "data": {"frozenCredit": 5}}),
                    (400, {"code": 400, "message": "bad request"})]
-        with patch.object(cli, "send", side_effect=replies):
+        with patch.object(cli._owner("send"), "send", side_effect=replies):
             result = cli.create_generation("image", self.image_request(), confirmed=True,
                                            attempt_id="rejected1")
         self.assertEqual(result["state"], "failed")
@@ -108,14 +115,14 @@ class V041Tests(unittest.TestCase):
         manifest = Path(self.temp.name) / "installation.json"
         manifest.write_text("{}", encoding="utf-8")
         manifest.chmod(0o644)
-        with patch.object(cli, "installation_path", return_value=manifest), \
+        with patch.object(cli._owner("installation_path"), "installation_path", return_value=manifest), \
                 self.assertRaisesRegex(SystemExit, "Unsafe permissions"):
             cli.load_installation()
         self.assertEqual(stat.S_IMODE(manifest.stat().st_mode), 0o644)
 
     def test_update_startup_runs_local_health_without_duplicate_online_check(self) -> None:
-        with patch.object(cli, "local_health_report", return_value={"repairs": []}) as health, \
-                patch.object(cli, "check_for_update") as update:
+        with patch.object(cli._owner("local_health_report"), "local_health_report", return_value={"repairs": []}) as health, \
+                patch.object(cli._owner("check_for_update"), "check_for_update") as update:
             cli.startup_maintenance(["update", "--check"])
         health.assert_called_once_with(online=False)
         update.assert_not_called()
@@ -197,7 +204,7 @@ class V041Tests(unittest.TestCase):
     def test_task_filters_are_forwarded_and_dates_are_paired(self) -> None:
         args = argparse.Namespace(page=1, page_size=20, start_date="2026-09-01",
                                   end_date="2026-09-14", type="AUDIO")
-        with patch.object(cli, "send", return_value=(200, {"code": 200, "data": {"records": []}})) as send, \
+        with patch.object(cli._owner("send"), "send", return_value=(200, {"code": 200, "data": {"records": []}})) as send, \
                 redirect_stdout(io.StringIO()):
             cli.command_task_list(args)
         self.assertEqual(send.call_args.kwargs["query"][-3:], [
@@ -213,8 +220,8 @@ class V041Tests(unittest.TestCase):
                 cli.validate_download_url(value)
         output = Path(self.temp.name) / "exists.bin"
         output.write_bytes(b"keep")
-        with patch.object(cli, "send", return_value=(200, {"code": 200, "data": {
-            "uniqId": "task", "videoUrl": "https://cdn.example/a.mp4"}})), patch.object(cli, "open_download") as open_:
+        with patch.object(cli._owner("send"), "send", return_value=(200, {"code": 200, "data": {
+            "uniqId": "task", "videoUrl": "https://cdn.example/a.mp4"}})), patch.object(cli._owner("open_download"), "open_download") as open_:
             with self.assertRaisesRegex(SystemExit, "already exists"):
                 cli.command_download(argparse.Namespace(uniq_id="task", output=str(output), index=0, force=False))
         open_.assert_not_called()
@@ -231,8 +238,8 @@ class V041Tests(unittest.TestCase):
         response.__enter__.return_value.headers = {}
         response.__enter__.return_value.read.side_effect = [b"12345", b"67890"]
         backend = (200, {"code": 200, "data": {"uniqId": "task", "videoUrl": "https://cdn.example/result.mp4"}})
-        with patch.object(cli, "send", return_value=backend), patch.object(cli, "open_download", return_value=response), \
-                patch.object(cli, "MAX_DOWNLOAD_BYTES", 8):
+        with patch.object(cli._owner("send"), "send", return_value=backend), patch.object(cli._owner("open_download"), "open_download", return_value=response), \
+                patch.object(cli._owner("MAX_DOWNLOAD_BYTES"), "MAX_DOWNLOAD_BYTES", 8):
             with self.assertRaisesRegex(SystemExit, "size limit"):
                 cli.command_download(argparse.Namespace(uniq_id="task", output=str(destination), index=0, force=False))
         self.assertFalse(destination.exists())
@@ -245,7 +252,7 @@ class V041Tests(unittest.TestCase):
         self.assertTrue(plan["confirmationRequired"])
         self.assertNotIn("apiKey", json.dumps(plan))
         first.write_bytes(b"\xff\xd8\xff\xe0changed")
-        with patch.object(cli, "send") as send:
+        with patch.object(cli._owner("send"), "send") as send:
             with self.assertRaisesRegex(SystemExit, "changed after confirmation"):
                 cli.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
         send.assert_not_called()
@@ -254,7 +261,7 @@ class V041Tests(unittest.TestCase):
         first = Path(self.temp.name) / "first.jpg"
         jpeg(first)
         plan = cli.prepare_upload_plan([str(first)])
-        with patch.object(cli, "send") as send, patch.object(cli, "open_presigned_upload") as put:
+        with patch.object(cli._owner("send"), "send") as send, patch.object(cli._owner("open_presigned_upload"), "open_presigned_upload") as put:
             with self.assertRaisesRegex(ValueError, "confirmed must be true"):
                 cli.execute_upload_plan(plan["uploadPlanId"], confirmed=False)
             with self.assertRaisesRegex(SystemExit, "Unknown MCP tool: asset_upload"):
@@ -263,7 +270,7 @@ class V041Tests(unittest.TestCase):
         put.assert_not_called()
         args = argparse.Namespace(file=[str(first)], real_human_group=None,
                                   duration_seconds=None, yes=False)
-        with patch.object(cli, "send") as send, patch.object(cli, "open_presigned_upload") as put, \
+        with patch.object(cli._owner("send"), "send") as send, patch.object(cli._owner("open_presigned_upload"), "open_presigned_upload") as put, \
                 patch.object(cli.sys.stdin, "isatty", return_value=False), \
                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             self.assertEqual(cli.command_upload_asset(args), 2)
@@ -303,7 +310,7 @@ class V041Tests(unittest.TestCase):
             {"assetUniqId": "asset1", "state": "uploaded", "ready": False},
             {"assetUniqId": "asset2", "state": "unknown"},
         ]
-        with patch.object(cli, "upload_prepared_file", side_effect=results) as upload:
+        with patch.object(cli._owner("upload_prepared_file"), "upload_prepared_file", side_effect=results) as upload:
             result = cli.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
         self.assertEqual(upload.call_count, 2)
         self.assertEqual(len(result["uploaded"]), 1)
@@ -315,9 +322,8 @@ class V041Tests(unittest.TestCase):
         source.write_bytes(b"\x00\x00\x00\x18ftypisom" + b"0" * 20)
         item = cli.inspect_upload_file(str(source), real_human=True, duration_seconds=8)
         for status, expected in ((400, "failed"), (408, "unknown"), (503, "unknown")):
-            with self.subTest(status=status), patch.object(
-                cli, "send", return_value=(status, {"code": status, "message": "no"})
-            ) as send, patch.object(cli, "open_presigned_upload") as put:
+            with self.subTest(status=status), patch.object(cli._owner("send"), "send", return_value=(status, {"code": status, "message": "no"})
+            ) as send, patch.object(cli._owner("open_presigned_upload"), "open_presigned_upload") as put:
                 result = cli.upload_prepared_file(item, "group1")
             self.assertEqual(result["state"], expected)
             self.assertEqual(send.call_count, 1)
@@ -327,9 +333,9 @@ class V041Tests(unittest.TestCase):
         source = Path(self.temp.name) / "first.jpg"
         jpeg(source)
         group = {"uniqId": "group1", "name": "Lin"}
-        with patch.object(cli, "find_real_human_group", return_value=group):
+        with patch.object(cli._owner("find_real_human_group"), "find_real_human_group", return_value=group):
             plan = cli.prepare_upload_plan([str(source)], group_uniq_id="group1")
-        with patch.object(cli, "upload_prepared_file", return_value={"state": "unknown", "phase": "presign"}):
+        with patch.object(cli._owner("upload_prepared_file"), "upload_prepared_file", return_value={"state": "unknown", "phase": "presign"}):
             result = cli.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
         self.assertEqual(result["failedOrUnknown"]["groupUniqId"], "group1")
         self.assertEqual(result["nextAction"]["code"], "QUERY_GROUP_ASSETS")
@@ -360,7 +366,7 @@ class V041Tests(unittest.TestCase):
             "EXPIRED": {"authorizationId": authorization, "status": "EXPIRED"},
         }
         for status, data in fixtures.items():
-            with self.subTest(status=status), patch.object(cli, "send", return_value=(200, {"code": 200, "data": data})):
+            with self.subTest(status=status), patch.object(cli._owner("send"), "send", return_value=(200, {"code": 200, "data": data})):
                 result = cli.get_authorization(authorization)
             self.assertIn("nextAction", result)
             self.assertIsInstance(result["nextAction"]["instruction"], str)
@@ -382,24 +388,29 @@ class V041Tests(unittest.TestCase):
                 "browser_download_url": "https://evil.example/install", "digest": "sha256:" + "0" * 64}]})
 
     def test_update_cache_limits_automatic_checks_to_once_per_day(self) -> None:
-        release = {"checkedAt": cli.utc_now(), "latestVersion": "0.4.5", "updateAvailable": True,
-                   "releasePage": cli.RELEASE_PAGE_PREFIX + "v0.4.5", "release": {"tag_name": "v0.4.5"}}
+        release = cli.release_update_info({"tag_name": "v99.0.0", "draft": False, "prerelease": False,
+                                          "html_url": cli.RELEASE_PAGE_PREFIX + "v99.0.0"})
         with patch.dict(os.environ, {"HOLYCRAB_NO_UPDATE_CHECK": "0"}), \
-                patch.object(cli, "fetch_latest_release", return_value=release) as fetch:
+                patch.object(cli._owner("fetch_latest_release"), "fetch_latest_release", return_value=release) as fetch:
             first = cli.check_for_update()
             second = cli.check_for_update()
         self.assertTrue(first["updateAvailable"])
-        self.assertEqual(second["latestVersion"], "0.4.5")
+        self.assertEqual(second["latestVersion"], "99.0.0")
         fetch.assert_called_once()
 
-    def test_failed_automatic_update_check_is_also_cached_for_one_day(self) -> None:
+    def test_failed_automatic_update_check_retries_after_one_hour(self) -> None:
         with patch.dict(os.environ, {"HOLYCRAB_NO_UPDATE_CHECK": "0"}), \
-                patch.object(cli, "fetch_latest_release", side_effect=urllib.error.URLError("offline")) as fetch:
+                patch.object(cli.time, "time", return_value=100000) as clock, \
+                patch.object(cli._owner("fetch_latest_release"), "fetch_latest_release", side_effect=urllib.error.URLError("offline")) as fetch:
             first = cli.check_for_update()
+            clock.return_value += 3599
             second = cli.check_for_update()
-        self.assertFalse(first["updateAvailable"])
-        self.assertEqual(second, first)
-        fetch.assert_called_once()
+            self.assertFalse(first["updateAvailable"])
+            self.assertEqual(second, first)
+            fetch.assert_called_once()
+            clock.return_value += 1
+            cli.check_for_update()
+            self.assertEqual(fetch.call_count, 2)
 
     def test_update_requires_confirmation_and_verifies_digest_before_execution(self) -> None:
         name = "install.ps1" if os.name == "nt" else "install.sh"
@@ -410,10 +421,10 @@ class V041Tests(unittest.TestCase):
             "digest": "sha256:" + cli.hashlib.sha256(body).hexdigest()}]}
         state = {"release": release}
         args = argparse.Namespace(check=False, yes=False)
-        with patch.object(cli, "check_for_update", return_value={"latestVersion": "0.4.5", "updateAvailable": True}), \
-                patch.object(cli, "read_update_state", return_value=state), \
+        with patch.object(cli._owner("check_for_update"), "check_for_update", return_value={"latestVersion": "0.4.5", "updateAvailable": True, "release": release}), \
+                patch.object(cli._owner("read_update_state"), "read_update_state", return_value=state), \
                 patch.object(cli.sys.stdin, "isatty", return_value=False), \
-                patch.object(cli, "run_update") as run, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                patch.object(cli._owner("run_update"), "run_update") as run, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             self.assertEqual(cli.command_update(args), 2)
         run.assert_not_called()
 
@@ -421,8 +432,8 @@ class V041Tests(unittest.TestCase):
         bad_release["assets"][0]["digest"] = "sha256:" + "0" * 64
         remote = MagicMock()
         remote.__enter__.return_value.read.side_effect = [body, b""]
-        with patch.object(cli, "load_installation", return_value=self.update_manifest), \
-                patch.object(cli, "open_download", return_value=remote), patch.object(cli.subprocess, "run") as run:
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value=self.update_manifest), \
+                patch.object(cli._owner("open_download"), "open_download", return_value=remote), patch.object(cli.subprocess, "run") as run:
             with self.assertRaisesRegex(SystemExit, "digest mismatch"):
                 cli.run_update(bad_release)
         run.assert_not_called()
@@ -431,9 +442,9 @@ class V041Tests(unittest.TestCase):
         remote.__enter__.return_value.read.side_effect = [body, b""]
         completed = MagicMock(returncode=0)
         with patch.dict(os.environ, {"HOLYCRAB_INSTALL_SOURCE_DIR": "/unsafe/source", "HOLYCRAB_INSTALL_REF": "a" * 40}), \
-                patch.object(cli, "open_download", return_value=remote), \
-                patch.object(cli, "installation_path", return_value=Path("/chosen/lib/holycrab/installation.json")), \
-                patch.object(cli, "load_installation", return_value={"managedBy": cli.INSTALLATION_MANAGER, "prefix": "/chosen", "agents": ["codex"], "mcp": False}), \
+                patch.object(cli._owner("open_download"), "open_download", return_value=remote), \
+                patch.object(cli._owner("installation_path"), "installation_path", return_value=Path("/chosen/lib/holycrab/installation.json")), \
+                patch.object(cli._owner("load_installation"), "load_installation", return_value={"managedBy": cli.INSTALLATION_MANAGER, "prefix": "/chosen", "agents": ["codex"], "mcp": False}), \
                 patch.object(cli.subprocess, "run", return_value=completed) as run:
             cli.run_update(release)
         self.assertNotIn("HOLYCRAB_INSTALL_SOURCE_DIR", run.call_args.kwargs["env"])
@@ -449,8 +460,8 @@ class V041Tests(unittest.TestCase):
             "digest": "sha256:" + cli.hashlib.sha256(body).hexdigest()}]}
         remote = MagicMock()
         remote.__enter__.return_value.read.side_effect = [body, b""]
-        with patch.object(cli, "load_installation", return_value=self.update_manifest), \
-                patch.object(cli, "open_download", return_value=remote), \
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value=self.update_manifest), \
+                patch.object(cli._owner("open_download"), "open_download", return_value=remote), \
                 patch.object(cli.subprocess, "run", return_value=MagicMock(returncode=0)) as run:
             cli.run_update(release)
         environment = run.call_args.kwargs["env"]
@@ -472,10 +483,10 @@ class V041Tests(unittest.TestCase):
                     "mcp": True, "coreFiles": [
                         {"path": str(path), "sha256": cli.sha256_stream(path)} for path in core_paths
                     ]}
-        with patch.object(cli, "load_installation", return_value=manifest), \
-                patch.object(cli, "mcp_registration_check", return_value={"ok": True}) as mcp, \
-                patch.object(cli, "send", return_value=(200, {"code": 200, "data": {"username": "Fixture", "credit": 10}})), \
-                patch.object(cli, "check_for_update", return_value={"latestVersion": cli.VERSION,
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value=manifest), \
+                patch.object(cli._owner("mcp_registration_check"), "mcp_registration_check", return_value={"ok": True}) as mcp, \
+                patch.object(cli._owner("send"), "send", return_value=(200, {"code": 200, "data": {"username": "Fixture", "credit": 10}})), \
+                patch.object(cli._owner("check_for_update"), "check_for_update", return_value={"latestVersion": cli.VERSION,
                                                                       "updateAvailable": False}):
             report = cli.local_health_report(online=True)
         self.assertTrue(report["ok"])

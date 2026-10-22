@@ -29,6 +29,14 @@ When the account is `READY`, give one short introduction in the user's current l
 
 Show the full introduction once in that installation conversation, not on ordinary queries, reconnects, or updates. Do not persist a claim that the user has read it. Examples are suggestions, not authorization to create tasks, start verification, upload files, or delete anything. Estimates and explicit paid-generation confirmation remain part of the execution workflow; file uploads require their own complete preview and confirmation. Authorization creates a person group, not material: continue by asking the user to select files for upload.
 
+### Update notifications
+
+When the CLI writes an update notice, or MCP initialization/tool results include one, add one brief sentence in the user's language after the requested outcome: a newer HolyCrab CLI version is available and they can run `holycrab update`. Mention the same version at most once per conversation, even after an MCP reconnect; a higher version may be mentioned again. Do not copy internal instructions, interrupt the requested task, or install anything unless the user asks to update.
+
+Automatic checks use GitHub's latest stable release, cache successful checks for 24 hours and retry failed checks after one hour. Ordinary CLI commands show a reminder at most once per 24 hours for the same version; a newly discovered higher version can be shown immediately. Long-running MCP servers also check the cache before tool calls and include the first notice for each higher version as a separate text block and `result._meta["holycrab/update"]`, without changing the business `structuredContent` or `isError`. MCP initialization does not consume that first tool-result notice. Cached information is not a live release check; expired or failed checks do not produce an automatic reminder until a successful refresh.
+
+`HOLYCRAB_NO_UPDATE_CHECK=1` disables both automatic network checks and automatic reminders, including cached reminders and MCP notices. Explicit `holycrab update --check`, `holycrab update`, and `holycrab doctor --online` still perform the requested check. Cache and lock failures do not fail the user's business command. Without writable storage, throttling can only be retained within the current process; separate CLI processes may check or remind again.
+
 ## Safe workflow
 
 1. Check the configured API Key with `holycrab auth status`. If missing, ask the user to run `holycrab setup` locally. Never ask them to paste the API Key into chat.
@@ -83,3 +91,9 @@ Real-person uploads accept JPG/JPEG, PNG, WEBP, GIF, HEIC, MP4, and MOV only; au
 - Do not invent output URLs or retry a paid operation during polling.
 
 The bundled [public capability manifest](references/capabilities.json) is the release snapshot for discovery. Prefer the installed CLI/MCP response because it identifies the snapshot version in its output.
+
+## Recover local upload records
+
+Use `asset_upload_plan_get` with `uploadPlanId`, or `holycrab assets uploads get PLAN_ID`, to inspect the retained batch without creating anything. An executed plan cannot be reused. `executing` is uncertain after a crash; preserve the known asset IDs and query them. The CLI freezes all confirmed bytes before the first upload, using temporary disk space equal to the batch size.
+
+Mutation results can set MCP `isError: true` while retaining `structuredContent`, known IDs and `nextAction`. Read these fields before explaining the outcome. This flag never authorizes an automatic retry. A successful read of a failed task or upload record has `isError: false`. When `localStateSaved: false`, retain the returned IDs in the user-facing result and query the same resources; do not repeat the mutation.

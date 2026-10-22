@@ -1,9 +1,10 @@
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$VersionMatch = [regex]::Match((Get-Content -LiteralPath (Join-Path $RepoRoot "holycrab/scripts/holycrab_cli.py") -Raw), '(?m)^VERSION = "([^"]+)"\r?$')
-if (-not $VersionMatch.Success) { throw "Cannot read candidate CLI version" }
-$ExpectedVersion = $VersionMatch.Groups[1].Value
+$Python = (Get-Command python).Source
+$NativeChecks = Join-Path $RepoRoot "tools/native_install_checks.py"
+$ExpectedVersion = & $Python $NativeChecks version (Join-Path $RepoRoot "holycrab/scripts")
+if ($LASTEXITCODE -ne 0) { throw "Cannot read candidate CLI version" }
 $ExpectedInstallSummary = [regex]::Escape("HolyCrab $ExpectedVersion installed")
 $ChinesePath = -join @(
     [char]0x4E2D, [char]0x6587, [char]0x7528, [char]0x6237,
@@ -67,14 +68,8 @@ if ($env:HOLYCRAB_TEST_INSTALL_REF) {
 
 $CliPath = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\holycrab_cli.py"
 $ProgramDir = Split-Path $CliPath
-$AllowedFiles = @("holycrab_cli.py", "installation.json", "references/capabilities.json", "vendor/segno-1.6.6-py3-none-any.whl", "vendor/LICENSE.segno")
-foreach ($InstalledFile in Get-ChildItem -LiteralPath $ProgramDir -File -Recurse) {
-    $Relative = $InstalledFile.FullName.Substring($ProgramDir.Length + 1).Replace("\", "/")
-    if ($Relative -notmatch '^__pycache__/holycrab_cli\..*\.pyc$' -and $AllowedFiles -notcontains $Relative) {
-        throw "Installation contained a non-runtime file: $Relative"
-    }
-}
-$Python = (Get-Command python).Source
+& $Python $NativeChecks runtime $ProgramDir
+if ($LASTEXITCODE -ne 0) { throw "Installed runtime inventory or source bytes differ" }
 
 $SavedKey = "hc_test_windows_dpapi_123456789"
 $SetupOutput = ($SavedKey | & $Launcher setup --stdin --no-verify | Out-String)
@@ -88,9 +83,10 @@ if ($Config.PSObject.Properties.Name -contains "apiKey") { throw "Windows config
 if (-not ($Config.PSObject.Properties.Name -contains "apiKeyDpapi")) { throw "Windows config omitted DPAPI ciphertext" }
 if ($ConfigText.Contains($SavedKey)) { throw "Windows config contains plaintext API Key" }
 
-$OriginalCli = Get-Content -LiteralPath $CliPath -Raw -Encoding UTF8
-foreach ($OldVersion in @("0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4")) {
-    [IO.File]::WriteAllText($CliPath, $OriginalCli.Replace(('VERSION = "' + $ExpectedVersion + '"'), ('VERSION = "' + $OldVersion + '"')), [Text.UTF8Encoding]::new($false))
+# These are old-version metadata fixtures, not proof of executing those historical releases.
+foreach ($OldVersion in @("0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4", "0.5.0")) {
+    & $Python $NativeChecks fixture-version $ProgramDir $OldVersion
+    if ($LASTEXITCODE -ne 0 -or (& $Launcher --version) -ne "holycrab $OldVersion") { throw "Old-version fixture did not alter the active runtime" }
     & (Join-Path $RepoRoot "install.ps1")
     if ((Get-Content -LiteralPath $ConfigPath -Raw) -ne $ConfigText) { throw "Upgrade changed the saved DPAPI credential" }
     $UpgradedVersion = & $Launcher --version
@@ -98,6 +94,30 @@ foreach ($OldVersion in @("0.4.0", "0.4.1", "0.4.2", "0.4.3", "0.4.4")) {
     $UpgradedDoctor = & $Launcher doctor --json | ConvertFrom-Json
     if ($UpgradedDoctor.onboarding.state -ne "CONFIGURED") { throw "Offline doctor should report configuration without requiring repeated verification" }
 }
+
+# Inject an actual installed-health failure, then compare every previous runtime byte.
+$RollbackNote = Join-Path $ProgramDir "user-note.txt"
+[IO.File]::WriteAllText($RollbackNote, "preserve this user file", [Text.UTF8Encoding]::new($false))
+$RollbackSnapshot = Join-Path $TestRoot "rollback-before.json"
+& $Python $NativeChecks snapshot $ProgramDir $RollbackSnapshot
+if ($LASTEXITCODE -ne 0) { throw "Could not record pre-upgrade bytes" }
+$BrokenSource = Join-Path $TestRoot "broken-candidate"
+& $Python $NativeChecks broken-source $BrokenSource
+if ($LASTEXITCODE -ne 0) { throw "Could not prepare health-failure fixture" }
+$PreviousSourceDir = $env:HOLYCRAB_INSTALL_SOURCE_DIR
+$FailedAsExpected = $false
+try {
+    $env:HOLYCRAB_INSTALL_SOURCE_DIR = $BrokenSource
+    try { & (Join-Path $BrokenSource "install.ps1") } catch { $FailedAsExpected = $true }
+} finally {
+    $env:HOLYCRAB_INSTALL_SOURCE_DIR = $PreviousSourceDir
+}
+if (-not $FailedAsExpected) { throw "Injected health failure incorrectly reported a successful installation" }
+& $Python $NativeChecks compare-snapshot $ProgramDir $RollbackSnapshot
+if ($LASTEXITCODE -ne 0) { throw "Failed update did not restore the exact previous runtime" }
+if ((Get-Content -LiteralPath $ConfigPath -Raw) -ne $ConfigText) { throw "Failed update changed the saved DPAPI credential" }
+if ((& $Launcher --version) -ne "holycrab $ExpectedVersion") { throw "Restored launcher does not work" }
+Remove-Item -LiteralPath $RollbackNote
 
 $LegacyKey = "hc_test_legacy_plaintext_123456789"
 [IO.File]::WriteAllText($ConfigPath, ('{"apiKey":"' + $LegacyKey + '"}'), [Text.UTF8Encoding]::new($false))
@@ -181,7 +201,7 @@ if ($McpLog -notmatch "mcp add holycrab" -or -not $McpLog.Contains($CliPath)) {
 $ManifestText = Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\installation.json") -Raw -Encoding UTF8
 if ($ManifestText.Contains($SavedKey) -or $ManifestText.Contains($LegacyKey)) { throw "installation.json contains an API Key" }
 $Manifest = $ManifestText | ConvertFrom-Json
-if ($Manifest.schemaVersion -ne 2 -or $Manifest.managedBy -ne "holycrab-installer") { throw "Installation ownership metadata is missing" }
+if ($Manifest.schemaVersion -ne 3 -or $Manifest.managedBy -ne "holycrab-installer") { throw "Installation ownership metadata is missing" }
 if ($Manifest.agentRegistrations.codex.executable -ne (Join-Path $FakeBin "codex.cmd") -or
     $Manifest.agentRegistrations.codex.managed -ne $true) { throw "Actual Agent client path and ownership were not recorded" }
 if ($Manifest.pathRegistration.kind -ne "windows-user-path" -or $Manifest.pathRegistration.addedByInstaller -ne $true) {

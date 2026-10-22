@@ -71,11 +71,14 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('select(.tag_name == $version)', workflow)
         self.assertIn('release.get("draft") is True', workflow)
 
-    def test_v043_resume_reuses_draft_without_overwriting_and_keeps_required_checks(self) -> None:
+    def test_generic_resume_reuses_draft_and_requires_explicit_publication(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         self.assertIn('workflow_dispatch:', workflow)
-        self.assertIn('options: [v0.4.4]', workflow)
-        self.assertIn('Existing v0.4.4 Draft assets will only be verified, never overwritten', workflow)
+        self.assertNotIn('options: [v0.4.4]', workflow)
+        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true", workflow)
+        self.assertIn('default: false', workflow)
+        self.assertIn('git rev-parse "$release_version^{commit}"', workflow)
+        self.assertIn('Existing Draft assets will only be verified, never overwritten', workflow)
         self.assertIn('needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]', workflow)
         self.assertIn('needs: [release, verify-draft-install]', workflow)
         self.assertNotIn('--clobber', workflow)
@@ -121,9 +124,9 @@ class InstallerTests(unittest.TestCase):
             result = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             version = subprocess.run([str(root / "prefix/bin/holycrab"), "--version"], env=env, text=True, capture_output=True)
-            self.assertEqual(version.stdout.strip(), "holycrab 0.5.0")
+            self.assertEqual(version.stdout.strip(), "holycrab 0.6.0")
             self.assertIn("Next: connect your account\n  holycrab setup", result.stdout)
-            self.assertIn("HolyCrab 0.5.0 installed", result.stdout)
+            self.assertIn("HolyCrab 0.6.0 installed", result.stdout)
             self.assertNotIn("For Agents:", result.stdout)
             self.assertNotIn("Available workflows after account verification:", result.stdout)
             self.assertNotIn("account is connected", result.stdout)
@@ -142,8 +145,8 @@ class InstallerTests(unittest.TestCase):
     def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         powershell_installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
-        self.assertIn("VERSION=v0.5.0", installer)
-        self.assertIn('$Version = "v0.5.0"', powershell_installer)
+        self.assertIn("VERSION=v0.6.0", installer)
+        self.assertIn('$Version = "v0.6.0"', powershell_installer)
 
         stable_urls = (
             "https://holycrab.ai/cli/install.sh",
@@ -189,7 +192,7 @@ class InstallerTests(unittest.TestCase):
             manifest = json.loads(
                 (Path(home) / ".local" / "lib" / "holycrab" / "installation.json").read_text(encoding="utf-8")
             )
-            self.assertEqual(manifest["schemaVersion"], 2)
+            self.assertEqual(manifest["schemaVersion"], 3)
             self.assertEqual(manifest["managedBy"], "holycrab-installer")
             self.assertEqual(manifest["pathRegistration"]["kind"], "shell-profile")
             self.assertTrue(manifest["pathRegistration"]["addedByInstaller"])
@@ -214,6 +217,7 @@ class InstallerTests(unittest.TestCase):
             self.assertIn('"protocolVersion":"2025-11-25"', handshake.stdout)
             allowed_program = {"holycrab_cli.py", "installation.json", "references/capabilities.json",
                                "vendor/segno-1.6.6-py3-none-any.whl", "vendor/LICENSE.segno"}
+            allowed_program.update({"runtime-files.json", *[p.relative_to(REPO_ROOT / "holycrab/scripts").as_posix() for p in (REPO_ROOT / "holycrab/scripts/holycrab_runtime").glob("*.py")]})
             library = Path(home) / ".local/lib/holycrab"
             installed_files = {p.relative_to(library).as_posix() for p in library.rglob("*")
                                if p.is_file() and "__pycache__" not in p.parts}
@@ -288,7 +292,7 @@ class InstallerTests(unittest.TestCase):
             env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
             interrupted = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True, timeout=15)
             self.assertEqual(interrupted.returncode, 130, interrupted.stdout + interrupted.stderr)
-            self.assertNotIn("HolyCrab 0.5.0 installed", interrupted.stdout)
+            self.assertNotIn("HolyCrab 0.6.0 installed", interrupted.stdout)
             self.assertEqual((root / "prefix/lib/holycrab/holycrab_cli.py").read_bytes(), old)
             self.assertIn("restored", interrupted.stderr)
 
@@ -426,7 +430,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-relative=${url#*/v0.5.0/}
+relative=${url#*/v0.6.0/}
 cp "$FAKE_RELEASE_ROOT/$relative" "$destination"
 if [ "$relative" = "holycrab/scripts/holycrab_cli.py" ]; then
   printf '\\n# tampered\\n' >> "$destination"
@@ -505,7 +509,7 @@ fi
                     result = subprocess.run([sys.executable, str(script), str(REPO_ROOT / "holycrab/scripts/holycrab_cli.py"), upgrading, "onboarding"],
                                             input=bom + json.dumps(value), text=True, encoding="utf-8", capture_output=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn("HolyCrab 0.5.0 installed", result.stdout)
+                    self.assertIn("HolyCrab 0.6.0 installed", result.stdout)
                     self.assertNotIn("PRIVATE_INTERNAL_RULE", result.stdout)
                     self.assertNotIn("account connected", result.stdout)
                     self.assertEqual("Create product listing images" in result.stdout, upgrading == "0")
@@ -552,9 +556,7 @@ fi
             "ubuntu-latest",
             "macos-latest",
             "windows-latest",
-            "python3 -m unittest discover -s tests -v",
-            "python3 -m py_compile",
-            "validate_capabilities.py",
+            "python tools/run_checks.py --report build/validation/report.json",
             "quick_validate.py",
             "49f948faa9258a0c61caceaf225e179651397431",
             "HOLYCRAB_INSTALL_SOURCE_DIR",
@@ -607,6 +609,7 @@ fi
         self.assertIn("repository: AstroxNetwork/seedance-2.0", workflow)
         self.assertIn('verify_release_acceptance.py "${{ steps.contract-version.outputs.version }}" --contract-only', workflow)
         self.assertIn("steps.contract-version.outputs.version == 'v0.5.0'", workflow)
+        self.assertNotIn("steps.contract-version.outputs.version == 'v0.6.0'", workflow)
 
 
 if __name__ == "__main__":

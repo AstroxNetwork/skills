@@ -72,6 +72,33 @@ def validate_contract(record, root):
             raise ValueError("Local contract evidence is stale for " + relative + "; rerun the local check")
 
 
+def candidate_fingerprint(root):
+    """Bind acceptance to all shipped sources and the release/validation machinery."""
+    root = Path(root)
+    manifest = json.loads((root / "runtime-files.json").read_text())
+    paths = {row["source"] for row in manifest["files"]}
+    paths.update({".gitattributes", "runtime-files.json", "install.sh", "install.ps1", ".github/workflows/ci.yml",
+                  "tools/validate_generate_contract.py", "tools/verify_release_acceptance.py",
+                  "tools/refresh_installer_hashes.py"})
+    # The acceptance must also become stale if its test runner or fixtures
+    # change. Keep the acceptance record itself outside its own fingerprint.
+    paths.update(path.relative_to(root).as_posix()
+                 for folder in ("tools", "tests", ".github/workflows")
+                 for path in (root / folder).rglob("*")
+                 if path.is_file() and path.suffix in {".py", ".ps1", ".json", ".txt", ".yml", ".yaml"}
+                 and "__pycache__" not in path.parts)
+    package = {path.relative_to(root).as_posix() for path in (root / "holycrab/scripts/holycrab_runtime").glob("*.py")}
+    if not package or not package.issubset(paths):
+        raise ValueError("Candidate runtime inventory is incomplete")
+    hashes = {}
+    for name in sorted(paths):
+        path = root / name
+        if not path.resolve().is_relative_to(root.resolve()) or path.is_symlink():
+            raise ValueError("Unsafe candidate file path")
+        hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def validate(record, tag, *, root=None, contract_only=False):
     if not isinstance(record, dict) or record.get("version") != tag:
         raise ValueError("Manual acceptance version must match the release tag")
@@ -81,6 +108,11 @@ def validate(record, tag, *, root=None, contract_only=False):
         if tag not in LOCAL_EVIDENCE_TAGS or root is None:
             raise ValueError("Local contract mode requires an explicitly authorized release version")
         return
+    if tag not in LOCAL_EVIDENCE_TAGS:
+        if root is None or json.loads((Path(root) / "runtime-files.json").read_text()).get("version") != tag.removeprefix("v"):
+            raise ValueError("Candidate version does not match the acceptance tag")
+        if root is None or record.get("candidateSha256") != candidate_fingerprint(root):
+            raise ValueError("Fresh acceptance must match this exact candidate; historical waivers do not apply")
     flow = record.get("realHumanCoreFlow")
     if not isinstance(flow, dict):
         raise ValueError("Actual real-person authorization and upload acceptance is still pending; do not release")
@@ -107,7 +139,11 @@ def main():
     parser.add_argument("tag")
     parser.add_argument("--record", type=Path)
     parser.add_argument("--contract-only", action="store_true", help="Verify synchronized local main evidence for an explicitly authorized release")
+    parser.add_argument("--fingerprint", action="store_true", help="Print the current candidate fingerprint; does not approve acceptance")
     args = parser.parse_args()
+    if args.fingerprint:
+        print(candidate_fingerprint(Path(__file__).resolve().parents[1]))
+        return
     path = args.record or Path(__file__).resolve().parents[1] / f"docs/release-acceptance/{args.tag}.json"
     try:
         validate(json.loads(path.read_text(encoding="utf-8")), args.tag,

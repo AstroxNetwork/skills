@@ -82,6 +82,7 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json, os, pathlib, subprocess, sys
+          from tools.native_install_checks import verify_runtime
           library = pathlib.Path(os.environ['HOLYCRAB_INSTALL_PREFIX']) / 'lib/holycrab'
           launcher = pathlib.Path(os.environ['HOLYCRAB_INSTALL_PREFIX']) / 'bin' / ('holycrab.cmd' if os.name == 'nt' else 'holycrab')
           command = [str(launcher)]
@@ -96,9 +97,7 @@ jobs:
           assert json.loads(run('doctor', '--json'))['ok'] is True
           assert 'uninstall' in run('--help')
           run('uninstall', '--help')
-          expected = {'holycrab_cli.py', 'installation.json', 'references/capabilities.json', 'vendor/segno-1.6.6-py3-none-any.whl', 'vendor/LICENSE.segno'}
-          files = {p.relative_to(library).as_posix() for p in library.rglob('*') if p.is_file() and '__pycache__' not in p.parts}
-          assert files == expected, 'Non-runtime file found in installed CLI'
+          verify_runtime(library)
           for directory in ('.agents', '.claude'):
               skill = pathlib.Path.home() / directory / 'skills/holycrab'
               assert {p.relative_to(skill).as_posix() for p in skill.rglob('*') if p.is_file()} == {'SKILL.md', 'agents/openai.yaml', 'references/capabilities.json'}
@@ -113,9 +112,10 @@ jobs:
           assert len(replies) == 4 and all('error' not in r for r in replies)
           assert replies[0]['result']['serverInfo']['version'] == version
           names = {tool['name'] for tool in replies[1]['result']['tools']}
-          assert len(names) == 20 and "asset_upload" not in names and 'uninstall' not in names
+          assert len(names) == 21 and "asset_upload" not in names and 'uninstall' not in names
+          assert {'cli_status', 'asset_upload_prepare', 'asset_upload_execute', 'asset_upload_plan_get'} <= names
           assert not any(reply['result'].get('isError') for reply in replies[2:])
-          print('Installed version, health, uninstall help, runtime allowlist and all 20 Agent tool registrations passed. No business API calls were made.')
+          print('Installed version, health, uninstall help, runtime allowlist and all 21 Agent tool registrations passed. No business API calls were made.')
           PY
       - name: Uninstall isolated macOS test installation
         if: always() && runner.os == 'macOS'

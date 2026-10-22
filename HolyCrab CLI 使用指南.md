@@ -409,3 +409,17 @@ HolyCrab CLI 不额外收集遥测数据；服务使用遵循 HolyCrab 隐私政
 - Agnes Image 2.5 Flash：`agnes-image-2.5-flash`，1K / 2K / 3K / 4K；使用 `size/ratio/imageAssetIds`，不支持 `outputFormat` 或自定义尺寸。
 
 账户状态中的 `disabled_models` 只描述本次查询。缺失或异常表示权限未知；先估算积分，遇到无权限时停止，不换模型重发。新增模型的完整请求见 [API 文档](holycrab/references/api.md)。
+
+## 上传记录与故障恢复（v0.6.0 候选版）
+
+每次上传返回 `uploadPlanId`。即使终端退出，也可以查询本机保存的批次记录：
+
+```bash
+holycrab assets uploads get PLAN_ID
+```
+
+`prepared` 表示尚未开始，`executing` 表示可能已开始，`completed` 表示本批已登记完成，`failed` / `unknown` 表示失败或结果不明确。素材是否已处理可用仍需查询素材。已执行计划不能再次执行；不要删除计划来重试。
+
+若显示本地记录保存失败，请保留输出中的任务 ID、素材 ID 和未执行文件清单，按下一步提示查询。CLI 会在网络提交前冻结整批已确认文件，需要足够的临时磁盘空间；源文件之后变化不会改变本次上传内容。
+
+`doctor` 会将损坏的任务记录报告为异常，但重装程序不会删除这些记录。重装能修复程序，无法证明不明确的线上任务是否创建成功。

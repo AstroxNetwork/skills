@@ -225,7 +225,7 @@ def capture_cli(argv: list[str], *, stdin_text: str | None = None) -> dict[str, 
 def assert_invalid_request_stays_local(guard: SafeRequestGuard) -> None:
     before = guard.summary()
     original_send = cli.send
-    cli.send = guard
+    cli._owner("send").send = guard
     try:
         try:
             cli.estimate_generation(
@@ -237,7 +237,7 @@ def assert_invalid_request_stays_local(guard: SafeRequestGuard) -> None:
         else:
             raise AssertionError("An invalid cross-kind model request was accepted")
     finally:
-        cli.send = original_send
+        cli._owner("send").send = original_send
     if guard.summary() != before:
         raise AssertionError("Invalid generation input reached the network guard")
 
@@ -345,13 +345,13 @@ def run_safe_live_suite(api_key: str, *, account_label: str = "user1",
             os.environ.pop("HOLYCRAB_API_KEY", None)
             os.environ.pop("HOLYCRAB_BASE_URL", None)
             cli.SENSITIVE_OUTPUT_VALUES.add(api_key.strip())
-            cli.send = request_guard
-            cli.mcp_tool_call = mcp_guard
+            cli._owner("send").send = request_guard
+            cli._owner("mcp_tool_call").mcp_tool_call = mcp_guard
 
             def block_upload(*args: Any, **kwargs: Any) -> Any:
                 raise SafetyViolation("Presigned upload is disabled by the live smoke-test guard")
 
-            cli.open_presigned_upload = block_upload
+            cli._owner("open_presigned_upload").open_presigned_upload = block_upload
 
             add_check("setup", lambda: capture_cli(["setup", "--stdin"], stdin_text=api_key + "\n"))
             add_check("auth status", lambda: capture_cli(["auth", "status"]))
@@ -498,9 +498,9 @@ def run_safe_live_suite(api_key: str, *, account_label: str = "user1",
 
             add_check("auth clear-key", lambda: capture_cli(["auth", "clear-key"]))
     finally:
-        cli.send = original_send
-        cli.mcp_tool_call = original_mcp_call
-        cli.open_presigned_upload = original_upload
+        cli._owner("send").send = original_send
+        cli._owner("mcp_tool_call").mcp_tool_call = original_mcp_call
+        cli._owner("open_presigned_upload").open_presigned_upload = original_upload
         cli.SENSITIVE_OUTPUT_VALUES.discard(api_key.strip())
         for name, value in old_environment.items():
             if value is None:

@@ -33,7 +33,7 @@ class OnboardingTests(unittest.TestCase):
         return json.loads(output.getvalue()), errors.getvalue()
 
     def test_verified_setup_preserves_account_fields_and_guides_business_use(self) -> None:
-        with patch.object(cli, "send", return_value=ok({"username": "Fixture", "credit": 20})) as transport:
+        with patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture", "credit": 20})) as transport:
             result, errors = self.setup_key(terminal=True)
         self.assertEqual(result["credit"], 20)
         self.assertEqual(result["onboarding"]["state"], "READY")
@@ -42,7 +42,7 @@ class OnboardingTests(unittest.TestCase):
         self.assertNotIn("hc_test_onboarding_only", json.dumps(result) + errors)
 
     def test_no_verify_does_not_claim_connection_or_make_requests(self) -> None:
-        with patch.object(cli, "send") as transport:
+        with patch.object(cli._owner("send"), "send") as transport:
             result, errors = self.setup_key(no_verify=True, terminal=True)
         self.assertEqual(result["onboarding"]["state"], "VERIFY_ACCOUNT")
         self.assertFalse(result["valid"])
@@ -51,7 +51,7 @@ class OnboardingTests(unittest.TestCase):
 
     def test_environment_override_prevents_saved_key_becoming_active_ready(self) -> None:
         with patch.dict(os.environ, {"HOLYCRAB_API_KEY": "hc_test_other_environment"}), \
-                patch.object(cli, "send", return_value=ok({"username": "Fixture"})):
+                patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture"})):
             result, errors = self.setup_key(terminal=True)
         self.assertEqual(result["onboarding"]["state"], "VERIFY_ACCOUNT")
         self.assertNotIn("account connected", errors.lower())
@@ -60,7 +60,7 @@ class OnboardingTests(unittest.TestCase):
 
     def test_failed_setup_does_not_save_or_show_ready(self) -> None:
         for reply in ((401, {"code": 401}), ok({}), ok([]), ok({"privateOnly": True})):
-            with self.subTest(reply=reply), patch.object(cli, "send", return_value=reply), \
+            with self.subTest(reply=reply), patch.object(cli._owner("send"), "send", return_value=reply), \
                     patch.object(cli.getpass, "getpass", return_value="hc_test_bad_key"), \
                     redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()), \
                     self.assertRaises((SystemExit, ValueError)):
@@ -76,7 +76,7 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(errors.getvalue(), "")
 
     def test_local_doctor_distinguishes_missing_and_configured_credentials(self) -> None:
-        with patch.object(cli, "send") as transport:
+        with patch.object(cli._owner("send"), "send") as transport:
             self.assertEqual(cli.local_health_report()["onboarding"]["state"], "CONNECT_ACCOUNT")
             cli.save_config({"apiKey": "hc_test_saved_only"})
             guidance = cli.local_health_report()["onboarding"]
@@ -87,8 +87,8 @@ class OnboardingTests(unittest.TestCase):
     def test_online_doctor_requires_a_valid_account_payload(self) -> None:
         cli.save_config({"apiKey": "hc_test_saved_only"})
         for payload, ready in (({"username": "Fixture"}, True), ({}, False), ([], False), ({"privateOnly": True}, False)):
-            with self.subTest(payload=payload), patch.object(cli, "send", return_value=ok(payload)), \
-                    patch.object(cli, "check_for_update", return_value={"updateAvailable": False}):
+            with self.subTest(payload=payload), patch.object(cli._owner("send"), "send", return_value=ok(payload)), \
+                    patch.object(cli._owner("check_for_update"), "check_for_update", return_value={"updateAvailable": False}):
                 result = cli.local_health_report(online=True)
             self.assertEqual(result["checks"]["apiKey"]["ok"], ready)
             self.assertEqual(result["onboarding"]["state"], "READY" if ready else "VERIFY_ACCOUNT")
@@ -96,7 +96,7 @@ class OnboardingTests(unittest.TestCase):
     def test_auth_status_reports_malformed_success_as_invalid(self) -> None:
         cli.save_config({"apiKey": "hc_test_saved_only"})
         for payload in ({}, [], {"privateOnly": True}, None):
-            with self.subTest(payload=payload), patch.object(cli, "send", return_value=ok(payload)), \
+            with self.subTest(payload=payload), patch.object(cli._owner("send"), "send", return_value=ok(payload)), \
                     redirect_stdout(io.StringIO()) as output:
                 code = cli.command_auth_status(argparse.Namespace())
             result = json.loads(output.getvalue())
@@ -106,7 +106,7 @@ class OnboardingTests(unittest.TestCase):
 
     def test_read_only_status_does_not_repeat_full_welcome(self) -> None:
         cli.save_config({"apiKey": "hc_test_saved_only"})
-        with patch.object(cli, "send", return_value=ok({"username": "Fixture"})), \
+        with patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture"})), \
                 redirect_stdout(io.StringIO()) as output, redirect_stderr(TerminalBuffer()) as errors:
             cli.command_auth_status(argparse.Namespace())
             cli.command_auth_status(argparse.Namespace())
@@ -116,7 +116,7 @@ class OnboardingTests(unittest.TestCase):
 
     def test_reconfiguring_a_saved_login_does_not_repeat_terminal_introduction(self) -> None:
         cli.save_config({"apiKey": "hc_test_saved_only"})
-        with patch.object(cli, "send", return_value=ok({"username": "Fixture"})):
+        with patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture"})):
             result, errors = self.setup_key(terminal=True)
         self.assertEqual(result["onboarding"]["state"], "READY")
         self.assertNotIn("What would you like", errors)
@@ -128,7 +128,7 @@ class OnboardingTests(unittest.TestCase):
         self.assertFalse(result["updateAvailable"])
 
     def test_business_examples_are_non_executing_and_not_estimate_prompts(self) -> None:
-        with patch.object(cli, "send") as transport:
+        with patch.object(cli._owner("send"), "send") as transport:
             result = cli.onboarding_guidance(configured=True, verified=True)
         self.assertEqual([item["code"] for item in result["examples"]],
                          ["PRODUCT_IMAGES", "SOCIAL_AD_VIDEO", "PRODUCT_VOICEOVER"])
@@ -140,13 +140,13 @@ class OnboardingTests(unittest.TestCase):
         transport.assert_not_called()
 
     def test_mcp_account_preserves_public_fields_and_returns_guidance(self) -> None:
-        with patch.object(cli, "send", return_value=ok({"username": "Fixture", "credit": 20})):
+        with patch.object(cli._owner("send"), "send", return_value=ok({"username": "Fixture", "credit": 20})):
             result = cli.mcp_tool_call("account_get", {})
         self.assertEqual(result["credit"], 20)
         self.assertEqual(result["onboarding"]["state"], "READY")
 
     def test_mcp_rejects_malformed_account_without_protocol_noise(self) -> None:
-        with patch.object(cli, "send", return_value=ok({})), redirect_stdout(io.StringIO()) as output:
+        with patch.object(cli._owner("send"), "send", return_value=ok({})), redirect_stdout(io.StringIO()) as output:
             with self.assertRaises((SystemExit, ValueError)):
                 cli.mcp_tool_call("account_get", {})
         self.assertEqual(output.getvalue(), "")

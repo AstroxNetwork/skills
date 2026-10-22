@@ -63,3 +63,33 @@ class SnapshotDriftTests(unittest.TestCase):
             mutate(manifest)
             with self.subTest(mutate=mutate):
                 self.assertTrue(contract.validate_new_model_snapshot(manifest))
+
+
+class CentralizedRuleDriftTests(unittest.TestCase):
+    RULES = '''
+    int maxImages = SEEDANCE_25.equals(model) ? 30 : wan(model) ? 10
+        : "agnes-image-2.5-flash".equals(model) ? 14 : agnes(model) ? 8 : 9;
+    int maxVideos = SEEDANCE_25.equals(model) ? 10 : wan(model) ? 5
+        : "agnes-image-2.5-flash".equals(model) ? 0 : agnes(model) ? 1 : 3;
+    int maxAudios = SEEDANCE_25.equals(model) ? 10 : wan(model) ? 5
+        : "agnes-image-2.5-flash".equals(model) ? 0 : 3;
+    if ((first || last) && references) throw combination("fixture", "exclusive");
+    range(errors, null, "imageAssetIds", "image_reference", "count", count(images), 0, maxImages, true, true);
+    range(errors, null, "videoAssetIds", "video_reference", "count", count(videos), 0, maxVideos, true, true);
+    range(errors, null, "audioAssetIds", "audio_reference", "count", count(audios), 0, maxAudios, true, true);
+    if (SEEDANCE_25.equals(model)) range(errors, null, "references", null, "count", count(images)+count(videos)+count(audios), 0, 50, true, true);
+    '''
+
+    def test_equivalent_central_rules_are_verified(self):
+        errors = []
+        contract.validate_central_asset_rules(self.RULES, errors)
+        self.assertEqual(errors, [])
+
+    def test_changed_or_unused_limits_and_exclusivity_still_fail_closed(self):
+        for before, after in (('? 30', '? 31'), ('? 14', '? 15'), ('? 8', '? 9'),
+                              ('? 1 : 3', '? 2 : 3'), ('? 0 : 3', '? 0 : 4'),
+                              ('0, 50,', '0, 51,'), ('maxImages, true', 'unusedImages, true'),
+                              ('&& references', '&& other')):
+            errors = []
+            contract.validate_central_asset_rules(self.RULES.replace(before, after), errors)
+            with self.subTest(before=before): self.assertTrue(errors)

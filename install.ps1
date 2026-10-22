@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Repository = "AstroxNetwork/skills"
-$Version = "v0.5.0"
+$Version = "v0.6.0"
 $SourceRef = if ($env:HOLYCRAB_INSTALL_REF) { $env:HOLYCRAB_INSTALL_REF } else { $Version }
 if ($SourceRef -cnotmatch '^(?:[0-9a-f]{40}|v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$') {
     throw "HOLYCRAB_INSTALL_REF must be a full commit hash or stable version tag; installation stopped."
@@ -14,6 +14,8 @@ $BinDir = Join-Path $Prefix "bin"
 $LibDir = Join-Path $Prefix "lib\holycrab"
 $TempDir = Join-Path ([IO.Path]::GetTempPath()) ("holycrab-install." + [Guid]::NewGuid().ToString("N"))
 $BackupDir = Join-Path $TempDir "backup"
+$InstallLockHeld = $false
+$InstallLockDir = Join-Path $Prefix ".holycrab-install.lock"
 $InstallStarted = $false
 $InstallComplete = $false
 $PathRegistration = $null
@@ -55,12 +57,30 @@ else:
 }
 
 $ReleaseFiles = @(
-    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "2b4599022d1657cc023b82a79bcd515c503ca9d1f82b3c78335c0466635a8de8" },
+    @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "ce732cda8548c77b53b513321fad5a52d5c695a02b04a9d5f45b240f302ab2fb" },
     @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "7070c245eae8b022f0dfd678acb660a61a58c65644f3c0076edae8e4eec65eb4" },
-    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "99254039a826b590a38bda9a53123cc608dfd292879a993ef8e425623148e20b" },
+    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "307c29ea603719485b21cc5e45087dd23417d56455cf121ef8b0236016d30a37" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
-    @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" }
+    @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" },
+# BEGIN GENERATED RUNTIME DOWNLOADS
+    @{ Relative = "runtime-files.json"; Name = "runtime-files.json"; Sha256 = "46fb2b09a7cb8d606895b739e5ee977c36b1be7a4f7b455996800a88e4954e58" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/__init__.py"; Name = "holycrab_runtime/__init__.py"; Sha256 = "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/capabilities.py"; Name = "holycrab_runtime/capabilities.py"; Sha256 = "0719040a1572e640980d6d216023f6060be5d2887f9001d3a5762f9f792372f7" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/cli.py"; Name = "holycrab_runtime/cli.py"; Sha256 = "05796328dcf726f22ea3bdab3242864d92ed6c4dbcf3d92822ce9d0b277c9200" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/exports.py"; Name = "holycrab_runtime/exports.py"; Sha256 = "28d6cdade7d99b88267f320488b1393a7881066b4d8bef5bc99bc36644336e5e" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/generation.py"; Name = "holycrab_runtime/generation.py"; Sha256 = "404a1e109a68d11a584340b4c6ef53401239e6322d5dc77fd0996b81569824d4" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/lifecycle.py"; Name = "holycrab_runtime/lifecycle.py"; Sha256 = "712895cc2ba5e1ee49cf64d04447e2ffc81684c2b8ec636399b06a814bf10a33" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/mcp.py"; Name = "holycrab_runtime/mcp.py"; Sha256 = "a40c9712251bcb0b61c4ecb972b3f8f6f2f527ed5f1ab2f53da9dee1ae87914c" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/presentation.py"; Name = "holycrab_runtime/presentation.py"; Sha256 = "e9f8c81062f3c1c3c7a116157958a070f546643582a7680d9c81876c1ff5c504" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/real_human.py"; Name = "holycrab_runtime/real_human.py"; Sha256 = "7ef4f7bef0cc2100e007f1a88ef0371c8c03c31c33eb7c2692b0fb228618cb9f" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/results.py"; Name = "holycrab_runtime/results.py"; Sha256 = "5d57e9c895f100f5e867f27a8662bfef05e8b1b4db7ae47218700860e7926853" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/settings.py"; Name = "holycrab_runtime/settings.py"; Sha256 = "80fce97557e6349f360b4e51c96f540c9f5a464310d5415e436cf3bdbb3aa309" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/state.py"; Name = "holycrab_runtime/state.py"; Sha256 = "3c12482ef7192ac7212f422b078ce0eecc0764130593f2e28b2dab0283c52dd1" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/tasks.py"; Name = "holycrab_runtime/tasks.py"; Sha256 = "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/transport.py"; Name = "holycrab_runtime/transport.py"; Sha256 = "72c1c69d9dfd2de9c0d699f08ba43f5b59fcac8ae370490f7390704d55a5dd16" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/uploads.py"; Name = "holycrab_runtime/uploads.py"; Sha256 = "6d5a3edfff505c0501403d8d2e6e5f8c56847291b0a0673a33fbf9d98f6f4b10" }
+# END GENERATED RUNTIME DOWNLOADS
 )
 
 function Find-HolyCrabPython {
@@ -86,6 +106,7 @@ function Copy-ReleaseFile([hashtable]$File) {
         Write-HolyCrabProgress "[2/5] Downloading and verifying installation files..."
     }
     $Destination = Join-Path $TempDir $File.Name
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
     if ($SourceDir) {
         Copy-Item -LiteralPath (Join-Path $SourceDir $File.Relative) -Destination $Destination
     } else {
@@ -168,6 +189,12 @@ try {
         $Downloaded[$File.Name] = Copy-ReleaseFile $File
     }
 
+    New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
+    # os.mkdir uses exclusive OS directory creation, including under PowerShell 5.1.
+    $LockArguments = @($Python.Arguments) + @("-c", "import os,sys;os.mkdir(sys.argv[1])", $InstallLockDir)
+    & $Python.Executable @LockArguments
+    if ($LASTEXITCODE -ne 0) { throw "Another lifecycle operation holds $InstallLockDir; check it before recovering an abandoned lock." }
+    $InstallLockHeld = $true
     $SettingsHelper = @'
 import importlib.util, json, pathlib, sys
 spec = importlib.util.spec_from_file_location("holycrab_settings", sys.argv[1])
@@ -207,10 +234,10 @@ print(json.dumps(cli.installer_settings(previous, **settings)))
     if (Test-Path -LiteralPath $LibDir) { Copy-Item -LiteralPath $LibDir -Destination (Join-Path $BackupDir "lib") -Recurse }
     $ExistingLauncher = Join-Path $BinDir "holycrab.cmd"
     if (Test-Path -LiteralPath $ExistingLauncher) { Copy-Item -LiteralPath $ExistingLauncher -Destination (Join-Path $BackupDir "holycrab.cmd") }
-    if (",$InstallAgents," -like "*,codex,*" -and (Test-Path -LiteralPath (Join-Path $HOME ".agents\skills\holycrab"))) {
+    if (Test-Path -LiteralPath (Join-Path $HOME ".agents\skills\holycrab")) {
         Copy-Item -LiteralPath (Join-Path $HOME ".agents\skills\holycrab") -Destination (Join-Path $BackupDir "codex-skill") -Recurse
     }
-    if (",$InstallAgents," -like "*,claude,*" -and (Test-Path -LiteralPath (Join-Path $HOME ".claude\skills\holycrab"))) {
+    if (Test-Path -LiteralPath (Join-Path $HOME ".claude\skills\holycrab")) {
         Copy-Item -LiteralPath (Join-Path $HOME ".claude\skills\holycrab") -Destination (Join-Path $BackupDir "claude-skill") -Recurse
     }
     Write-HolyCrabProgress "[3/5] Installing verified program files and configuring PATH..."
@@ -221,6 +248,38 @@ print(json.dumps(cli.installer_settings(previous, **settings)))
     Copy-Item -LiteralPath $Downloaded["capabilities.json"] -Destination (Join-Path $LibDir "references\capabilities.json") -Force
     Copy-Item -LiteralPath $Downloaded["segno.whl"] -Destination (Join-Path $LibDir "vendor\segno-1.6.6-py3-none-any.whl") -Force
     Copy-Item -LiteralPath $Downloaded["LICENSE.segno"] -Destination (Join-Path $LibDir "vendor\LICENSE.segno") -Force
+
+# BEGIN GENERATED RUNTIME INSTALL
+    New-Item -ItemType Directory -Force -Path (Join-Path $LibDir "holycrab_runtime") | Out-Null
+    Copy-Item -LiteralPath $Downloaded["runtime-files.json"] -Destination (Join-Path $LibDir "runtime-files.json") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/__init__.py"] -Destination (Join-Path $LibDir "holycrab_runtime/__init__.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/capabilities.py"] -Destination (Join-Path $LibDir "holycrab_runtime/capabilities.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/cli.py"] -Destination (Join-Path $LibDir "holycrab_runtime/cli.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/exports.py"] -Destination (Join-Path $LibDir "holycrab_runtime/exports.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/generation.py"] -Destination (Join-Path $LibDir "holycrab_runtime/generation.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/lifecycle.py"] -Destination (Join-Path $LibDir "holycrab_runtime/lifecycle.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/mcp.py"] -Destination (Join-Path $LibDir "holycrab_runtime/mcp.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/presentation.py"] -Destination (Join-Path $LibDir "holycrab_runtime/presentation.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/real_human.py"] -Destination (Join-Path $LibDir "holycrab_runtime/real_human.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/results.py"] -Destination (Join-Path $LibDir "holycrab_runtime/results.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/settings.py"] -Destination (Join-Path $LibDir "holycrab_runtime/settings.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/state.py"] -Destination (Join-Path $LibDir "holycrab_runtime/state.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/tasks.py"] -Destination (Join-Path $LibDir "holycrab_runtime/tasks.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/transport.py"] -Destination (Join-Path $LibDir "holycrab_runtime/transport.py") -Force
+    Copy-Item -LiteralPath $Downloaded["holycrab_runtime/uploads.py"] -Destination (Join-Path $LibDir "holycrab_runtime/uploads.py") -Force
+# END GENERATED RUNTIME INSTALL
+
+    $CacheHelper = @'
+import importlib.util,pathlib,sys
+spec=importlib.util.spec_from_file_location("holycrab_cache",sys.argv[1])
+cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
+cli.prepare_runtime_imports(pathlib.Path(sys.argv[2]))
+'@
+    $CachePath = Join-Path $TempDir "clear-cache.py"
+    [IO.File]::WriteAllText($CachePath, $CacheHelper, [Text.UTF8Encoding]::new($false))
+    $CacheArguments = @($Python.Arguments) + @("-X", "utf8", $CachePath, $Downloaded["holycrab_cli.py"], $LibDir)
+    & $Python.Executable @CacheArguments
+    if ($LASTEXITCODE -ne 0) { throw "Could not invalidate old runtime bytecode" }
 
     $PythonInvocation = '"' + $Python.Executable + '"'
     if ($Python.Arguments.Count -gt 0) { $PythonInvocation += " " + ($Python.Arguments -join " ") }
@@ -233,7 +292,7 @@ print(json.dumps(cli.installer_settings(previous, **settings)))
     $PathAddedThisRun = $PathResult.AddedThisRun
 
     $Manifest = @{
-        schemaVersion = 2
+        schemaVersion = 3
         managedBy = "holycrab-installer"
         version = $Version.TrimStart("v")
         prefix = $Prefix
@@ -248,6 +307,13 @@ print(json.dumps(cli.installer_settings(previous, **settings)))
         )
         pathRegistration = $PathRegistration
     }
+    $RuntimeManifest = Get-Content -LiteralPath (Join-Path $LibDir "runtime-files.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($Entry in $RuntimeManifest.files) {
+        if ($Entry.kind -eq "runtime" -and -not $Entry.legacyVariable) {
+            $Manifest.coreFiles += @{ path = $Entry.target; sha256 = $Entry.sha256 }
+        }
+    }
+    $Manifest.coreFiles += @{ path = "runtime-files.json"; sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $LibDir "runtime-files.json")).Hash.ToLowerInvariant() }
     $SkillRoots = @{
         codex = (Join-Path $HOME ".agents\skills\holycrab")
         claude = (Join-Path $HOME ".claude\skills\holycrab")
@@ -281,6 +347,18 @@ print(json.dumps(cli.installer_settings(previous, **settings)))
         if (",$InstallAgents," -like "*,claude,*") { Register-HolyCrabMcp "claude" $Python $CliPath }
     }
 
+    $FinalizeHelper = @'
+import importlib.util,sys
+spec=importlib.util.spec_from_file_location("holycrab_finalize",sys.argv[1])
+cli=importlib.util.module_from_spec(spec);spec.loader.exec_module(cli)
+cli.finalize_installation(sys.argv[2],sys.argv[3])
+'@
+    $FinalizePath = Join-Path $TempDir "finalize.py"
+    [IO.File]::WriteAllText($FinalizePath, $FinalizeHelper, [Text.UTF8Encoding]::new($false))
+    $FinalizeArgs = @($Python.Arguments) + @("-X", "utf8", $FinalizePath, $CliPath, (Join-Path $BackupDir "lib/installation.json"), (Join-Path $BackupDir "mcp-transaction.json"))
+    & $Python.Executable @FinalizeArgs
+    if ($LASTEXITCODE -ne 0) { throw "Could not finalize installation ownership" }
+
     Write-HolyCrabProgress "[5/5] Verifying the installed CLI version and local health..."
     $PreviousNoUpdate = $env:HOLYCRAB_NO_UPDATE_CHECK
     $env:HOLYCRAB_NO_UPDATE_CHECK = "1"
@@ -290,13 +368,14 @@ print(json.dumps(cli.installer_settings(previous, **settings)))
             throw "Installed CLI version does not match $Version; installation stopped."
         }
         $Doctor = & $Launcher doctor --json | ConvertFrom-Json
-        if ($LASTEXITCODE -ne 0 -or -not $Doctor.ok) {
+        if (-not $Doctor.runtimeOk) {
             Write-Warning (Format-HolyCrabResult $Python $CliPath $Doctor "doctor")
-            throw "holycrab doctor failed after installation"
+            throw "holycrab runtime verification failed after installation"
         }
     } finally {
         $env:HOLYCRAB_NO_UPDATE_CHECK = $PreviousNoUpdate
     }
+    if (-not $Doctor.ok) { Write-Warning "Program installed; existing local records need attention. Run holycrab doctor and preserve the records." }
     $Upgrading = if (Test-Path -LiteralPath (Join-Path $BackupDir "lib")) { "1" } else { "0" }
     $Summary = Format-HolyCrabResult $Python $CliPath $Doctor.onboarding "onboarding" $Upgrading
     $InstallComplete = $true
@@ -343,4 +422,8 @@ cli.restore_installer_files(pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
         }
     }
     if ($RecoveryComplete) { Remove-Item -LiteralPath $TempDir -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($InstallLockHeld) {
+        try { [IO.Directory]::Delete($InstallLockDir, $false) }
+        catch { Write-Warning "Could not remove installation lock: $InstallLockDir" }
+    }
 }
