@@ -85,6 +85,9 @@ sys.addaudithook(check)
                     'HOLYCRAB_INSTALL_PREFIX':str(root/'prefix'),'HOLYCRAB_CONFIG_DIR':str(root/'config'),
                     'HOLYCRAB_INSTALL_AGENTS':'none','HOLYCRAB_INSTALL_MCP':'0','HOLYCRAB_NO_UPDATE_CHECK':'1',
                     'PYTHONDONTWRITEBYTECODE':'1','PYTHONUTF8':'1','PYTHONPATH':str(self.guard)})
+        # The CI host is PowerShell 7. Launch legacy 5.1 with its native module
+        # search path, as tests/test_windows_adversarial.ps1 already does.
+        if os.name=='nt' and label=='upgrade': env.pop('PSModulePath',None)
         self.environments.append((label,env))
         return env
 
