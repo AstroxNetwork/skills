@@ -3,6 +3,12 @@ name: Deployed CLI entry point smoke test
 on:
   workflow_dispatch:
     inputs:
+      platform:
+        description: Target one platform while diagnosing a platform-specific failure
+        required: true
+        type: choice
+        options: [all, windows]
+        default: all
       verify_website:
         description: Also verify deployed website entry points after website publication
         required: true
@@ -18,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-2025]
+        os: ${{ fromJSON(inputs.platform == 'windows' && '["windows-2025"]' || '["ubuntu-latest","macos-latest","windows-2025"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
