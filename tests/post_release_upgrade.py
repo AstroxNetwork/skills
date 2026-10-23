@@ -147,6 +147,8 @@ sys.addaudithook(check)
         (plans/'retainedPlan.json').write_text(json.dumps({'uploadPlanId':'retainedPlan','state':'unknown','createdAt':datetime.now(timezone.utc).isoformat(),'expiresAtEpoch':time.time()+3600,'files':[],'uploaded':[]}))
         user_file=Path(old['HOLYCRAB_INSTALL_PREFIX'])/'user-notes.txt';user_file.write_text('keep user data\n')
         watched=[config/'config.json',config/'attempts.json',plans/'retainedPlan.json',user_file]
+        for private_file in watched[:-1]: private_file.chmod(0o600)
+        assert json.loads(self.cli('v050-baseline-doctor',old,'doctor','--json'))['ok'] is True
         before={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}
         check=json.loads(self.cli('v050-detects-v060',old,'update','--check'))
         assert check['updateAvailable'] is True and check['latestVersion']=='0.6.0'
