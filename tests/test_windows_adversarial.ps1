@@ -34,12 +34,19 @@ stamp = {"sourceFingerprint": source_fingerprint(source),
 guard = candidate.parent / "offline-guard"
 guard.mkdir()
 (guard / "sitecustomize.py").write_text(NETWORK_GUARD, encoding="utf-8")
-sha = "52f697e35ad2689791423cb10eae5c8259e4c943"
+tag_object = "52f697e35ad2689791423cb10eae5c8259e4c943"
+commit = "48126baa08521961de47d48bd2134c44a7e8cba2"
 shutil.copytree(source, candidate, ignore=shutil.ignore_patterns(".git", "build", "__pycache__", ".venv"))
 repo = old if str(old) != "." else source
-resolved = subprocess.check_output(["git", "-C", str(repo), "rev-parse", sha + "^{commit}"], text=True).strip()
-assert resolved == sha
-archive = subprocess.check_output(["git", "-C", str(repo), "archive", "--format=tar", sha])
+tag_type = subprocess.check_output(["git", "-C", str(repo), "cat-file", "-t", tag_object], text=True).strip()
+if tag_type != "tag":
+    raise ValueError("Pinned v0.5.0 tag object is not an annotated tag")
+resolved = subprocess.check_output(["git", "-C", str(repo), "rev-parse", tag_object + "^{commit}"], text=True).strip()
+if resolved != commit:
+    raise ValueError("Pinned v0.5.0 annotated tag does not resolve to the audited baseline commit")
+if subprocess.check_output(["git", "-C", str(repo), "cat-file", "-t", commit], text=True).strip() != "commit":
+    raise ValueError("Pinned v0.5.0 baseline is not a commit object")
+archive = subprocess.check_output(["git", "-C", str(repo), "archive", "--format=tar", commit])
 baseline.mkdir()
 with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
     for member in bundle.getmembers():
@@ -47,7 +54,7 @@ with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
         if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk():
             raise ValueError("Unsafe path in pinned baseline archive")
     bundle.extractall(baseline)
-(baseline / ".holycrab-baseline-sha").write_text(sha, encoding="ascii")
+(baseline / ".holycrab-baseline.json").write_text(json.dumps({"tag": "v0.5.0", "tagObject": tag_object, "commit": commit}), encoding="ascii")
 '@
     $PrepareFile = Join-Path $TestRoot "prepare.py"
     [IO.File]::WriteAllText($PrepareFile, $Preparation, [Text.UTF8Encoding]::new($false))
@@ -95,6 +102,9 @@ with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
     $WorkerCode = @'
 param([string]$PayloadFile)
 $ErrorActionPreference = "Stop"
+foreach ($Module in @("Microsoft.PowerShell.Management", "Microsoft.PowerShell.Utility")) {
+    Import-Module -Name ([IO.Path]::Combine($PSHOME, "Modules", $Module, ($Module + ".psd1"))) -ErrorAction Stop
+}
 $p = Get-Content -LiteralPath $PayloadFile -Raw -Encoding UTF8 | ConvertFrom-Json
 # Resolve profile from the logged-on token, not the administrator's inherited environment.
 $env:USERPROFILE = [Environment]::GetFolderPath("UserProfile")
@@ -105,6 +115,8 @@ $env:TMP = $env:TEMP
 New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
 $env:PATH = (Split-Path -Parent $p.python) + ";" + $p.path
 $env:PYTHONUTF8 = "1"
+$env:PYTHONOPTIMIZE = $null
+$env:PSModulePath = $null
 $env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONPATH = $p.guard
 $env:HOLYCRAB_TEST_LOOPBACK = "1"

@@ -91,14 +91,14 @@
       "stage": "holycrab_runtime/generation.py",
       "target": "holycrab_runtime/generation.py",
       "kind": "runtime",
-      "sha256": "ddcc3ef0bcbe989285e7290a731c6ba97ee7f33550c2c819404a39e24a3b184d"
+      "sha256": "578ab3976e6fe04dd66cf2bf542b64989dfbfe3994445c3a98c0f24e60d1c2a1"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/lifecycle.py",
       "stage": "holycrab_runtime/lifecycle.py",
       "target": "holycrab_runtime/lifecycle.py",
       "kind": "runtime",
-      "sha256": "c19e85eb1530526f059eb0c0accb87f3e041e1b72801c0fff679fff3f84aec6f"
+      "sha256": "1de85250cf361eb87c5e8488026c169e1d6484645a7a48d22bb2b745f338f0f6"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/mcp.py",

@@ -49,6 +49,7 @@
   "win.rollback.health",
   "win.rollback.lock",
   "win.shells.launchers",
+  "win.shells.ps7_python_ps51",
   "win.uninstall.delayed",
   "win.uninstall.user_files",
   "win.upgrade.real_v050"

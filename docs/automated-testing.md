@@ -35,9 +35,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_windows_adversari
 python tools/verify_windows_coverage.py --unit build/validation/unit-results.json --native build/validation/windows-native.json --report build/validation/windows-coverage.json
 ```
 
-外层需要管理员权限创建临时普通账户、配置仅对该账户生效的出站隔离；实际验收必须证明普通用户 token。源仓库需包含不可变 v0.5.0 提交 `52f697e35ad2689791423cb10eae5c8259e4c943`；不会用改版本号代替真实升级。隔离用户执行 PowerShell 5.1、PowerShell 7、CMD、DPAPI、特殊路径、实际文件占用、升级/回滚/卸载和 ConPTY 控制台流程。清理必须观察最终文件结果。
+外层需要管理员权限创建临时普通账户、配置仅对该账户生效的出站隔离；实际验收必须证明普通用户 token。源仓库需同时包含固定 v0.5.0 annotated tag 对象 `52f697e35ad2689791423cb10eae5c8259e4c943` 和其提交 `48126baa08521961de47d48bd2134c44a7e8cba2`；验证对象类型及两者绑定后，仅从固定提交提取源码；不会用改版本号代替真实升级。隔离用户执行 PowerShell 5.1、PowerShell 7、CMD、DPAPI、特殊路径、实际文件占用、升级/回滚/卸载和 ConPTY 控制台流程。清理必须观察最终文件结果。
 
-`tests/windows_native_cases.json` 列出全部 53 个必需用例；`tests/windows_skip_coverage.json` 为基线 60 项跳过逐项归类：26 项恢复在 Windows 运行，31 项须原生补位，2 项纯 Unix，1 项网站外部验收。门禁同时核对完整原生列表、基础报告与原生报告的源码指纹。新增跳过、缺项、失败、重复 ID、管理员 token 或旧报告均失败。
+`tests/windows_native_cases.json` 列出全部 54 个必需用例；`tests/windows_skip_coverage.json` 为基线 60 项跳过逐项归类：26 项恢复在 Windows 运行，31 项须原生补位，2 项纯 Unix，1 项网站外部验收。门禁同时核对完整原生列表、基础报告与原生报告的源码指纹。新增跳过、缺项、失败、重复 ID、管理员 token 或旧报告均失败。
 
 GitHub 官方提供的 `windows-11-arm` 为 ARM 桌面环境，不代表 Windows 10/11 x64 桌面已验证；见 [runner 环境说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。请求文件支持 UTF-8、UTF-8 BOM 和带 BOM 的 UTF-16；PowerShell 5.1 重定向默认 UTF-16LE、PowerShell 7 默认 UTF-8 的差异单独验证，见 [微软编码说明](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding)。不支持的 UNC/保留名/目录重定向安装位置须明确拒绝；长路径按实际系统能力验证，不宣称所有文件系统相同。
 
@@ -108,3 +108,5 @@ CI 的 Recorded Generate contract (offline) 检查证据的通过状态、完整
 契约证据不批准真人验收或正式发布。真实业务门禁保持独立，旧版本豁免不适用于 v0.6.0 改动后的核心。
 
 素材规则另外绑定已审计的四个后端规则源文件与全部模型说明摘要；源码或说明任一变化都要求重新核对并显式更新审计基线，不能仅重签一份通过记录。此方式保守地拒绝未审计变化，不在 Python 中再实现一份后端素材判定。
+
+Windows 测试和卸载助手从 Python 启动 PowerShell 时清除继承的 `PSModulePath`，让目标 PowerShell 重建自己的模块路径；安装器也显式从当前 `$PSHOME` 加载系统模块。原生回归保留 PS7 经 Python 启动 PS5.1 的实际继承环境，验证完整 SHA-256 检查及卸载后的最终清理。行为依据：[Microsoft about_PSModulePath](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_psmodulepath?view=powershell-7.6)。

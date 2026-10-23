@@ -44,6 +44,10 @@ class HttpWorkflowTests(unittest.TestCase):
         root = Path(cls.install_temp.name)
         prefix = root / 'prefix'
         env = {k: v for k, v in os.environ.items() if not k.startswith(('HOLYCRAB_', 'CODEX_', 'CLAUDE_'))}
+        if os.name == 'nt':
+            # PS7 -> Python -> powershell.exe otherwise preserves incompatible
+            # PS7 system modules; let Windows PowerShell construct its own path.
+            env = {key: value for key, value in env.items() if key.upper() != 'PSMODULEPATH'}
         env.update({'HOME': str(root / 'home'), 'HOLYCRAB_INSTALL_SOURCE_DIR': str(ROOT),
                     'HOLYCRAB_INSTALL_PREFIX': str(prefix), 'HOLYCRAB_CONFIG_DIR': str(root / 'config'),
                     'HOLYCRAB_INSTALL_AGENTS': 'none', 'HOLYCRAB_INSTALL_MCP': '0', 'HOLYCRAB_NO_UPDATE_CHECK': '1'})

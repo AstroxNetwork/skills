@@ -1124,12 +1124,15 @@ Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
         stream.write(program)
     creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+    # PS7 -> Python -> Windows PowerShell otherwise inherits PS7's module
+    # search path, which can make Remove-Item/Start-Sleep unavailable in PS5.1.
+    cleanup_env = {key: value for key, value in os.environ.items() if key.upper() != "PSMODULEPATH"}
     try:
         subprocess.Popen(
             [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper),
              str(launcher), str(library), str(helper), str(failure_log)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            close_fds=True, creationflags=creation_flags,
+            close_fds=True, creationflags=creation_flags, env=cleanup_env,
         )
     except OSError:
         try:

@@ -23,10 +23,14 @@ import traceback
 from contextlib import contextmanager
 from pathlib import Path
 
+if not __debug__:
+    raise RuntimeError('Native acceptance must run with Python assertions enabled')
+
 from windows_console import Console
 from windows_mcp_smoke import run_smoke
 
-BASELINE_SHA = "52f697e35ad2689791423cb10eae5c8259e4c943"
+BASELINE_TAG_OBJECT = "52f697e35ad2689791423cb10eae5c8259e4c943"
+BASELINE_COMMIT = "48126baa08521961de47d48bd2134c44a7e8cba2"
 
 
 def ps_quote(value):
@@ -71,7 +75,7 @@ class Suite:
         self.report = {"commit": stamp["commit"], "sourceFingerprint": fingerprint,
                        "expectedCaseIds": expected_cases,
                        "schemaVersion": 1, "suite": "windows-adversarial", "cases": [],
-                       "baselineCommit": BASELINE_SHA, "environment": {
+                       "baselineTagObject": BASELINE_TAG_OBJECT, "baselineCommit": BASELINE_COMMIT, "environment": {
                            "os": platform.platform(), "machine": platform.machine(),
                            "python": sys.version, "executable": sys.executable,
                            "pythonPlatform": sysconfig.get_platform(), "pointerBits": ctypes.sizeof(ctypes.c_void_p) * 8,
@@ -85,6 +89,7 @@ class Suite:
                         HOLYCRAB_INSTALL_PREFIX=str(self.prefix), HOLYCRAB_CONFIG_DIR=str(self.config),
                         HOLYCRAB_INSTALL_AGENTS="none", HOLYCRAB_INSTALL_MCP="0",
                         HOLYCRAB_NO_UPDATE_CHECK="1", PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+        self.env = {key: value for key, value in self.env.items() if key.upper() != "PSMODULEPATH"}
         for key in ("HOLYCRAB_API_KEY", "HOLYCRAB_API_BASE", "HOLYCRAB_BASE_URL", "HOLYCRAB_INSTALL_REF"):
             self.env.pop(key, None)
         self.ps51 = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
@@ -192,7 +197,8 @@ class Suite:
         return {"nativeCases": [row["id"] for row in rows]}
 
     def upgrade(self):
-        assert (self.baseline / ".holycrab-baseline-sha").read_text().strip() == BASELINE_SHA
+        assert json.loads((self.baseline / ".holycrab-baseline.json").read_text(encoding="ascii")) == {
+            "tag": "v0.5.0", "tagObject": BASELINE_TAG_OBJECT, "commit": BASELINE_COMMIT}
         self.install(source=self.baseline, env=dict(self.env, HOLYCRAB_INSTALL_AGENTS="codex"))
         assert self.cli_run("--version").stdout.strip() == "holycrab 0.5.0"
         key = "hc_test_windows_actual_baseline_123456789"
@@ -213,7 +219,7 @@ class Suite:
         self.credential_bytes = before
         self.report["cases"].append({"id": "upgrade.real-v050", "status": "passed", "driver": "win.upgrade.real_v050"})
         return {"oldVersion": "0.5.0", "newVersion": "0.6.0", "credentialUnchanged": True,
-                "baselineSha": BASELINE_SHA, "userFilesPreserved": True}
+                "baselineCommit": BASELINE_COMMIT, "baselineTagObject": BASELINE_TAG_OBJECT, "userFilesPreserved": True}
 
     def shells(self):
         for shell in (self.ps51, self.ps7):
@@ -236,6 +242,49 @@ class Suite:
         self.report["environment"]["installerPython"] = {"executable": str(selected), **actual_python}
         return {"PowerShell5": True, "PowerShell7": True, "cmdDelayedExpansion": True,
                 "actualInstallerPythonMatchesMatrix": True}
+
+    def ps7_python_ps51(self):
+        """Exercise the real intermediary process that bypasses PS7's PS5 path fix."""
+        prefix = self.root / "PS7 inherited modules"
+        proof = self.root / "ps7-inheritance-proof.json"
+        intermediary = self.root / "ps7_intermediary.py"
+        intermediary.write_text(r'''import json, os, pathlib, subprocess, sys
+source, ps51, prefix, proof = sys.argv[1:]
+expected_modules = os.environ['HOLYCRAB_TEST_PS7_MODULES']
+inherited = next(value for key, value in os.environ.items() if key.upper() == 'PSMODULEPATH')
+normalize = lambda value: os.path.normcase(os.path.normpath(value))
+assert normalize(expected_modules) in {normalize(value) for value in inherited.split(os.pathsep)}
+def run(command):
+    # Deliberately pass the inherited PS7 environment unchanged. The installer
+    # and cleanup implementation must handle the real user launch chain.
+    result = subprocess.run(command, capture_output=True, encoding='utf-8', errors='replace')
+    if result.returncode:
+        print(result.stdout)
+        print(result.stderr, file=sys.stderr)
+        raise SystemExit(result.returncode)
+    return result.stdout
+run([ps51, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+     '-File', str(pathlib.Path(source) / 'install.ps1')])
+library = pathlib.Path(prefix) / 'lib/holycrab'
+cli = library / 'holycrab_cli.py'
+assert run([sys.executable, str(cli), '--version']).strip() == 'holycrab 0.6.0'
+run([sys.executable, str(pathlib.Path(source) / 'tools/native_install_checks.py'), 'runtime', str(library)])
+run([sys.executable, str(cli), 'uninstall', '--yes'])
+pathlib.Path(proof).write_text(json.dumps({'inheritedPS7ModulePath': inherited,
+    'runtimeHashesVerified': True, 'uninstallExitCode': 0}), encoding='utf-8')
+''', encoding="utf-8")
+        env = dict(self.env, HOLYCRAB_INSTALL_PREFIX=str(prefix),
+                   HOLYCRAB_CONFIG_DIR=str(self.root / "PS7 inherited modules config"))
+        command = ("$env:HOLYCRAB_TEST_PS7_MODULES=Join-Path $PSHOME 'Modules'; & "
+                   + " ".join(ps_quote(value) for value in
+                              (sys.executable, intermediary, self.source, self.ps51, prefix, proof))
+                   + "; exit $LASTEXITCODE")
+        self.ps(command, shell=self.ps7, env=env, timeout=180)
+        self.wait_missing(prefix / "bin/holycrab.cmd")
+        self.wait_missing(prefix / "lib/holycrab/holycrab_cli.py")
+        detail = json.loads(proof.read_text(encoding="utf-8"))
+        detail["deferredCleanupObserved"] = True
+        return detail
 
     def special_paths(self):
         prefix = self.root / "中文 用户 🦀 (safe)&literal%PATH%!"
@@ -503,6 +552,7 @@ function Invoke-WebRequest {
         self.case("win.installer.existing", self.existing_native)
         self.case("win.upgrade.real_v050", self.upgrade)
         self.case("win.shells.launchers", self.shells)
+        self.case("win.shells.ps7_python_ps51", self.ps7_python_ps51)
         self.case("win.paths.special", self.special_paths)
         self.case("win.paths.rejected", self.rejected_paths)
         self.case("win.paths.long", self.long_paths)

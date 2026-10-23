@@ -20,6 +20,21 @@ lifecycle = cli._owner('perform_uninstall')
 
 
 class WindowsCleanupTests(unittest.TestCase):
+    def test_cleanup_helper_does_not_inherit_other_powershell_module_paths(self):
+        with patch.object(lifecycle.shutil, 'which', return_value='powershell.exe'), \
+             patch.object(lifecycle.subprocess, 'Popen') as spawn, \
+             patch.dict(lifecycle.os.environ, {'PSModulePath': 'PowerShell7/modules',
+                                              'pSmOdUlEpAtH': 'other/modules',
+                                              'HOLYCRAB_TEST_SENTINEL': 'keep'}):
+            lifecycle.schedule_windows_program_cleanup(Path('launcher.cmd'), Path('library'))
+            args, kwargs = spawn.call_args
+            try:
+                child_environment = kwargs['env']
+                self.assertFalse(any(key.upper() == 'PSMODULEPATH' for key in child_environment))
+                self.assertEqual(child_environment['HOLYCRAB_TEST_SENTINEL'], 'keep')
+            finally:
+                Path(args[0][args[0].index('-File') + 1]).unlink()
+
     def fixture(self, root):
         library = root / 'prefix/lib/holycrab'
         library.mkdir(parents=True)

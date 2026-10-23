@@ -147,7 +147,10 @@ def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, a
         raise ValueError("The approved estimate does not match this request; estimate again")
     if confirmed:
         if approved_estimate is not None:
-            approved_credits = estimate['estimate']['frozenCredit']
+            displayed_credits = estimate['estimate']['frozenCredit']
+            if approved_credits is not None and approved_credits != displayed_credits:
+                raise ValueError(f"Credit estimate changed from {approved_credits} to {displayed_credits}; no task was submitted. Review the new estimate and confirm again.")
+            approved_credits = displayed_credits
             estimate = estimate_generation(kind, payload)
         if approved_credits is not None and estimate['estimate']['frozenCredit'] != approved_credits:
             raise ValueError(f"Credit estimate changed from {approved_credits} to {estimate['estimate']['frozenCredit']}; no task was submitted. Review the new estimate and confirm again.")

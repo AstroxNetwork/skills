@@ -54,6 +54,20 @@ class AdversarialRegressionTests(unittest.TestCase):
             self.assertTrue(result['result']['isError'])
             self.assertIn('changed from 0 to 1', result['result']['content'][0]['text'])
             self.assertEqual(send.call_count, 1)
+
+    def test_explicit_zero_limit_cannot_be_overridden_by_interactive_quote(self):
+        request = {'model': 'berry-1.0', 'prompt': 'fixture'}
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {'HOLYCRAB_CONFIG_DIR': temp}), \
+                patch.object(cli._owner('send'), 'send', side_effect=[
+                    (200, {'code': 200, 'data': {'frozenCredit': 7}}),
+                    (200, {'code': 200, 'data': {'frozenCredit': 7}}),
+                    (200, {'code': 200, 'data': {'uniqId': 'unexpectedTask'}})]) as send:
+            quote = cli.create_generation('video', request, confirmed=False)
+            with self.assertRaisesRegex(ValueError, 'changed from 0 to 7'):
+                cli.create_generation('video', request, confirmed=True, approved_estimate=quote,
+                                      approved_credits=0, attempt_id='conflict')
+            self.assertFalse(cli.attempt_exists('conflict'))
+            self.assertTrue(all(call.args[1].endswith('/freeze-credit') for call in send.call_args_list))
     def test_invalid_credential_never_reaches_header_or_saved_config(self):
         state = cli._owner("credential")
         for value in ("private\nkey", "private\rkey", "private\x00key", "private中文"):
