@@ -4,6 +4,29 @@ param(
     [int]$TimeoutSeconds = 1200
 )
 $ErrorActionPreference = "Stop"
+function Wait-HolyCrabNativeProcess {
+    param([Diagnostics.Process]$Process, [int]$TimeoutMilliseconds, [string]$ReleaseFile = "")
+    # Start-Process -RedirectStandard* in Windows PowerShell returns a Process
+    # without an owned handle. Capture it while alive, before WaitForExit:
+    # https://github.com/PowerShell/PowerShell/issues/5421
+    $RetainedHandle = $Process.Handle
+    if ($null -eq $RetainedHandle -or $RetainedHandle -eq [IntPtr]::Zero -or $RetainedHandle -eq [IntPtr](-1)) {
+        throw "Could not retain the native process handle for PID $($Process.Id)."
+    }
+    if ($ReleaseFile) { [IO.File]::WriteAllText($ReleaseFile, "handle retained") }
+    if (-not $Process.WaitForExit($TimeoutMilliseconds)) {
+        & taskkill.exe /PID $Process.Id /T /F | Out-Null
+        if (-not $Process.WaitForExit(10000)) { throw "Native PID $($Process.Id) remained alive after timeout cleanup." }
+        throw "Native PID $($Process.Id) timed out; process tree termination was requested and its root exit observed."
+    }
+    # Invoke the getter explicitly: PowerShell property access can suppress a
+    # getter exception and yield null. Missing exit status must never become 0.
+    $ExitCode = $Process.get_ExitCode()
+    if ($null -eq $ExitCode -or $ExitCode -isnot [int]) {
+        throw "Native PID $($Process.Id) exited without an integer exit status."
+    }
+    return @{ pid=$Process.Id; handleRetained=$true; hasExited=$Process.HasExited; exitCode=$ExitCode }
+}
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Python = (Get-Command python -CommandType Application | Select-Object -First 1).Source
 $Report = [IO.Path]::GetFullPath($Report)
@@ -19,6 +42,7 @@ $Baseline = Join-Path $TestRoot "baseline"
 $WorkerReport = Join-Path $TestRoot "report.json"
 $Created = $false
 $Worker = $null
+$WorkerExitEvidence = @{ probes=@(); worker=$null; pythonExitCode=$null }
 $FirewallRule = "HolyCrab-QA-" + $UserName
 $FirewallCreated = $false
 New-Item -ItemType Directory -Force -Path $TestRoot | Out-Null
@@ -94,7 +118,8 @@ with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
     $Payload = @{
         python=$Python; source=$Candidate; baseline=$Baseline; root=(Join-Path $TestRoot "work");
         report=$WorkerReport; username=$UserName; foreignConfig=$ForeignConfig;
-        path=$env:PATH; guard=(Join-Path $TestRoot "offline-guard"); stamp=(Join-Path $TestRoot "source-stamp.json")
+        path=$env:PATH; guard=(Join-Path $TestRoot "offline-guard"); stamp=(Join-Path $TestRoot "source-stamp.json");
+        exitReport=(Join-Path $TestRoot "worker-python-exit.json")
     }
     New-Item -ItemType Directory -Force -Path $Payload.root | Out-Null
     $PayloadFile = Join-Path $TestRoot "arguments.json"
@@ -121,38 +146,84 @@ $env:PYTHONIOENCODING = "utf-8"
 $env:PYTHONPATH = $p.guard
 $env:HOLYCRAB_TEST_LOOPBACK = "1"
 & $p.python (Join-Path $p.source "tests/windows_adversarial.py") --source $p.source --baseline $p.baseline --root $p.root --report $p.report --username $p.username --foreign-config $p.foreignConfig --source-stamp $p.stamp
-exit $LASTEXITCODE
+$PythonExitCode = $LASTEXITCODE
+if ($null -eq $PythonExitCode -or $PythonExitCode -isnot [int]) { throw "Native Python worker did not return an integer exit status." }
+[IO.File]::WriteAllText($p.exitReport, (@{pythonExitCode=$PythonExitCode; workerPid=$PID} | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+[Console]::WriteLine("HOLYCRAB_WORKER_PYTHON_EXIT=" + $PythonExitCode)
+exit $PythonExitCode
 '@
     $WorkerFile = Join-Path $TestRoot "worker.ps1"
     [IO.File]::WriteAllText($WorkerFile, $WorkerCode, [Text.UTF8Encoding]::new($false))
     $Credential = New-Object Management.Automation.PSCredential("$env:COMPUTERNAME\$UserName", $Password)
     $PowerShell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+    # The supervisor itself must preserve success, failure, and cancellation
+    # through the same account, redirection, and wait path as the real worker.
+    $ProbeFile = Join-Path $TestRoot "exit-probe.ps1"
+    $ProbeCode = @'
+param([int]$Code, [string]$ReleaseFile)
+$Deadline = [DateTime]::UtcNow.AddSeconds(10)
+while (-not [IO.File]::Exists($ReleaseFile)) {
+    if ([DateTime]::UtcNow -ge $Deadline) { throw "The supervisor did not release the exit-code probe." }
+    [Threading.Thread]::Sleep(10)
+}
+exit $Code
+'@
+    [IO.File]::WriteAllText($ProbeFile, $ProbeCode, [Text.UTF8Encoding]::new($false))
+    foreach ($ExpectedExit in @(0, 37, 130)) {
+        $ReleaseFile = Join-Path $TestRoot ("probe-" + $ExpectedExit + ".release")
+        $ProbeArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $ProbeFile + '" -Code ' + $ExpectedExit + ' -ReleaseFile "' + $ReleaseFile + '"'
+        $Probe = Start-Process -FilePath $PowerShell -ArgumentList $ProbeArguments -Credential $Credential -LoadUserProfile -PassThru -WorkingDirectory $TestRoot -RedirectStandardOutput (Join-Path $TestRoot "probe.stdout.log") -RedirectStandardError (Join-Path $TestRoot "probe.stderr.log")
+        try {
+            $Observed = Wait-HolyCrabNativeProcess -Process $Probe -TimeoutMilliseconds 15000 -ReleaseFile $ReleaseFile
+            $Observed.expectedExitCode = $ExpectedExit
+            $WorkerExitEvidence.probes += $Observed
+            if ($Observed.exitCode -ne $ExpectedExit) { throw "Native exit-code probe expected $ExpectedExit but observed $($Observed.exitCode)." }
+        } finally { $Probe.Dispose() }
+    }
     $Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $WorkerFile + '" -PayloadFile "' + $PayloadFile + '"'
     $Worker = Start-Process -FilePath $PowerShell -ArgumentList $Arguments -Credential $Credential -LoadUserProfile -PassThru -WorkingDirectory $TestRoot -RedirectStandardOutput (Join-Path $TestRoot "worker.stdout.log") -RedirectStandardError (Join-Path $TestRoot "worker.stderr.log")
-    if (-not $Worker.WaitForExit($TimeoutSeconds * 1000)) {
-        & taskkill.exe /PID $Worker.Id /T /F | Out-Null
-        throw "Native ordinary-user validation timed out; process tree was terminated."
+    $WorkerExitEvidence.worker = Wait-HolyCrabNativeProcess -Process $Worker -TimeoutMilliseconds ($TimeoutSeconds * 1000)
+    if (-not (Test-Path -LiteralPath $Payload.exitReport)) { throw "Native worker did not record its Python exit status." }
+    $PythonExitEvidence = Get-Content -LiteralPath $Payload.exitReport -Raw -Encoding UTF8 | ConvertFrom-Json
+    $WorkerExitEvidence.pythonExitCode = $PythonExitEvidence.pythonExitCode
+    if ($PythonExitEvidence.workerPid -ne $Worker.Id -or $null -eq $PythonExitEvidence.pythonExitCode -or $PythonExitEvidence.pythonExitCode -ne $WorkerExitEvidence.worker.exitCode) {
+        throw "Native worker/Python exit status mismatch: $($WorkerExitEvidence | ConvertTo-Json -Depth 5 -Compress)"
     }
-    $Worker.Refresh()
     if (-not (Test-Path -LiteralPath $WorkerReport)) { throw "Native worker did not produce its required case report" }
     Copy-Item -LiteralPath $WorkerReport -Destination $Report -Force
     $Evidence = Get-Content -LiteralPath $WorkerReport -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($Worker.ExitCode -ne 0 -or $Evidence.ok -ne $true -or @($Evidence.cases).Count -ne @($Evidence.expectedCaseIds).Count) {
-        throw "Native Windows adversarial validation failed; inspect the case report and worker logs."
+    $WorkerExitEvidence.reportOk = $Evidence.ok
+    $WorkerExitEvidence.caseCount = @($Evidence.cases).Count
+    $WorkerExitEvidence.expectedCaseCount = @($Evidence.expectedCaseIds).Count
+    Write-Output ("Native worker exit evidence: " + ($WorkerExitEvidence | ConvertTo-Json -Depth 5 -Compress))
+    if ($WorkerExitEvidence.worker.exitCode -ne 0 -or $Evidence.ok -ne $true -or @($Evidence.cases).Count -ne @($Evidence.expectedCaseIds).Count) {
+        throw "Native Windows adversarial validation failed: $($WorkerExitEvidence | ConvertTo-Json -Depth 5 -Compress)"
     }
+} catch {
+    $WorkerExitEvidence.supervisorError = $_.Exception.Message
+    throw
 } finally {
-    if ($Worker -and -not $Worker.HasExited) { & taskkill.exe /PID $Worker.Id /T /F | Out-Null }
-    foreach ($Name in @("worker.stdout.log", "worker.stderr.log")) {
-        $Log = Join-Path $TestRoot $Name
-        if (Test-Path -LiteralPath $Log) {
-            Copy-Item -LiteralPath $Log -Destination ($Report + "." + $Name) -Force
-            Get-Content -LiteralPath $Log -Encoding UTF8 | Write-Output
-        }
-    }
-    if ((Test-Path -LiteralPath $WorkerReport) -and -not (Test-Path -LiteralPath $Report)) {
-        Copy-Item -LiteralPath $WorkerReport -Destination $Report -Force
-    }
     $CleanupErrors = @()
+    try {
+        [IO.File]::WriteAllText(($Report + ".worker-exit.json"), ($WorkerExitEvidence | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    } catch { $CleanupErrors += "Could not write worker exit evidence: $($_.Exception.Message)" }
+    try {
+        if ($Worker -and -not $Worker.HasExited) { & taskkill.exe /PID $Worker.Id /T /F | Out-Null }
+    } catch { $CleanupErrors += "Could not terminate the worker directly: $($_.Exception.Message)" }
+    foreach ($Name in @("worker.stdout.log", "worker.stderr.log", "probe.stdout.log", "probe.stderr.log")) {
+        $Log = Join-Path $TestRoot $Name
+        try {
+            if (Test-Path -LiteralPath $Log) { Copy-Item -LiteralPath $Log -Destination ($Report + "." + $Name) -Force }
+        } catch { $CleanupErrors += "Could not preserve ${Name}: $($_.Exception.Message)" }
+        try {
+            if (Test-Path -LiteralPath $Log) { Get-Content -LiteralPath $Log -Encoding UTF8 | Write-Output }
+        } catch { $CleanupErrors += "Could not display ${Name}: $($_.Exception.Message)" }
+    }
+    try {
+        if ((Test-Path -LiteralPath $WorkerReport) -and -not (Test-Path -LiteralPath $Report)) {
+            Copy-Item -LiteralPath $WorkerReport -Destination $Report -Force
+        }
+    } catch { $CleanupErrors += "Could not preserve the native case report: $($_.Exception.Message)" }
     $Cleanup = @{ user=$UserName; killedProcessIds=@(); remainingProcessIds=@(); verified=$false }
     try {
         $OwnedProcesses = @(Get-Process -IncludeUserName -ErrorAction Stop | Where-Object { $_.UserName -ieq "$env:COMPUTERNAME\$UserName" })
@@ -181,6 +252,11 @@ exit $LASTEXITCODE
         catch { $CleanupErrors += $_.Exception.Message }
     }
     $Cleanup.errors = $CleanupErrors
-    [IO.File]::WriteAllText(($Report + ".cleanup.json"), ($Cleanup | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
-    if ($CleanupErrors.Count -gt 0) { throw ($CleanupErrors -join " ") }
+    try {
+        [IO.File]::WriteAllText(($Report + ".cleanup.json"), ($Cleanup | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    } catch { $CleanupErrors += "Could not write cleanup evidence: $($_.Exception.Message)" }
+    if ($CleanupErrors.Count -gt 0) {
+        if ($WorkerExitEvidence.supervisorError) { $CleanupErrors += "Original validation error: $($WorkerExitEvidence.supervisorError)" }
+        throw ($CleanupErrors -join " ")
+    }
 }

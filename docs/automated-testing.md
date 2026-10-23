@@ -137,4 +137,8 @@ CI 的 Recorded Generate contract (offline) 检查证据的通过状态、完整
 
 素材规则另外绑定已审计的四个后端规则源文件与全部模型说明摘要；源码或说明任一变化都要求重新核对并显式更新审计基线，不能仅重签一份通过记录。此方式保守地拒绝未审计变化，不在 Python 中再实现一份后端素材判定。
 
-Windows 测试和卸载助手从 Python 启动 PowerShell 时清除继承的 `PSModulePath`，让目标 PowerShell 重建自己的模块路径；安装器也显式从当前 `$PSHOME` 加载系统模块。原生回归保留 PS7 经 Python 启动 PS5.1 的实际继承环境，验证完整 SHA-256 检查及卸载后的最终清理。行为依据：[Microsoft about_PSModulePath](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_psmodulepath?view=powershell-7.6)。
+Windows 测试从 Python 启动 PowerShell 时清除继承的 `PSModulePath`，让目标 PowerShell 重建自己的模块路径；安装器也显式从当前 `$PSHOME` 加载系统模块。原生回归保留 PS7 经 Python 启动 PS5.1 的实际继承环境，验证完整 SHA-256 检查及卸载后的最终清理。行为依据：[Microsoft about_PSModulePath](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_psmodulepath?view=powershell-7.6)。
+
+卸载助手使用当前 Python 的独立标准库进程，以 `-I -S` 隔离环境和 sitecustomize，不依赖额外 PowerShell 宿主。它只删除仍匹配调度时文件身份与哈希的启动器，并尝试移除空程序目录；新安装文件和用户文件均保留。清理有明确时限，失败记录日志，测试必须观察父进程退出后的最终文件结果。
+
+PowerShell 安装中断覆盖 5.1/7 × 独立脚本、流式 IEX、外层脚本内 IEX 共六种调用。独立脚本在回滚完成后退出 130；IEX 必须保留交互宿主，随后从该宿主读取 LASTEXITCODE=130。每种场景都先证明文件已被覆盖，再核对完整恢复，不能只检查提示语。
