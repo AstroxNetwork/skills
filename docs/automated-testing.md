@@ -142,3 +142,17 @@ Windows 测试从 Python 启动 PowerShell 时清除继承的 `PSModulePath`，�
 卸载助手使用当前 Python 的独立标准库进程，以 `-I -S` 隔离环境和 sitecustomize，不依赖额外 PowerShell 宿主。它只删除仍匹配调度时文件身份与哈希的启动器，并尝试移除空程序目录；新安装文件和用户文件均保留。清理有明确时限，失败记录日志，测试必须观察父进程退出后的最终文件结果。
 
 PowerShell 安装中断覆盖 5.1/7 × 独立脚本、流式 IEX、外层脚本内 IEX 共六种调用。独立脚本在回滚完成后退出 130；IEX 必须保留交互宿主，随后从该宿主读取 LASTEXITCODE=130。每种场景都先证明文件已被覆盖，再核对完整恢复，不能只检查提示语。
+
+## 正式发布后的安装与升级验证
+
+已有工作流 `post-release-smoke.yml` 支持从公开正式包执行完整检查：
+
+```sh
+gh workflow run post-release-smoke.yml --repo AstroxNetwork/skills --ref main -F verify_website=true
+```
+
+Linux、macOS、Windows Server 2025 分别全新安装 v0.6.0，再实际安装不可变 v0.5.0 并通过 `holycrab update --yes` 升级。检查真实版本、完整运行文件哈希、22 个 MCP 工具、16 个模型、凭据与恢复记录字节、用户文件和实际卸载完成。旧版夹具先经过自身 doctor 校验，使用有效期和私有权限；不会修改旧版版本号或复用运行时代码计算预期值。Windows 旧版安装使用 PowerShell 5.1 原生模块路径，避免 CI 的 PowerShell 7 路径污染；这是[微软记录的跨版本继承行为](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_psmodulepath?view=powershell-5.1)。
+
+官网已部署后，额外在 macOS、Windows 从 `holycrab.ai/cli/` 下载，先比对正式 Release 摘要再安装。若官网尚待部署授权，可显式设 `verify_website=false` 仅验证公开 GitHub 包；官网步骤会显示跳过，不能宣称官网验收通过。
+
+本机执行入口为 `python3 tests/post_release_upgrade.py --source . --report build/post-release/public-upgrade.json`。必须联网访问公开 GitHub 资产，但在隔离 HOME、配置和安装目录运行，不读取真实账号、不调用业务 API、不付费生成。结果和逐命令日志保存在指定目录，失败保留原始记录。脚本只适用于当前 v0.6.0 为 Latest 且本地发布文件与其完全一致时；后续版本须显式更新验收目标。
