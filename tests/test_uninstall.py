@@ -121,7 +121,7 @@ elif arguments[:2] == ["mcp", "remove"]:
             env["FAKE_AGENT_DENIED"] = "1"
             removed = subprocess.run([str(command), "uninstall", "--yes"], env=env,
                                      text=True, capture_output=True)
-            self.assertEqual(removed.returncode, 0, removed.stderr)
+            self.assertEqual(removed.returncode, 1, removed.stderr)
             self.assertIn("MCP cleanup pending for codex", removed.stdout)
             self.assertIn("Agent registration cleanup is incomplete", removed.stdout)
             self.assertNotIn("HolyCrab uninstall completed", removed.stdout)
@@ -239,7 +239,7 @@ elif arguments[:2] == ["mcp", "remove"]:
             credential.write_text("{}", encoding="utf-8")
             linked = root / "holycrab"
             linked.symlink_to(outside, target_is_directory=True)
-            with patch.object(cli, "config_dir", return_value=linked):
+            with patch.object(cli._owner("config_dir"), "config_dir", return_value=linked):
                 warnings = cli.purge_known_local_state()
             self.assertTrue(credential.exists())
             self.assertIn("Refused to purge", warnings[0])
@@ -291,7 +291,7 @@ elif arguments[:2] == ["mcp", "remove"]:
             self.assertIn("contains other programs", removed.stdout)
 
     def test_uninstall_skips_startup_checks_and_only_removes_owned_mcp(self) -> None:
-        with patch.object(cli, "local_health_report") as health, patch.object(cli, "check_for_update") as update:
+        with patch.object(cli._owner("local_health_report"), "local_health_report") as health, patch.object(cli._owner("check_for_update"), "check_for_update") as update:
             cli.startup_maintenance(["uninstall", "--yes"])
         health.assert_not_called()
         update.assert_not_called()
@@ -325,11 +325,11 @@ elif arguments[:2] == ["mcp", "remove"]:
             library = root / "lib" / "holycrab"
             launcher = root / "bin" / "holycrab"
             manifest = {"agents": [], "mcp": False, "pathRegistration": {"kind": "none", "addedByInstaller": False}}
-            with patch.object(cli, "validated_uninstall_manifest", return_value=(manifest, root, library, launcher)), \
+            with patch.object(cli._owner("validated_uninstall_manifest"), "validated_uninstall_manifest", return_value=(manifest, root, library, launcher)), \
                     patch.object(cli.sys.stdin, "isatty", return_value=True), \
                     patch("builtins.input", return_value="n"), \
-                    patch.object(cli, "remove_managed_mcp_registrations") as remove_mcp, \
-                    patch.object(cli, "remove_managed_skill_files") as remove_skill:
+                    patch.object(cli._owner("remove_managed_mcp_registrations"), "remove_managed_mcp_registrations") as remove_mcp, \
+                    patch.object(cli._owner("remove_managed_skill_files"), "remove_managed_skill_files") as remove_skill:
                 result = cli.command_uninstall(args)
         self.assertEqual(result, 2)
         remove_mcp.assert_not_called()
@@ -341,10 +341,11 @@ elif arguments[:2] == ["mcp", "remove"]:
             library = root / "lib" / "holycrab"
             launcher = root / "bin" / "holycrab"
             manifest = {"agents": [], "mcp": False, "pathRegistration": {"kind": "none", "addedByInstaller": False}}
-            with patch.object(cli, "validated_uninstall_manifest", return_value=(manifest, root, library, launcher)), \
-                    patch.object(cli, "remove_managed_mcp_registrations", return_value=[]), \
-                    patch.object(cli, "remove_managed_skill_files", return_value=[]), \
-                    patch.object(cli, "send") as send, \
+            with patch.object(cli._owner("validated_uninstall_manifest"), "validated_uninstall_manifest", return_value=(manifest, root, library, launcher)), \
+                    patch.object(cli._owner("remove_managed_mcp_registrations"), "remove_managed_mcp_registrations", return_value=[]), \
+                    patch.object(cli._owner("remove_managed_skill_files"), "remove_managed_skill_files", return_value=[]), \
+                    patch.object(cli._owner("send"), "send") as send, \
+                    patch.object(cli._owner("schedule_windows_program_cleanup"), "schedule_windows_program_cleanup"), \
                     patch.object(cli.urllib.request, "urlopen") as urlopen, \
                     patch.object(sys, "argv", ["holycrab", "uninstall", "--yes"]):
                 result = cli.main()
@@ -361,7 +362,7 @@ elif arguments[:2] == ["mcp", "remove"]:
                 "prefix": str(root / "different"), "agents": [], "mcp": False,
             }), encoding="utf-8")
             manifest_path.chmod(0o600)
-            with patch.object(cli, "installation_path", return_value=manifest_path), \
+            with patch.object(cli._owner("installation_path"), "installation_path", return_value=manifest_path), \
                     self.assertRaisesRegex(SystemExit, "does not match"):
                 cli.validated_uninstall_manifest()
 

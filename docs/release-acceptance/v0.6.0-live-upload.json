@@ -1,0 +1,86 @@
+{
+  "status": "passed",
+  "testedAt": "2026-10-23T13:59:02.208921+00:00",
+  "candidateSha256": "166c866bd575406364cfc45339bb9041025b56a7131b45ebbf92306b0f16db12",
+  "authorization": {
+    "mode": "reused-existing-authorized-group",
+    "newSessionCreated": false,
+    "newLivenessVerification": false,
+    "codeComparison": {
+      "baselineCommit": "48126baa08521961de47d48bd2134c44a7e8cba2",
+      "testedRuntimeCommit": "af62761bf4e3f50bda5f0911620554caca0eb856",
+      "normalization": "AST unparse and removal of extracted module prefixes; covers the four functions only, not their shared dependencies",
+      "functions": {
+        "create_authorization": "8f3e8762c53ef48b5d2ef630e0ba265236eb4b74499c5efcaaae30a2ee9d46e9",
+        "get_authorization": "d66d99f4923d1848c6c91ed4b381d0ce677c10e7e54d8b50f40a6c0e091876da",
+        "authorization_qr": "f1bbd76a1e135796c3bb009535817b04ba82848255184b1be351abf6ee3b49a0",
+        "poll_resource": "dff5f15a6f3478fb907bcbc8956d1af74a326b79971679c4eb337e98e40bcf0f"
+      },
+      "environment": {
+        "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+        "python": "3.14.6"
+      }
+    },
+    "scopeApprovedBy": "user",
+    "scope": "Reuse the existing authorized person; fresh QR/liveness verification was explicitly excluded."
+  },
+  "upload": {
+    "files": 1,
+    "format": "heic",
+    "bytes": 989564,
+    "oneShotRegistration": true,
+    "localState": "completed",
+    "downloadedBytesMatch": true
+  },
+  "query": {
+    "mcp": true,
+    "cli": true,
+    "groupListDelta": 1,
+    "priorAssetPreserved": true,
+    "step": "UPLOADED_TO_ARK",
+    "ready": true,
+    "metadataStatus": "PENDING",
+    "priorAssetMetadataStatus": "FAILED",
+    "polls": [
+      {
+        "step": "UPLOADED_TO_ARK",
+        "ready": true,
+        "metadataStatus": "PROCESSING"
+      },
+      {
+        "step": "UPLOADED_TO_ARK",
+        "ready": true,
+        "metadataStatus": "PENDING"
+      }
+    ],
+    "metadataObservedAt": "2026-10-23T13:59:39.497688+00:00",
+    "metadataInterpretation": "The observed metadata state is reported literally. Unknown width/height/size remain unknown; readiness does not prove model compliance. No metadata retry was requested."
+  },
+  "networkRequestCounts": {
+    "read": 7,
+    "presign": 1,
+    "upload": 1,
+    "register": 1
+  },
+  "paidGenerationRequests": 0,
+  "balanceUnchanged": true,
+  "limitations": [
+    "No new QR/liveness flow was performed",
+    "Metadata readiness is distinct from model compliance",
+    "Paid generation was not executed",
+    "Windows 10/11 x64 desktop excluded by user"
+  ],
+  "productionReleasePerformed": false,
+  "schemaVersion": 1,
+  "testedRuntimeCommit": "af62761bf4e3f50bda5f0911620554caca0eb856",
+  "environment": {
+    "platform": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "python": "3.14.6"
+  },
+  "networkRequestCountsScope": "Observed candidate requests from upload preparation through final metadata read. Initial account/group discovery and two direct byte-comparison downloads are outside these counts.",
+  "excludedByUser": [
+    "Windows 10/11 x64 desktop validation"
+  ],
+  "remainingAcceptanceScope": "No paid generation was requested or executed. Formal publication still requires user confirmation.",
+  "privateEvidenceManifestSha256": "c4da66be3e4848c204fb9de22c1f669da6c673db3fc8d30027146bcd1f091e7c"
+}

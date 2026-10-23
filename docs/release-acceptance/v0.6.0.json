@@ -1,0 +1,73 @@
+{
+  "version": "v0.6.0",
+  "candidateSha256": "166c866bd575406364cfc45339bb9041025b56a7131b45ebbf92306b0f16db12",
+  "realHumanCoreFlow": {
+    "status": "passed",
+    "mode": "existing-authorization-live-upload-query",
+    "operator": "Codex automated acceptance, user-authorized scope",
+    "testedAt": "2026-10-23T13:59:02.208921+00:00",
+    "notes": "Fresh upload and query acceptance passed against candidate af62761 using one existing authorized person and its existing HEIC material. No new authorization session or liveness verification was performed. One presign, one PUT, one registration; CLI/MCP readiness, group listing, preserved original asset, completed local state, identical downloaded bytes and unchanged balance were verified. Metadata remained PENDING at the final observation and is not a model-compliance claim. Paid generation and production publication were not performed.",
+    "authorization": {
+      "status": "reused-existing",
+      "freshVerificationPerformed": false,
+      "userApprovedReuse": true
+    },
+    "uploadAndQuery": {
+      "status": "passed",
+      "files": 1,
+      "localState": "completed",
+      "step": "UPLOADED_TO_ARK",
+      "byteIntegrity": "passed",
+      "metadataStatus": "PENDING"
+    },
+    "evidenceFile": "docs/release-acceptance/v0.6.0-live-upload.json",
+    "evidenceSha256": "9cae055ec5b45b02a7ce9db0b06a03535005dbaab041e964fff57dc5eef87849",
+    "desktopWindowsValidation": {
+      "status": "excluded-by-user",
+      "scope": "Windows 10/11 x64 desktop; existing native Windows CI evidence is retained"
+    }
+  },
+  "generateContractCheck": {
+    "status": "passed",
+    "mode": "local-immutable-main",
+    "verifiedMainCommit": "569aa948d5ea70c15ce719783e71935d02309743",
+    "verifiedAt": "2026-10-23T11:18:37.505326+00:00",
+    "candidateSha256": "166c866bd575406364cfc45339bb9041025b56a7131b45ebbf92306b0f16db12",
+    "sourceFiles": {
+      "client/user-front/src/api/tasks.ts": "dc8b22deb52982fb1fb3da12dfc7b646de2bba3bf07be4bcef84bd147e2560de",
+      "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
+      "client/user-front/src/utils/agnesModels.ts": "a35e69ad04cb9181615a8fae2f4572dab946d73152edfcf73e40a878661eac22",
+      "client/user-front/src/utils/assetUploadLimits.ts": "c0f4c29317ec53e2b099e882218dd8c4ec314661ad1e63603810fe5d4caea95f",
+      "client/user-front/src/utils/generationOptions.ts": "13a7f54c39567a91c3cc353e5cd5dd39e0fe8fea990f535e81aff34ff2443966",
+      "client/user-front/src/utils/imageGenerationParams.ts": "d673839bf8df441da349da7626300e8712d6ec0ff5f3a0db07a8224d6ff3824f",
+      "client/user-front/src/utils/seedAudioRules.ts": "b48e8bcce144496b032837124152a20fe40cf564a24e26bb5a93c8fc49e0a0ed",
+      "server/user/src/main/java/com/astrox/seedance/user/api/ApiResult.java": "df005905953bde4a9cb59e560c4eb8f4f5a4db48243daeb01721226adebeae82",
+      "server/user/src/main/java/com/astrox/seedance/user/api/AssetValidationError.java": "21f43810dc145342834dd85bb655e4edf0f53ad3cf30c4b1e791bc5933506acd",
+      "server/user/src/main/java/com/astrox/seedance/user/api/GlobalExceptionHandler.java": "f56ea4044bfaf7489d98811d3ed3d208a21fcc4016158f6fd884ea3c143e6734",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserAssetController.java": "c47ece1d6574cee8589aabcc55d2d8d6e36202503614868953a5dacf8524641f",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserTaskController.java": "ba960022ed503bebba81ca2bd21fd8ff2b7bf753027ba9ef2e01b93f582a0b6e",
+      "server/user/src/main/java/com/astrox/seedance/user/serialization/AssetSerializer.java": "4753f32a277121104c55fb8c227cbceb5010b3038ce6aea1a16fe05a3788abeb",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AgnesGenerationRequestValidator.java": "bae266c7162eb7bf8483eacb03e4b86194fb68f2e193e3d5d06cb2cdda9d4202",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java": "3e9bb56da7dceb77b910b797512af8e5fb64747e0846e2b758b97a46820bdc2f",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AudioGenerationRequestValidator.java": "208cc137e5ae8c6f38678dd7086f31600c1b42e953b3aa9da9131469ec97f2b9",
+      "server/user/src/main/java/com/astrox/seedance/user/service/GenerationRequestValidator.java": "c6648c2469bd6a721f3a9834c8c1625866b15cf0402dcdc4c0023c2a2e3a7868",
+      "server/user/src/main/java/com/astrox/seedance/user/service/ImageGenerationRequestValidator.java": "e96e2da4298570ddfb8544b13cbdea3cfab57a6cdf555814360fdef8a7a2534d",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxGenerationRequestValidator.java": "d88ac7a5bc5a2a50d9e24326b6df0fd3c35a01136a2b3ed3d1fb1b42b881286c",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MulerouterGenerationRequestValidator.java": "6d5ff7041475ce6461e70c203621c3f694a924f0d70e475a3bd9d99820f3eeaa",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java": "ca82e618aedab57c0b6a1a16d27bc458dea62b11fb5f764cce5aaf3e13708b2d",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java": "501cf7989a1bcb785837399617cc2c1717e1ec1dd64c3c01d9406f328a16888c",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java": "cc6f1efe8398b6dc83041b39603bf17a525dd98e0a9205ecfa4f72386bc7a659",
+      "server/user/src/main/java/com/astrox/seedance/user/service/UserAssetService.java": "6af4f5f368b0305b249b245c150045c26c5872a0260fe37771e2a9d3c3eddd4b",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/AssetVO.java": "42223ee08d1909fb5d653b47d784234236bc74fda78bdb547cc39d8dc0a18ee7",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
+    },
+    "validatorSha256": "d2ff5717da5fe2cd14c48a76ff4469d975dc9700b2e7ee181ff030b6d4b6cb00",
+    "evidenceSha256": "2cc36e200bef75332a14aeb0856f93407e9e7a3100716c3cbee15073f65be264"
+  },
+  "publication": {
+    "status": "authorized",
+    "approvedBy": "user",
+    "approvedAt": "2026-10-23T14:16:10.438343+00:00",
+    "notes": "User explicitly approved formal v0.6.0 publication, existing release-note updates and automated post-release installation/update checks. Publication is performed only after the existing immutable Draft, native install and release gates pass; this pre-publication record does not claim publication has completed."
+  }
+}

@@ -1,0 +1,428 @@
+{
+  "baseline": "ea4b8ac",
+  "notes": [
+    "Exact baseline skips, independently classified. Native cases must be evidenced on the same candidate."
+  ],
+  "cases": [
+    {
+      "test": "test_agent_cleanup.AgentCleanupTests.test_installer_records_client_and_preserves_ownership_on_repeat_install",
+      "reason": "Unix registration fixture; native PowerShell test covers Windows registration",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "mcp.repeat-install-ownership"
+    },
+    {
+      "test": "test_agent_cleanup.AgentCleanupTests.test_legacy_installation_gains_ownership_record",
+      "reason": "Unix registration fixture; native PowerShell test covers Windows registration",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "mcp.legacy-adoption"
+    },
+    {
+      "test": "test_agent_cleanup.AgentCleanupTests.test_new_registration_is_checked_and_recorded_without_secrets",
+      "reason": "Unix registration fixture; native PowerShell test covers Windows registration",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "mcp.new-registration-verified"
+    },
+    {
+      "test": "test_agent_cleanup.AgentCleanupTests.test_unknown_inspection_never_overwrites_registration",
+      "reason": "Unix registration fixture; native PowerShell test covers Windows registration",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "mcp.unknown-inspection-preserved"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_ci_runs_release_gates_on_linux_macos_and_windows",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_docs_explain_supported_systems_update_and_uninstall",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_draft_verification_lists_releases_instead_of_published_tag_endpoint",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_failed_upgrade_restores_managed_files_and_preserves_user_state",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "upgrade.failure-byte-rollback"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_fixed_commit_ref_is_independent_of_the_installed_version",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "install.immutable-ref"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_fresh_install_and_v040_upgrade_preserve_state_and_qr_without_pip",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "upgrade.real-v050"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_generic_resume_reuses_draft_and_requires_explicit_publication",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_installer_persists_zsh_path_once_without_replacing_user_content",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "pure-unix",
+      "requiredCase": "unix-only.shell-profile"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_installer_requires_python_310_or_newer",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_installer_success_messages_follow_all_verification",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_installs_cli_and_skill_into_isolated_home",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "install.inventory"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_invalid_download_ref_is_rejected_before_installing",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "install.invalid-ref"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_local_generate_gate_requires_verified_record_without_private_checkout",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_native_draft_download_has_scoped_push_access_without_new_secrets",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_post_release_downloader_identifies_itself_to_the_website",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_post_release_smoke_checks_both_native_platforms",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_post_release_smoke_does_not_use_runner_context_in_job_env",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_post_release_smoke_has_no_business_writes_or_real_credentials",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_post_release_smoke_uses_the_installed_utf8_launcher",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_post_release_smoke_verifies_website_bytes_before_execution",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_public_install_uses_the_branded_stable_entrypoint",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_release_notes_have_the_approved_english_title",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_release_stays_draft_until_digest_and_native_install_checks_pass",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_remote_install_rejects_a_tampered_release_file",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "install.tampered-hash"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_remote_release_hashes_match_the_bundled_files",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_tagged_release_uploads_the_installer_after_all_release_gates",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_unix_installer_sigint_restores_existing_files_without_success_message",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "install.interrupted-rollback"
+    },
+    {
+      "test": "test_installer.InstallerTests.test_windows_agent_fixture_emits_utf8_under_a_legacy_codepage",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_windows_mcp_helper_accepts_utf8_bom_and_chinese_paths",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_installer.InstallerTests.test_windows_summary_helper_accepts_bom_without_printing_internal_instructions",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_lifecycle_v060.InstalledRuntimeTests.test_install_repairs_runtime_without_discarding_corrupt_attempts",
+      "reason": "Native PowerShell installation is exercised by Windows CI",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "install.repair-corrupt-ledger"
+    },
+    {
+      "test": "test_lifecycle_v060.InstalledRuntimeTests.test_reinstall_can_reduce_agents_and_uninstall_preserves_extra_file",
+      "reason": "Native PowerShell installation is exercised by Windows CI",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "install.reduce-agents"
+    },
+    {
+      "test": "test_lifecycle_v060.InstalledRuntimeTests.test_schema3_doctor_rejects_missing_module_inventory_entry",
+      "reason": "Native PowerShell installation is exercised by Windows CI",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "doctor.missing-runtime-inventory"
+    },
+    {
+      "test": "test_native_install_checks.NativeCheckTests.test_broken_health_candidate_rolls_back_real_isolated_install",
+      "reason": "Native PowerShell rollback is covered by test_windows_installer.ps1",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "upgrade.failure-byte-rollback"
+    },
+    {
+      "test": "test_public_guidance.PublicGuidanceTests.test_all_five_language_website_executable_cli_examples",
+      "reason": "Website integration requires an isolated website checkout",
+      "source": "external",
+      "disposition": "separate-external",
+      "requiredCase": "external.website"
+    },
+    {
+      "test": "test_smoke_drivers.SmokeDriverTests.test_disposable_install_rollback_and_uninstall",
+      "reason": "Native Windows lifecycle is tested by PowerShell CI",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "upgrade.real-v050"
+    },
+    {
+      "test": "test_terminal_feedback.TerminalFeedbackTests.test_hidden_input_immediately_acknowledges_and_guides_to_agent",
+      "reason": "Unix PTY only; Windows console input is not covered by this test",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "console.hidden-input"
+    },
+    {
+      "test": "test_terminal_feedback.TerminalFeedbackTests.test_installer_in_real_terminal_groups_phases_and_has_one_short_summary",
+      "reason": "Unix PTY only; Windows console input is not covered by this test",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "console.install-summary"
+    },
+    {
+      "test": "test_terminal_feedback.TerminalFeedbackTests.test_real_sigint_generation_preserves_unknown_attempt",
+      "reason": "Unix PTY only; Windows console input is not covered by this test",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "console.ctrlc-generation"
+    },
+    {
+      "test": "test_terminal_feedback.TerminalFeedbackTests.test_real_sigint_wait_exits_130_without_traceback",
+      "reason": "Unix PTY only; Windows console input is not covered by this test",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "console.ctrlc-wait"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_default_uninstall_requires_confirmation_and_preserves_local_state",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "uninstall.default-state-preservation"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_failed_agent_inspection_uninstalls_program_but_reports_pending_cleanup",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "mcp.inspection-failure-pending"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_installed_agents_are_cleaned_from_a_terminal_without_agent_path",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "mcp.cleanup-recorded-executable"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_interactive_cancel_makes_no_changes",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_legacy_manifest_does_not_remove_profile_path",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "uninstall.legacy-path-preservation"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_manifest_must_match_the_running_installed_cli",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_modified_skill_and_extra_files_are_retained",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "uninstall.preserve-modified-skill"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_preexisting_manual_mcp_is_preserved_on_install_and_uninstall",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "mcp.preserve-manual-registration"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_purge_refuses_a_symlinked_config_directory",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "uninstall.purge-refuse-reparse"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_purge_removes_known_state_but_keeps_unknown_files",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "uninstall.purge-preserve-unknown"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_shared_bin_keeps_profile_path_and_other_program",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "uninstall.shared-path-preservation"
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_uninstall_main_makes_no_network_request",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_uninstall.UninstallTests.test_uninstall_skips_startup_checks_and_only_removes_owned_mcp",
+      "reason": "Unix shell installer integration; native PowerShell installer runs in Windows CI",
+      "source": "runner",
+      "disposition": "run-on-windows",
+      "requiredCase": null
+    },
+    {
+      "test": "test_update_v044.UpdateRecoveryTests.test_failed_health_check_restores_previous_bytes_and_keeps_user_files",
+      "reason": "Unix process fault injection",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "upgrade.failure-byte-rollback"
+    },
+    {
+      "test": "test_update_v044.UpdateRecoveryTests.test_real_reinstall_with_blank_old_updater_settings_keeps_no_agents",
+      "reason": "Native PowerShell integration covers Windows",
+      "source": "decorator",
+      "disposition": "native-equivalent-required",
+      "requiredCase": "upgrade.blank-legacy-settings"
+    },
+    {
+      "test": "test_v041.V041Tests.test_attempts_and_installation_manifest_reject_unsafe_permissions",
+      "reason": "POSIX permission enforcement",
+      "source": "decorator",
+      "disposition": "pure-unix",
+      "requiredCase": "unix-only.mode-bits"
+    }
+  ]
+}

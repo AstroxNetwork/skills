@@ -4,7 +4,7 @@
 >
 > Base URL：`https://abgzfc.holycrab.ai`
 >
-> 更新日期：2026-10-09（与本版 CLI 能力快照同步）
+> 更新日期：2026-10-23（与本版 CLI 能力快照同步）
 >
 > 机器可读快照：[capabilities.json](capabilities.json)
 
@@ -420,7 +420,7 @@ holycrab generate estimate --kind image --json '{"model":"agnes-image-2.5-flash"
 
 - Seedream 5.0 Pro 自定义宽高必须是 16 的倍数；Lite 和 4.5 没有此限制。三者比例范围均为 1:16–16:1。
 - 参考图支持 `jpeg`、`png`、`webp`、`bmp`、`tiff`、`gif`、`heic`、`heif`。
-- 单张参考图最大 30 MB，宽高都必须大于 14 px，总像素不超过 36,000,000。
+- 参考图片信息以服务端实测为准；当前统一图片规则为小于 30 MiB、宽高 300–6000 px。元数据未知不由 CLI 推断为不合规。
 - `outputFormat` 仅适用于 Seedream 5.0 Pro / Lite；可选 `jpeg`、`png`。Seedream 4.5 不使用该字段；省略或无效值时使用 `jpeg`。
 
 ```bash
@@ -446,6 +446,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/image-generation' \
 | `model` | string | 是 | Seedream 模型 ID |
 | `size` | string | 否 | 请求尺寸 |
 | `imageUrls` | string[] | 否 | 参考图片 URL |
+| `imageAssetIds` | string[] | 否 | 非空时优先于 URL 的账户图片素材 ID |
 
 返回：`frozenCredit: integer`。该接口只预估，不创建任务。
 
@@ -477,8 +478,8 @@ curl -sS 'https://abgzfc.holycrab.ai/api/tasks/image-generation' \
 
 规则：
 
-1. 每个音频参考对象只能选一个：`references[].speaker`、`references[].audio_data` 或 `references[].audio_url`。
-2. 每个图片参考对象只能选一个：`references[].image_data` 或 `references[].image_url`。
+1. 音频参考使用 `{assetId,type:"audio"}` 或 `{audio_url}`；旧 speaker/audio_data 写法需显式上传后改用 ID/URL。
+2. 图片参考使用 `{assetId,type:"image"}` 或 `{image_url}`；不支持旧 image_data 写法，不隐式上传。
 3. 最多 3 段音频，或 1 张图片；图片和音频参考不能混用。
 4. 单段参考音频最长 30 秒、最大 10 MB，支持 `wav`、`mp3`、`pcm`、`ogg`；参考图最大 10 MB，支持 `jpeg`、`png`、`webp`。
 5. 生成音频最长 120 秒。
@@ -591,7 +592,7 @@ CLI 删除前查询并显示目标。交互模式要求确认；`--yes` 只可�
 
 PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送一次，随后通过列表或详情查询实际状态，不自动重试。工具只接受公开 `groupUniqId` 和素材 `uniqId`；不支持授权撤销或自动留存清理。
 
-创建授权或登记素材时，连接中断、网关 502/504、HTTP 200 无效响应都可能无法确认操作结果。保留已知 ID并查询，不自动重新创建、重新上传或回退到普通素材分组。真人批量最多 10 个文件；图片小于 30 MiB、视频不超过 50 MiB，音频禁止。首个失败或不明确结果会停止整批，并分别返回已上传、失败或不明、未执行清单。
+创建授权或登记素材时，连接中断、网关 502/504、HTTP 200 无效响应都可能无法确认操作结果。保留已知 ID并查询，不自动重新创建、重新上传或回退到普通素材分组。真人批量最多 10 个文件；素材大小和类型等规则由后端校验。首个失败或不明确结果会停止整批，并分别返回已上传、失败或不明、未执行清单。
 
 ## 10. CLI 安全层
 
@@ -600,11 +601,12 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 - `doctor`、`auth status`、MCP `cli_status` / `account_get` 追加统一 `onboarding`，包括 `state`、`instruction`、`command`、`businessUses`、三个 `examples`、`question` 和 `agentInstruction`。状态为 `CONNECT_ACCOUNT / CONFIGURED / VERIFY_ACCOUNT / READY`。普通离线自检和 `cli_status` 在有 Key 时返回 `CONFIGURED`，`command` 为 `null`，仅表示 Key 已配置，不判断账号有效性，也不要求重复验证；没有 Key 时仍引导 `setup`。只有实时账号验证成功才返回 `READY`，异常成功响应不能证明账号有效。
 - Agent 仅在安装或首次连接对话中、账号验证成功后介绍业务场景一次，并使用用户当前语言。示例不构成上传、授权、付费或删除许可；费用估算留在实际执行流程，不要求用户在需求中提及。
 - 测试安装通过 `HOLYCRAB_INSTALL_REF` 指定完整提交号，默认下载引用仍为版本标签；下载引用不改变版本号校验。正式更新清除该变量，保留 GitHub Release、SHA-256 和严格版本校验。
-- `estimate` 与 `create` 共用能力校验器；已知非法模型、分辨率、时长、素材组合和字段会在请求前拒绝。
+- `estimate` 与 `create` 共用能力校验器；非法模型、分辨率、输出时长和字段结构会在请求前拒绝；素材业务组合由后端校验。
+- 交互确认后再次估算，金额变化则不提交。脚本可用 `--approved-credits`，MCP `generation_create` 可用 `approvedCredits` 传入已确认的 `estimate.frozenCredit`（非负整数，支持 0）；未提供该可选字段的旧接口调用保持兼容。此检查不能原子锁定估算到最终扣费之间的价格，最终扣费仍由后端决定。
 - 生成提交只在收到合法任务 ID 时记为 `created`；明确 4xx 业务拒绝记为 `failed`；408、5xx、断网、异常 2xx 和缺少任务 ID 都记为 `unknown`，不会重试。用 `generate attempts list|get` 或 MCP `generation_attempt_list|get` 查询本地记录。
 - 授权、素材、估算、任务及需要恢复的 attempt 结果包含 `nextAction: {code, instruction, command}`。缺少文件、输出位置或请求时 `command` 为 `null`，Agent 应询问用户，不应拼接占位命令。即时查询无需额外建议。轮询仅在状态变化和结束时输出。
 - CLI 过程提示仅在交互终端写入 stderr；JSON stdout 和 MCP 消息不含过程文本。`Ctrl+C` 返回 130：只读等待停止本机轮询；写入开始后保留已知 ID，生成 attempt 记为 `unknown`，上传计划保留已执行边界和批次记录，不自动重试。下载残片会被清理，已有文件保留。
-- MCP 上传仅提供 `asset_upload_prepare` 和 `asset_upload_execute`：前者只检查并预览，后者必须接收 `uploadPlanId + confirmed: true`。
+- MCP 上传操作提供 `asset_upload_prepare` 和 `asset_upload_execute`：前者只检查并预览，后者必须接收 `uploadPlanId + confirmed: true`。
 - 下载只接受无内嵌凭据、无 fragment、非本机/内网地址的 HTTPS；每次重定向重新校验，限制跳转和总大小，先写私有临时文件再原子落盘，默认不覆盖现有文件。
 - 任务接口原始字符串 `audioIds` 由 CLI 解析为 `audioUrls`，音频结果可由 `holycrab download` 下载。
 - 普通 `doctor` 只看本地状态和版本缓存；`doctor --online` 额外刷新版本并验证 API Key。更新只接受更高的稳定语义版本，需用户运行 `holycrab update`，不会静默安装。
@@ -628,3 +630,40 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 ## 账户模型权限
 
 `GET /api/user/me` 的公开账户输出包含有效的 `disabled_models` 字符串数组。空数组表示这次账户查询没有声明禁用模型；字段缺失或格式异常表示权限未知，不表示全部开放。目录仅说明版本能力；始终以预估和提交接口的权限校验为准，权限错误不触发模型替换。
+
+## v0.6.0 本地恢复约定
+
+- `holycrab assets uploads get PLAN_ID` / MCP `asset_upload_plan_get({uploadPlanId})` 只读本机上传记录，不调用线上写接口。
+- `frozenCredit` 必须为非负整数，缺失、布尔值、字符串、小数或异常成功响应均阻止生成；用户批准的估算绑定同一份规范化请求。
+- 上传执行先锁定计划并冻结整批文件字节，再持久化 `executing`，之后才允许网络写入。同一计划跨进程也只能执行一次。成功和失败记录均保留；程序退出不能证明线上未执行。
+- 已收到的任务或素材 ID 不因本地落盘失败而丢失；此时返回 `localStateSaved: false` 和恢复提示。部分批次会停止剩余文件。
+- MCP 将变更操作的失败或不明确结果标为 `isError: true`，保留原有结构化结果；这不是重试许可。只读查询的成功与被查询任务的业务成败分别判断。
+- 安装清单 schema 3 的 `enabledAgents` / `enabledMcp` 表示当前启用设置，`agents` / `agentRegistrations` / `retainedFiles` 保留仍由安装器管理的资源信息。
+
+
+## v0.6.0：服务端素材规则和 Berry
+
+素材合规最终由后端统一判断；本地只检查请求结构、生成输出参数和本地文件完整性。`errors[]` 每项公开 `code`、`scope`、`assetId`、`assetIds`、`role`、`requestPath`、`field`、`actual`、`rule`、`message`、`retryable`，并保留顶层 `errorCode`、`requestId`。CLI、JSON 和 MCP 展示相同结果并脱敏。`actual` 的 0、false、null 不丢失；旧服务端只有 message 时仍能展示。素材不合规与网络结果不明确分开处理，均不自动重试付费写入。
+
+素材查询额外公开 `durationSeconds`、`mediaFormat`、`metadataStatus`、`metadataErrorCode`、`metadataUpdatedAt`、`width`、`height`、`sizeBytes`、`frameRate`、`videoCodec`、`audioCodec`。未知值不补零；metadata 的 PENDING/PROCESSING/FAILED 不形成 CLI 的额外阻断。ready 仅描述原处理状态。
+
+`POST /api/user-assets/{uniqId}/metadata/retry` 对应 CLI `holycrab assets metadata retry ASSET_ID` 和 MCP `asset_metadata_retry`。只发一次请求；返回素材当前状态，HTTP 成功不等于元数据就绪，冷却期可保留原状态。
+
+图片生成及估算支持 `imageAssetIds`，非空 ID 优先于 imageUrls；音频生成及估算接受素材 ID/type 或 audio_url/image_url。音频 freeze-credit 同样携带完整规范化 JSON 请求，返回 frozenCredit，不创建任务。
+
+Berry 生成：`POST /api/tasks/mulerouter-generation`；估算：`POST /api/tasks/mulerouter-generation/freeze-credit`。查询和下载使用现有通用任务流程。
+
+| 参数 | 合同 |
+| --- | --- |
+| model | berry-1.0 / berry-1.0-turbo / berry-1.0-pro / berry-1.0-pro-turbo |
+| prompt | 必填，非空；最多 20,000 UTF-16 code units |
+| duration | 2–30 整数秒，默认 5 |
+| resolution | 普通版/Turbo：480p、720p、1080p；Pro/Pro Turbo：1080p、2k、4k；默认 1080p |
+| ratio | adaptive、16:9、4:3、1:1、3:4、9:16；默认 adaptive |
+| audio | boolean，默认 true |
+| seed | 可选，0–2147483647 整数 |
+| enableThinking / watermark | 仅 false，默认 false |
+| firstFrameAssetId / lastFrameAssetId | 可选，账户图片素材 ID |
+| imageAssetIds / videoAssetIds / audioAssetIds | 可选，素材 ID 数组；后端限制分别为 10/5/5 |
+
+Berry 参考视频与输出总时长不得超过 30 秒；具体大小、格式、数量、组合和元数据规则由服务端实测判定。素材规则说明是版本快照，不是本地可用性保证。

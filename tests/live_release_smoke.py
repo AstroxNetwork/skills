@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Opt-in release acceptance: actual installed processes; three paid submissions maximum.
 
-Internal driver, never installed. This run is authorized for user1 and the selected
-cat photo only. No real-person command is accepted. State survives interruptions;
+Internal driver, never installed or run by the offline test suite. A new run needs
+an explicit account, credential file, selected photo, and live-write approval.
+No real-person command is accepted. State survives interruptions;
 an attempted write is never automatically executed a second time.
 """
 from __future__ import annotations
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,6 +19,15 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
+
+SOURCE = Path(__file__).resolve().parents[1]
+
+
+def candidate_inventory():
+    spec = importlib.util.spec_from_file_location('smoke_public_interface', SOURCE / 'tools/public_interface.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.public_inventory()
 
 
 def documents(text):
@@ -30,7 +41,7 @@ def documents(text):
 
 
 class LiveRun:
-    def __init__(self, root):
+    def __init__(self, root, *, account=None, api_key_file=None, image_file=None):
         self.root = root.resolve()
         self.path = self.root / 'private-state.json'
         self.state = json.loads(self.path.read_text()) if self.path.exists() else {'checks': [], 'writes': {}, 'tasks': {}}
@@ -38,6 +49,10 @@ class LiveRun:
         self.env = {**os.environ, 'HOLYCRAB_CONFIG_DIR': str(self.root / 'config'), 'HOLYCRAB_NO_UPDATE_CHECK': '1'}
         self.env.pop('HOLYCRAB_API_KEY', None)
         self.secret = ''
+        self.account = account
+        self.api_key_file = api_key_file
+        self.image_file = image_file
+        self.inventory = candidate_inventory()
 
     def save(self):
         descriptor, temporary = tempfile.mkstemp(dir=self.root, prefix='.state-')
@@ -71,7 +86,7 @@ class LiveRun:
             raise RuntimeError('Real-person live tools are excluded')
         messages = [
             {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25',
-                'capabilities': {}, 'clientInfo': {'name': 'release-acceptance', 'version': '0.5.0'}}},
+                'capabilities': {}, 'clientInfo': {'name': 'release-acceptance', 'version': self.inventory['version']}}},
             {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
             {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'},
             {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': name, 'arguments': arguments}},
@@ -80,7 +95,11 @@ class LiveRun:
         if len(replies) != 3 or any('error' in r for r in replies) or replies[-1]['result'].get('isError'):
             self.record('MCP protocol/tool ' + name, False, json.dumps(replies[-1]) if replies else 'No response')
             raise RuntimeError('MCP tool failed')
-        if len(replies[1]['result']['tools']) != 20:
+        if replies[0]['result']['serverInfo']['version'] != self.inventory['version']:
+            raise RuntimeError('Installed CLI is not the candidate under test')
+        names = [tool['name'] for tool in replies[1]['result']['tools']]
+        expected = {tool['name'] for tool in self.inventory['mcpTools']}
+        if len(names) != len(set(names)) or set(names) != expected:
             raise RuntimeError('Unexpected MCP inventory')
         return replies[-1]['result']['structuredContent']
 
@@ -97,13 +116,16 @@ class LiveRun:
         return value
 
     def prepare(self):
-        # Only read the existing credential, never persist it outside private CLI configuration.
-        source = Path.home() / '.config/holycrab/config.json'
-        self.secret = json.loads(source.read_text())['apiKey']
+        if not self.account or self.api_key_file is None or self.image_file is None:
+            raise RuntimeError('Explicit account, API key file and test image are required')
+        # Credentials are supplied specifically for this run, never taken from the user's installation.
+        self.secret = self.api_key_file.read_text().strip()
+        if not self.secret:
+            raise RuntimeError('The supplied API key file is empty')
         self.cli('setup', 'setup', '--stdin', input=self.secret + '\n')
         status = self.cli('auth status', 'auth', 'status')[-1]
-        if not status.get('valid') or status.get('account', {}).get('username') != 'user1':
-            raise RuntimeError('Expected user1; no writes allowed')
+        if not status.get('valid') or status.get('account', {}).get('username') != self.account:
+            raise RuntimeError('The verified account does not match --account; no writes allowed')
         self.cli('auth clear-key (isolated config)', 'auth', 'clear-key', structured=False)
         self.cli('auth status after clear', 'auth', 'status', expected=(1,))
         self.cli('auth set-key compatibility', 'auth', 'set-key', '--stdin', input=self.secret + '\n')
@@ -128,7 +150,7 @@ class LiveRun:
             self.mcp(name, arguments)
         files = self.root / 'files'
         files.mkdir(exist_ok=True)
-        original = Path.home() / 'Desktop/test_img/懵懵.jpeg'
+        original = self.image_file
         self.state['sourceSha256'] = hashlib.sha256(original.read_bytes()).hexdigest()
         for filename in ('懵懵.jpeg', 'cat-copy.jpeg', 'cat-mcp.jpeg'):
             target = files / filename
@@ -171,7 +193,7 @@ class LiveRun:
         self.cli('credits estimate compatibility', 'credits', 'estimate', '--kind', 'image', '--json', json.dumps(requests['image']))
         self.mcp('generation_estimate', {'kind': 'audio', 'request': requests['audio']})
         for kind, request in requests.items():
-            attempt = 'release-v044-' + kind + '-' + self.root.name.rsplit('.', 1)[-1]
+            attempt = 'release-' + self.inventory['version'].replace('.', '-') + '-' + kind + '-' + self.root.name.rsplit('.', 1)[-1]
             if kind == 'audio':
                 action = lambda: self.mcp('generation_create', {'kind': kind, 'request': request, 'confirmed': True, 'attemptId': attempt})
             else:
@@ -226,16 +248,25 @@ class LiveRun:
         self.state['businessComplete'] = complete and len(self.state['tasks']) == 3
         self.save()
         print('Business flow complete: ' + str(self.state['businessComplete']), flush=True)
+        return 0 if self.state['businessComplete'] else 2
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('phase', choices=['prepare', 'create', 'check'])
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--allow-live-writes', action='store_true', help='Explicitly authorize the upload or paid-generation phase')
+    parser.add_argument('--account', help='Expected account username, verified before prepare uploads')
+    parser.add_argument('--api-key-file', type=Path, help='Private plain-text API key file for this run')
+    parser.add_argument('--image-file', type=Path, help='Selected non-person cat image for the existing sample prompts')
     args = parser.parse_args()
-    run = LiveRun(args.root)
-    getattr(run, args.phase)()
+    if args.phase in {'prepare', 'create'} and not args.allow_live_writes:
+        parser.error('This phase performs live writes; explicit --allow-live-writes is required')
+    if args.phase == 'prepare' and not (args.account and args.api_key_file and args.image_file):
+        parser.error('prepare requires --account, --api-key-file and --image-file')
+    run = LiveRun(args.root, account=args.account, api_key_file=args.api_key_file, image_file=args.image_file)
+    return getattr(run, args.phase)() or 0
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

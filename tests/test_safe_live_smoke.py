@@ -177,13 +177,18 @@ class SafeLiveSuiteTests(unittest.TestCase):
 
         update = {"checkedAt": "2026-09-16T00:00:00+00:00", "latestVersion": "0.4.0",
                   "updateAvailable": False}
-        with patch.object(smoke.cli, "send", side_effect=fake_send), \
-                patch.object(smoke.cli, "check_for_update", return_value=update):
+        with patch.object(smoke.cli._owner("send"), "send", side_effect=fake_send), \
+                patch.object(smoke.cli._owner("check_for_update"), "check_for_update", return_value=update):
             report = smoke.run_safe_live_suite("secret-key", account_label="user1")
 
         self.assertTrue(report["ok"])
         self.assertEqual(report["safety"]["generationCreateCalls"], 0)
         self.assertEqual(report["safety"]["blockedCalls"], 0)
+        observed_mcp = {row["tool"]: row["count"] for row in report["safety"]["mcpTools"]}
+        self.assertEqual(observed_mcp, {
+            "cli_status": 1, "account_get": 1, "capabilities_list": 1, "capability_get": 1,
+            "generation_estimate": 1, "generation_list": 1, "asset_upload_prepare": 1,
+        })
         self.assertEqual(report["onlineDataCreated"], False)
         self.assertTrue(all(method == "GET" or path in smoke.FREEZE_CREDIT_ROUTES
                             for method, path in calls))
@@ -196,6 +201,34 @@ class SafeLiveSuiteTests(unittest.TestCase):
         statuses = {row["check"]: row["status"] for row in report["checks"]}
         self.assertEqual(statuses["task get/wait"], "not_applicable")
         self.assertEqual(statuses["download"], "not_applicable")
+
+    def test_suite_mcp_guard_is_attached_to_actual_dispatch_and_restored(self) -> None:
+        owner = smoke.cli._owner("mcp_tool_call")
+        with patch.object(owner, "mcp_tool_call") as delegate, \
+                patch.object(smoke.cli._owner("send"), "send") as send:
+            def probe(_message):
+                smoke._mcp_call("generation_create", {})
+                self.fail("The real MCP dispatch bypassed the smoke-test guard")
+
+            with self.assertRaises(smoke.SafetyViolation):
+                smoke.run_safe_live_suite("offline-key", progress=probe)
+            delegate.assert_not_called()
+            send.assert_not_called()
+            self.assertIs(owner.mcp_tool_call, delegate)
+
+    def test_suite_upload_guard_is_attached_to_actual_transport_and_restored(self) -> None:
+        owner = smoke.cli._owner("open_presigned_upload")
+        with patch.object(owner, "open_presigned_upload") as delegate, \
+                patch.object(smoke.cli._owner("send"), "send") as send:
+            def probe(_message):
+                owner.open_presigned_upload(object())
+                self.fail("The real upload transport bypassed the smoke-test guard")
+
+            with self.assertRaises(smoke.SafetyViolation):
+                smoke.run_safe_live_suite("offline-key", progress=probe)
+            delegate.assert_not_called()
+            send.assert_not_called()
+            self.assertIs(owner.open_presigned_upload, delegate)
 
     def test_invalid_generation_is_rejected_before_network(self) -> None:
         delegate = Mock()

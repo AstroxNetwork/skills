@@ -111,8 +111,9 @@ class ModelOnlyReuseTests(unittest.TestCase):
         self.root = Path(__file__).parents[1]
         self.record = json.loads((self.root / "docs/release-acceptance/v0.5.0.json").read_text())
 
-    def test_explicit_current_confirmation_with_unchanged_core_passes(self):
-        validate(self.record, "v0.5.0", root=self.root)
+    def test_historical_acceptance_does_not_approve_rewritten_core(self):
+        with self.assertRaises(ValueError):
+            validate(self.record, "v0.5.0", root=self.root)
 
     def test_missing_proof_confirmation_or_wrong_version_fails(self):
         for field in ("unchangedCore", "confirmedAt", "retestWaived"):
@@ -140,7 +141,7 @@ class ModelOnlyReuseTests(unittest.TestCase):
             source = file.read_text()
             file.write_text(source.replace('def create_authorization(name: str)', 'def create_authorization(name: bytes)'))
             record = copy.deepcopy(self.record)
-            record["generateMainContract"]["files"]["holycrab/scripts/holycrab_cli.py"] = hashlib.sha256(file.read_bytes()).hexdigest()
+            record["generateMainContract"]["files"] = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in CONTRACT_FILES}
             with self.assertRaisesRegex(ValueError, "core code changed"):
                 validate(record, "v0.5.0", root=root)
 
@@ -158,3 +159,37 @@ class V050LocalContractTests(LocalContractEvidenceTests):
         record["version"] = "v0.5.1"
         with self.assertRaises(ValueError):
             validate(record, "v0.5.1", root=self.root, contract_only=True)
+
+
+class CandidateAcceptanceTests(unittest.TestCase):
+    def test_new_candidate_requires_fresh_bound_acceptance(self):
+        from tools.verify_release_acceptance import candidate_fingerprint
+        root = Path(__file__).parents[1]
+        record = {'version': 'v0.6.0', 'candidateSha256': candidate_fingerprint(root), 'realHumanCoreFlow': {
+            'status': 'passed', 'operator': 'offline fixture only', 'testedAt': '2026-10-23T00:00:00Z', 'notes': 'Not actual acceptance'}}
+        from tests.test_material_contract_evidence import evidence_for
+        record['generateContractCheck'] = evidence_for(root)
+        validate(record, 'v0.6.0', root=root)
+        for status in ('pending', 'previously-accepted'):
+            changed = copy.deepcopy(record)
+            changed['realHumanCoreFlow']['status'] = status
+            changed['realHumanCoreFlow']['retestWaived'] = True
+            with self.assertRaises(ValueError): validate(changed, 'v0.6.0', root=root)
+        record['candidateSha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'exact candidate'):
+            validate(record, 'v0.6.0', root=root)
+
+    def test_module_change_invalidates_candidate_fingerprint(self):
+        import shutil
+        from tools.verify_release_acceptance import candidate_fingerprint
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'candidate'
+            shutil.copytree(Path(__file__).parents[1], root, ignore=shutil.ignore_patterns('.git', '__pycache__'))
+            before = candidate_fingerprint(root)
+            for relative in ('holycrab/scripts/holycrab_runtime/uploads.py', 'tools/run_checks.py', 'tests/test_mcp.py'):
+                with self.subTest(changed=relative):
+                    path = root / relative
+                    original = path.read_text()
+                    path.write_text(original + '\n# fixture mutation\n')
+                    self.assertNotEqual(candidate_fingerprint(root), before)
+                    path.write_text(original)

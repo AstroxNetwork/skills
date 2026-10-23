@@ -35,7 +35,7 @@ class PublicGuidanceTests(unittest.TestCase):
 
     def substitute(self, command):
         replacements = {"REPLACE_WITH_ASSET_ID": "asset1", "AUTHORIZATION_ID": "auth1", "TASK_ID": "task1",
-                        "ATTEMPT_ID": "fixture", "GROUP_ID": "group1", "ASSET_ID": "asset1"}
+                        "PLAN_ID": "plan1", "ATTEMPT_ID": "fixture", "GROUP_ID": "group1", "ASSET_ID": "asset1"}
         for old, new in replacements.items():
             command = command.replace(old, new)
         argv = shlex.split(command)[1:]
@@ -72,8 +72,8 @@ class PublicGuidanceTests(unittest.TestCase):
 
     def test_inventory_matches_real_parser_and_schema(self):
         inventory = interface.public_inventory(cli)
-        self.assertEqual(len(inventory["commands"]), 31)
-        self.assertEqual(len(inventory["mcpTools"]), 20)
+        self.assertEqual(len(inventory["commands"]), 33)
+        self.assertEqual(len(inventory["mcpTools"]), 22)
         self.assertEqual({r["command"] for r in inventory["commands"] if r["compatibilityOnly"]},
                          {"auth set-key", "credits estimate"})
         self.assertNotIn("asset_upload", {r["name"] for r in inventory["mcpTools"]})
@@ -113,14 +113,20 @@ class PublicGuidanceTests(unittest.TestCase):
         self.assertIsNone(cli.authorization_next_action("SUCCEEDED", "auth1", "group1")["command"])
         self.assertIsNone(cli.asset_next_action("asset1", "UPLOADED_TO_ARK")["command"])
         self.assertIsNone(cli.task_next_action("task1", 2, {"imageUrls": ["https://cdn.example/a.jpg"]})["command"])
-        with patch.object(cli, "send", return_value=ok({"frozenCredit": 5})):
+        with patch.object(cli._owner("send"), "send", return_value=ok({"frozenCredit": 5})):
             self.assertIsNone(cli.estimate_generation("image", self.fixture.payload())["nextAction"]["command"])
 
     def test_no_retired_entrypoints_or_runtime_mock_switch(self):
         self.assertFalse((ROOT / "holycrab/scripts/holycrab_api.py").exists())
-        runtime = (ROOT / "holycrab/scripts/holycrab_cli.py").read_text(encoding="utf-8")
-        self.assertNotRegex(runtime, r"(^|\n)(?:from|import)\s+(?:tests|tools|unittest|pytest)\b")
-        self.assertNotRegex(runtime, r"HOLYCRAB_(?:MOCK|TEST|FIXTURE)")
+        manifest = json.loads((ROOT / "runtime-files.json").read_text())
+        sources = {row["source"] for row in manifest["files"] if row["source"].endswith(".py")}
+        packaged = {path.relative_to(ROOT).as_posix() for path in (ROOT / "holycrab/scripts").rglob("*.py")}
+        self.assertEqual(sources, packaged, "Every shipped Python source must be scanned")
+        for name in sources:
+            with self.subTest(runtime=name):
+                runtime = (ROOT / name).read_text(encoding="utf-8")
+                self.assertNotRegex(runtime, r"(?m)^\s*(?:from|import)\s+(?:tests|tools|unittest|pytest)\b")
+                self.assertNotRegex(runtime, r"HOLYCRAB_(?:MOCK|TEST|FIXTURE)")
         for name in ("README.md", "HolyCrab CLI 使用指南.md", "holycrab/SKILL.md", "holycrab/references/api.md"):
             self.assertNotRegex((ROOT / name).read_text(encoding="utf-8"), r"holycrab_api\.py|holycrab (?:poll-task|upload-asset)\b|`asset_upload`")
 

@@ -59,7 +59,7 @@ class FeedbackTests(unittest.TestCase):
         output = io.StringIO()
         errors = TerminalBuffer() if terminal else io.StringIO()
         with patch.object(cli.sys, "argv", ["holycrab", *argv]), \
-                patch.object(cli, "startup_maintenance"), \
+                patch.object(cli._owner("startup_maintenance"), "startup_maintenance"), \
                 redirect_stdout(output), redirect_stderr(errors):
             code = cli.main()
         return code, output.getvalue(), errors.getvalue()
@@ -74,7 +74,7 @@ class FeedbackTests(unittest.TestCase):
 
         with patch.dict(os.environ, {"HOLYCRAB_API_KEY": ""}), \
                 patch.object(cli.getpass, "getpass", return_value="hidden-test-key"), \
-                patch.object(cli, "send", side_effect=verify), \
+                patch.object(cli._owner("send"), "send", side_effect=verify), \
                 redirect_stdout(output), redirect_stderr(errors):
             cli.command_set_key(argparse.Namespace(stdin=False, no_verify=False))
         self.assertIn("connected", errors.getvalue())
@@ -83,7 +83,7 @@ class FeedbackTests(unittest.TestCase):
 
     def test_invalid_key_does_not_print_success(self) -> None:
         with patch.object(cli.getpass, "getpass", return_value="invalid-test-key"), \
-                patch.object(cli, "send", return_value=(401, {"code": 401})), \
+                patch.object(cli._owner("send"), "send", return_value=(401, {"code": 401})), \
                 redirect_stdout(io.StringIO()) as output, redirect_stderr(TerminalBuffer()) as errors:
             with self.assertRaises(SystemExit):
                 cli.command_set_key(argparse.Namespace(stdin=False, no_verify=False))
@@ -98,12 +98,12 @@ class FeedbackTests(unittest.TestCase):
             return ok({"frozenCredit": 5})
 
         output = io.StringIO()
-        with patch.object(cli, "send", side_effect=estimate), redirect_stdout(output), redirect_stderr(errors):
+        with patch.object(cli._owner("send"), "send", side_effect=estimate), redirect_stdout(output), redirect_stderr(errors):
             cli.command_generation_estimate(argparse.Namespace(kind="image", json=json.dumps(self.request())))
         self.assertIsNone(json.loads(output.getvalue())["nextAction"]["command"])
 
     def test_noninteractive_command_has_no_progress_noise(self) -> None:
-        with patch.object(cli, "send", return_value=ok({"credit": 10})):
+        with patch.object(cli._owner("send"), "send", return_value=ok({"credit": 10})):
             code, output, errors = self.invoke(["credits", "balance"], terminal=False)
         self.assertEqual(code, 0)
         json.loads(output)
@@ -126,7 +126,7 @@ class FeedbackTests(unittest.TestCase):
     def test_legacy_credits_estimate_returns_the_same_result_as_generate_estimate(self) -> None:
         outputs = []
         for parent in ("credits", "generate"):
-            with self.subTest(parent=parent), patch.object(cli, "send", return_value=ok({"frozenCredit": 5})) as send:
+            with self.subTest(parent=parent), patch.object(cli._owner("send"), "send", return_value=ok({"frozenCredit": 5})) as send:
                 code, output, errors = self.invoke(
                     [parent, "estimate", "--kind", "image", "--json", json.dumps(self.request())],
                     terminal=False,
@@ -149,9 +149,9 @@ class FeedbackTests(unittest.TestCase):
     def test_help_version_and_invalid_arguments_do_not_run_maintenance(self) -> None:
         for argv, expected in ((["--help"], 0), (["--version"], 0), (["tasks", "get"], 2)):
             with self.subTest(argv=argv), patch.object(cli.sys, "argv", ["holycrab", *argv]), \
-                    patch.object(cli, "startup_maintenance") as maintenance, \
-                    patch.object(cli, "cleanup_authorization_qrs") as qrs, \
-                    patch.object(cli, "cleanup_upload_plans") as plans, \
+                    patch.object(cli._owner("startup_maintenance"), "startup_maintenance") as maintenance, \
+                    patch.object(cli._owner("cleanup_authorization_qrs"), "cleanup_authorization_qrs") as qrs, \
+                    patch.object(cli._owner("cleanup_upload_plans"), "cleanup_upload_plans") as plans, \
                     redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), \
                     self.assertRaises(SystemExit) as stopped:
                 cli.main()
@@ -162,7 +162,7 @@ class FeedbackTests(unittest.TestCase):
 
     def test_task_wait_only_emits_changes_and_final_timeout(self) -> None:
         replies = [ok({"uniqId": "task1", "step": 1})] * 3
-        with patch.object(cli, "send", side_effect=replies), \
+        with patch.object(cli._owner("send"), "send", side_effect=replies), \
                 patch.object(cli.time, "monotonic", side_effect=[0, 0, 1, 2]), \
                 patch.object(cli.time, "sleep"):
             code, output, errors = self.invoke(["tasks", "wait", "task1", "--timeout", "2", "--interval", "1"])
@@ -175,7 +175,7 @@ class FeedbackTests(unittest.TestCase):
 
     def test_task_wait_rejects_bad_limits_before_query(self) -> None:
         for timeout, interval in ((-1, 1), (float("nan"), 1), (1, 0), (1, -1), (1, float("inf"))):
-            with self.subTest(timeout=timeout, interval=interval), patch.object(cli, "send") as send:
+            with self.subTest(timeout=timeout, interval=interval), patch.object(cli._owner("send"), "send") as send:
                 with self.assertRaises(ValueError):
                     cli.poll_task("task1", timeout, interval)
                 send.assert_not_called()
@@ -187,7 +187,7 @@ class FeedbackTests(unittest.TestCase):
             ["--start-date", "2026-09-16", "--end-date", "2026-09-01"],
         ]
         for options in invalid:
-            with self.subTest(options=options), patch.object(cli, "send") as send:
+            with self.subTest(options=options), patch.object(cli._owner("send"), "send") as send:
                 code, _, _ = self.invoke(["tasks", "list", *options])
                 self.assertEqual(code, 2)
                 send.assert_not_called()
@@ -208,18 +208,18 @@ class FeedbackTests(unittest.TestCase):
 
     def test_authorization_and_empty_asset_list_guide_to_upload_without_fake_command(self) -> None:
         data = {"authorizationId": "auth1", "status": "SUCCEEDED", "group": {"uniqId": "group1", "name": "Fixture"}}
-        with patch.object(cli, "send", return_value=ok(data)):
+        with patch.object(cli._owner("send"), "send", return_value=ok(data)):
             action = cli.get_authorization("auth1")["nextAction"]
         self.assertIn("does not create assets", action["instruction"])
         self.assertIsNone(action["command"])
-        with patch.object(cli, "send", return_value=ok({"records": [], "total": 0, "current": 1, "pages": 0})):
+        with patch.object(cli._owner("send"), "send", return_value=ok({"records": [], "total": 0, "current": 1, "pages": 0})):
             assets = cli.list_real_human_assets("group1")
         self.assertEqual(assets["nextAction"]["code"], "SELECT_FILES_TO_UPLOAD")
         self.assertIsNone(assets["nextAction"]["command"])
 
     def test_read_and_input_interrupts_exit_130_without_traceback(self) -> None:
         for argv in (["credits", "balance"], ["setup"]):
-            with self.subTest(argv=argv), patch.object(cli, "send", side_effect=KeyboardInterrupt), \
+            with self.subTest(argv=argv), patch.object(cli._owner("send"), "send", side_effect=KeyboardInterrupt), \
                     patch.object(cli.getpass, "getpass", side_effect=KeyboardInterrupt):
                 code, _, errors = self.invoke(argv)
             self.assertEqual(code, 130)
@@ -227,12 +227,12 @@ class FeedbackTests(unittest.TestCase):
             self.assertNotIn("Traceback", errors)
 
     def test_generation_interrupt_persists_unknown_and_never_reposts(self) -> None:
-        with patch.object(cli, "send", side_effect=[ok({"frozenCredit": 5}), KeyboardInterrupt]):
+        with patch.object(cli._owner("send"), "send", side_effect=[ok({"frozenCredit": 5}), KeyboardInterrupt]):
             code, output, _ = self.invoke(["generate", "create", "--kind", "image", "--json", json.dumps(self.request()), "--yes", "--attempt-id", "interrupted"])
         self.assertEqual(code, 130)
         self.assertEqual(json.loads(output)["state"], "unknown")
         self.assertEqual(cli.attempt_record("interrupted")["state"], "unknown")
-        with patch.object(cli, "send") as send, self.assertRaises(SystemExit):
+        with patch.object(cli._owner("send"), "send") as send, self.assertRaises(SystemExit):
             cli.create_generation("image", self.request(), confirmed=True, attempt_id="interrupted")
         send.assert_not_called()
 
@@ -242,7 +242,7 @@ class FeedbackTests(unittest.TestCase):
             file.write_bytes(b"\xff\xd8\xff\xe0fixture")
         preview = cli.prepare_upload_plan([str(file) for file in files])
         first = {"state": "uploaded", "assetUniqId": "asset1", "ready": False}
-        with patch.object(cli, "upload_prepared_file", side_effect=[first, KeyboardInterrupt]), \
+        with patch.object(cli._owner("upload_prepared_file"), "upload_prepared_file", side_effect=[first, KeyboardInterrupt]), \
                 self.assertRaises(cli.CommandInterrupted) as stopped:
             cli.execute_upload_plan(preview["uploadPlanId"], confirmed=True)
         result = stopped.exception.result
@@ -250,7 +250,7 @@ class FeedbackTests(unittest.TestCase):
         self.assertEqual(result["failedOrUnknown"]["state"], "unknown")
         self.assertEqual(len(result["notAttempted"]), 1)
         persisted = json.loads(cli.upload_plan_path(preview["uploadPlanId"]).read_text())
-        self.assertEqual(persisted["state"], "executing")
+        self.assertEqual(persisted["state"], "unknown")
         self.assertEqual(len(persisted["uploaded"]), 1)
         with self.assertRaises(SystemExit):
             cli.execute_upload_plan(preview["uploadPlanId"], confirmed=True)
@@ -262,7 +262,7 @@ class FeedbackTests(unittest.TestCase):
         self.assertNotIn("unset", command)
 
     def test_mcp_tool_calls_never_emit_console_feedback_even_with_tty(self) -> None:
-        with patch.object(cli, "send", return_value=ok({"frozenCredit": 5})), \
+        with patch.object(cli._owner("send"), "send", return_value=ok({"frozenCredit": 5})), \
                 redirect_stdout(io.StringIO()) as output, redirect_stderr(TerminalBuffer()) as errors:
             result = cli.mcp_dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
                 "name": "generation_estimate", "arguments": {"kind": "image", "request": self.request()}}})
@@ -273,7 +273,7 @@ class FeedbackTests(unittest.TestCase):
     def test_empty_and_malformed_key_verification_never_saves(self) -> None:
         for key, response in (("", ok({"credit": 10})), ("fixture-key", ok(None)), ("fixture-key", ok({}))):
             with self.subTest(key=bool(key), response=response), patch.object(cli.getpass, "getpass", return_value=key), \
-                    patch.object(cli, "send", return_value=response), patch.object(cli, "save_config") as save:
+                    patch.object(cli._owner("send"), "send", return_value=response), patch.object(cli._owner("save_config"), "save_config") as save:
                 code, output, errors = self.invoke(["setup"])
             self.assertEqual(code, 1)
             save.assert_not_called()
@@ -282,7 +282,7 @@ class FeedbackTests(unittest.TestCase):
 
     def test_read_waits_interrupt_without_restarting_anything(self) -> None:
         for argv in (["tasks", "wait", "task1"], ["real-human", "wait", "auth1"], ["assets", "wait", "asset1"]):
-            with self.subTest(argv=argv), patch.object(cli, "send", side_effect=KeyboardInterrupt) as send:
+            with self.subTest(argv=argv), patch.object(cli._owner("send"), "send", side_effect=KeyboardInterrupt) as send:
                 code, _, errors = self.invoke(argv)
             self.assertEqual(code, 130)
             self.assertEqual(send.call_count, 1)
@@ -291,7 +291,7 @@ class FeedbackTests(unittest.TestCase):
 
     def test_multi_asset_wait_shows_each_asset_and_summary(self) -> None:
         replies = [ok({"uniqId": "asset1", "step": "UPLOADED_TO_ARK"}), ok({"uniqId": "asset2", "step": "UPLOADED"})]
-        with patch.object(cli, "send", side_effect=replies):
+        with patch.object(cli._owner("send"), "send", side_effect=replies):
             code, output, errors = self.invoke(["assets", "wait", "asset1", "asset2", "--timeout", "0"])
         self.assertEqual(code, 2)
         self.assertIn("per asset", errors)
@@ -300,7 +300,7 @@ class FeedbackTests(unittest.TestCase):
         self.assertTrue(json_documents(output)[-1]["timedOut"])
 
     def test_authorization_timeout_keeps_same_id(self) -> None:
-        with patch.object(cli, "send", return_value=ok({"authorizationId": "auth1", "status": "CREATED"})) as send:
+        with patch.object(cli._owner("send"), "send", return_value=ok({"authorizationId": "auth1", "status": "CREATED"})) as send:
             code, output, _ = self.invoke(["real-human", "wait", "auth1", "--timeout", "0"])
         self.assertEqual(code, 2)
         self.assertIn("real-human get auth1", json_documents(output)[-1]["nextAction"]["command"])
@@ -317,8 +317,8 @@ class FeedbackTests(unittest.TestCase):
                 raise KeyboardInterrupt
             return original(attempt_id, **changes)
 
-        with patch.object(cli, "send", side_effect=[ok({"credit": 5}), ok({"uniqId": "task1"})]), \
-                patch.object(cli, "update_attempt", side_effect=record):
+        with patch.object(cli._owner("send"), "send", side_effect=[ok({"frozenCredit": 5}), ok({"uniqId": "task1"})]), \
+                patch.object(cli._owner("update_attempt"), "update_attempt", side_effect=record):
             code, output, _ = self.invoke(["generate", "create", "--kind", "image", "--json", json.dumps(self.request()), "--yes", "--attempt-id", "result-interrupt"])
         self.assertEqual(code, 130)
         self.assertEqual(json.loads(output)["taskId"], "task1")
@@ -330,8 +330,8 @@ class FeedbackTests(unittest.TestCase):
                  (["real-human", "groups", "delete", "group1", "--yes"], "group1"),
                  (["real-human", "assets", "delete", "asset1", "--group", "group1", "--yes"], "asset1")]
         for argv, identifier in cases:
-            with self.subTest(argv=argv), patch.object(cli, "find_real_human_group", return_value={"uniqId": "group1"}), \
-                    patch.object(cli, "get_asset", return_value={"uniqId": "asset1"}), patch.object(cli, "send", side_effect=KeyboardInterrupt):
+            with self.subTest(argv=argv), patch.object(cli._owner("find_real_human_group"), "find_real_human_group", return_value={"uniqId": "group1"}), \
+                    patch.object(cli._owner("get_asset"), "get_asset", return_value={"uniqId": "asset1"}), patch.object(cli._owner("send"), "send", side_effect=KeyboardInterrupt):
                 code, output, _ = self.invoke(argv)
             self.assertEqual(code, 130)
             result = json_documents(output)[-1]
@@ -342,9 +342,9 @@ class FeedbackTests(unittest.TestCase):
 
     def test_qr_interrupt_does_not_lose_created_authorization(self) -> None:
         fixture = {"authorizationId": "auth1", "h5Link": "https://verify.example/fixture", "expiresAt": "2099-01-01T00:00:00Z"}
-        with patch.object(cli, "send", return_value=ok(fixture)) as send, \
-                patch.object(cli, "validate_verification_link", side_effect=lambda value: value), \
-                patch.object(cli, "authorization_qr", side_effect=KeyboardInterrupt):
+        with patch.object(cli._owner("send"), "send", return_value=ok(fixture)) as send, \
+                patch.object(cli._owner("validate_verification_link"), "validate_verification_link", side_effect=lambda value: value), \
+                patch.object(cli._owner("authorization_qr"), "authorization_qr", side_effect=KeyboardInterrupt):
             code, output, _ = self.invoke(["real-human", "start", "--name", "Fixture"])
         self.assertEqual(code, 130)
         self.assertEqual(json.loads(output)["authorizationId"], "auth1")
@@ -353,13 +353,13 @@ class FeedbackTests(unittest.TestCase):
     def test_upload_interrupt_presign_put_and_registration_never_retries(self) -> None:
         source = Path(self.temp.name) / "file.jpg"
         source.write_bytes(b"\xff\xd8\xff\xe0fixture")
-        item = cli.inspect_upload_file(str(source), real_human=False)
+        item = {**cli.inspect_upload_file(str(source), real_human=False), "_stream": io.BytesIO(source.read_bytes())}
         signed = ok({"uniqId": "asset1", "preSignedUrl": "https://storage.example/fixture", "objectKey": "fixture"})
         uploaded = MagicMock()
         uploaded.__enter__.return_value.status = 200
         for phase in ("presign", "upload", "registration"):
-            with self.subTest(phase=phase), patch.object(cli, "send", side_effect=KeyboardInterrupt if phase == "presign" else [signed, KeyboardInterrupt]) as send, \
-                    patch.object(cli, "open_presigned_upload", side_effect=KeyboardInterrupt if phase == "upload" else None, return_value=uploaded) as put:
+            with self.subTest(phase=phase), patch.object(cli._owner("send"), "send", side_effect=KeyboardInterrupt if phase == "presign" else [signed, KeyboardInterrupt]) as send, \
+                    patch.object(cli._owner("open_presigned_upload"), "open_presigned_upload", side_effect=KeyboardInterrupt if phase == "upload" else None, return_value=uploaded) as put:
                 result = cli.upload_prepared_file(item, None)
             self.assertTrue(result["interrupted"])
             self.assertEqual(result["state"], "unknown")
@@ -386,8 +386,8 @@ class FeedbackTests(unittest.TestCase):
                 raise KeyboardInterrupt
             return original(path, value)
 
-        with patch.object(cli, "write_private_json", side_effect=record), \
-                patch.object(cli, "upload_prepared_file", return_value={"state": "uploaded", "assetUniqId": "asset1"}), \
+        with patch.object(cli._owner("write_private_json"), "write_private_json", side_effect=record), \
+                patch.object(cli._owner("upload_prepared_file"), "upload_prepared_file", return_value={"state": "uploaded", "assetUniqId": "asset1"}), \
                 self.assertRaises(cli.CommandInterrupted) as stopped:
             cli.execute_upload_plan(preview["uploadPlanId"], confirmed=True)
         self.assertEqual(stopped.exception.result["failedOrUnknown"]["assetUniqId"], "asset1")
@@ -399,10 +399,11 @@ class FeedbackTests(unittest.TestCase):
         output.write_bytes(b"original")
         remote = MagicMock()
         remote.__enter__.return_value.headers = {}
+        remote.__enter__.return_value.status = 200
         remote.__enter__.return_value.read.side_effect = [b"partial", KeyboardInterrupt]
         task = {"uniqId": "task1", "step": 2, "imageUrls": ["https://storage.example/fixture"]}
-        with patch.object(cli, "send", return_value=ok(task)), patch.object(cli, "validate_download_url", side_effect=lambda value: value), \
-                patch.object(cli, "open_download", return_value=remote):
+        with patch.object(cli._owner("send"), "send", return_value=ok(task)), patch.object(cli._owner("validate_download_url"), "validate_download_url", side_effect=lambda value: value), \
+                patch.object(cli._owner("open_download"), "open_download", return_value=remote):
             code, _, errors = self.invoke(["download", "task1", "--output", str(output), "--force"])
         self.assertEqual(code, 130)
         self.assertEqual(output.read_bytes(), b"original")
@@ -415,7 +416,7 @@ class FeedbackTests(unittest.TestCase):
         cases = [["assets", "upload", str(source)], ["generate", "create", "--kind", "image", "--json", json.dumps(self.request())]]
         for argv in cases:
             with self.subTest(argv=argv), patch.object(cli.sys.stdin, "isatty", return_value=True), \
-                    patch("builtins.input", return_value="n") as confirm, patch.object(cli, "send", return_value=ok({"credit": 5})) as send:
+                    patch("builtins.input", return_value="n") as confirm, patch.object(cli._owner("send"), "send", return_value=ok({"frozenCredit": 5})) as send:
                 code, output, errors = self.invoke(argv)
             self.assertEqual(code, 2)
             self.assertEqual(confirm.call_count, 1)
@@ -427,15 +428,15 @@ class FeedbackTests(unittest.TestCase):
         name = "install.ps1" if os.name == "nt" else "install.sh"
         release = {"tag_name": "v0.4.5", "assets": [{"name": name, "browser_download_url": f"https://github.com/AstroxNetwork/skills/releases/download/v0.4.5/{name}", "digest": "sha256:" + "0" * 64}]}
         manifest = {"managedBy": cli.INSTALLATION_MANAGER, "prefix": str(cli.installation_path().parent.parent.parent), "agents": [], "mcp": False}
-        with patch.object(cli, "load_installation", return_value=manifest), patch.object(cli, "open_download", side_effect=KeyboardInterrupt), \
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value=manifest), patch.object(cli._owner("open_download"), "open_download", side_effect=KeyboardInterrupt), \
                 patch.object(cli.subprocess, "run") as run, self.assertRaises(KeyboardInterrupt):
             cli.run_update(release)
         run.assert_not_called()
 
     def test_uninstall_interrupt_during_cleanup_reports_partial_state_without_network(self) -> None:
         root = Path(self.temp.name)
-        with patch.object(cli, "validated_uninstall_manifest", return_value=({}, root, root / "lib", root / "bin/holycrab")), \
-                patch.object(cli, "remove_managed_mcp_registrations", side_effect=KeyboardInterrupt), patch.object(cli, "send") as send:
+        with patch.object(cli._owner("validated_uninstall_manifest"), "validated_uninstall_manifest", return_value=({}, root, root / "lib", root / "bin/holycrab")), \
+                patch.object(cli._owner("remove_managed_mcp_registrations"), "remove_managed_mcp_registrations", side_effect=KeyboardInterrupt), patch.object(cli._owner("send"), "send") as send:
             code, output, errors = self.invoke(["uninstall", "--yes"])
         self.assertEqual(code, 130)
         self.assertIn("interrupted", output)
@@ -445,16 +446,16 @@ class FeedbackTests(unittest.TestCase):
     def test_semantic_bad_arguments_bypass_housekeeping(self) -> None:
         for argv in (["tasks", "wait", "task1", "--interval", "0"], ["tasks", "list", "--page", "0"]):
             with self.subTest(argv=argv), patch.object(cli.sys, "argv", ["holycrab", *argv]), \
-                    patch.object(cli, "startup_maintenance") as maintenance, patch.object(cli, "cleanup_upload_plans") as cleanup, \
+                    patch.object(cli._owner("startup_maintenance"), "startup_maintenance") as maintenance, patch.object(cli._owner("cleanup_upload_plans"), "cleanup_upload_plans") as cleanup, \
                     redirect_stderr(io.StringIO()):
                 self.assertEqual(cli.main(), 2)
             maintenance.assert_not_called(); cleanup.assert_not_called()
 
     def test_update_cancel_is_once_and_never_runs_installer(self) -> None:
-        with patch.object(cli, "check_for_update", return_value={"updateAvailable": True}), \
-                patch.object(cli, "read_update_state", return_value={"release": {"tag_name": "v0.4.5"}}), \
+        with patch.object(cli._owner("check_for_update"), "check_for_update", return_value={"updateAvailable": True, "release": {"tag_name": "v0.4.5"}}), \
+                patch.object(cli._owner("read_update_state"), "read_update_state", return_value={"release": {"tag_name": "v0.4.5"}}), \
                 patch.object(cli.sys.stdin, "isatty", return_value=True), patch("builtins.input", return_value="n") as confirm, \
-                patch.object(cli, "run_update") as install:
+                patch.object(cli._owner("run_update"), "run_update") as install:
             code, output, errors = self.invoke(["update"])
         self.assertEqual(code, 2)
         self.assertEqual(confirm.call_count, 1)
@@ -471,14 +472,14 @@ class FeedbackTests(unittest.TestCase):
         remote = MagicMock()
         remote.__enter__.return_value.read.side_effect = [body, b""]
         manifest = {"managedBy": cli.INSTALLATION_MANAGER, "prefix": str(cli.installation_path().parent.parent.parent), "agents": [], "mcp": False}
-        with patch.object(cli, "load_installation", return_value=manifest), patch.object(cli, "open_download", return_value=remote), \
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value=manifest), patch.object(cli._owner("open_download"), "open_download", return_value=remote), \
                 patch.object(cli.subprocess, "run", side_effect=KeyboardInterrupt), self.assertRaises(cli.CommandInterrupted) as interrupted:
             cli.run_update(release)
         self.assertIn("Do not assume rollback", interrupted.exception.result["nextAction"]["instruction"])
 
     def test_clear_key_does_not_clear_environment_or_revoke_online_key(self) -> None:
         cli.save_config({"apiKey": "hc_test_clear_key"})
-        with patch.object(cli, "send") as send:
+        with patch.object(cli._owner("send"), "send") as send:
             code, output, _ = self.invoke(["auth", "clear-key"])
         self.assertEqual(code, 0)
         self.assertIn("not revoked", output)

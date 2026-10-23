@@ -8,10 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Verify and resume the existing immutable v0.4.4 Draft after the tag-endpoint fix
+        description: Stable version tag for an immutable Draft; the selected workflow ref must match that tag
         required: true
-        type: choice
-        options: [v0.4.4]
+        type: string
+      publish_release:
+        description: Publish the verified Draft only after the release owner approves production publication
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -31,65 +35,29 @@ jobs:
             python: "3.10"
           - os: macos-latest
             python: "3.14"
-          - os: windows-latest
-            python: "3.10"
-          - os: windows-latest
-            python: "3.14"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: ${{ matrix.python }}
-      - name: Unit and public-boundary tests (Unix)
-        if: runner.os != 'Windows'
-        run: python3 -m unittest discover -s tests -v
-      - name: Unit and public-boundary tests (Windows)
-        if: runner.os == 'Windows'
-        run: >-
-          python -m unittest -v
-          tests.test_capabilities
-          tests.test_cli
-          tests.test_transport_security
-          tests.test_mcp
-          tests.test_public_boundary
-          tests.test_real_human
-          tests.test_safe_live_smoke
-          tests.test_v041
-          tests.test_feedback
-          tests.test_command_matrix
-          tests.test_onboarding
-          tests.test_readable_guidance
-          tests.test_agent_cleanup
-          tests.test_cleanup_contract
-          tests.test_public_guidance
-          tests.test_release_acceptance
-          tests.test_update_v044
-          tests.test_models_v050
-          tests.test_generate_contract_v050
-      - name: Compile Python entry points (Unix)
-        if: runner.os != 'Windows'
-        run: python3 -m py_compile holycrab/scripts/holycrab_cli.py tools/validate_capabilities.py tools/validate_generate_contract.py tests/safe_live_smoke.py
-      - name: Compile Python entry points (Windows)
-        if: runner.os == 'Windows'
-        run: python -m py_compile holycrab/scripts/holycrab_cli.py tools/validate_capabilities.py tools/validate_generate_contract.py tests/safe_live_smoke.py
-      - name: Validate the capability snapshot (Unix)
-        if: runner.os != 'Windows'
-        run: python3 tools/validate_capabilities.py
-      - name: Validate the capability snapshot (Windows)
-        if: runner.os == 'Windows'
-        run: python tools/validate_capabilities.py
-      - name: Check shell entry points
-        if: runner.os != 'Windows'
-        run: sh -n install.sh bin/holycrab
-      - name: Check patch whitespace
-        run: git diff --check
+      - name: Run the shared offline validation entry point
+        run: python tools/run_checks.py --profile ${{ matrix.os == 'ubuntu-latest' && matrix.python == '3.14' && 'adversarial' || 'standard' }} --report build/validation/report.json
       - name: Decode offline QR fixtures independently
         if: matrix.python == '3.14' && runner.os == 'Linux'
         run: |
           python3 -m venv "${RUNNER_TEMP}/qr-validator"
           "${RUNNER_TEMP}/qr-validator/bin/python" -m pip install --only-binary=:all: -r tests/requirements-qr-test.txt
           "${RUNNER_TEMP}/qr-validator/bin/python" tools/validate_qr.py
+
+      - name: Upload validation reports and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: validation-${{ matrix.os }}-python-${{ matrix.python }}
+          path: build/validation/
+          if-no-files-found: error
+          retention-days: 14
 
   official-skill-validation:
     name: Official Skill validator
@@ -107,28 +75,17 @@ jobs:
           "${RUNNER_TEMP}/skill-validator/bin/python" "${RUNNER_TEMP}/quick_validate.py" holycrab
 
   generate-contract:
-    name: Read-only Generate main contract
+    name: Recorded Generate contract (offline)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Identify the version for explicitly authorized local checks
         id: contract-version
         run: echo "version=$(sed -n 's/^VERSION=//p' install.sh)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        if: steps.contract-version.outputs.version != 'v0.4.4' && steps.contract-version.outputs.version != 'v0.5.0'
-        with:
-          repository: AstroxNetwork/seedance-2.0
-          ref: main
-          path: generate-contract
-          ssh-key: ${{ secrets.GENERATE_CONTRACT_SSH_KEY }}
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.12"
-      - name: Compare models, enums, limits, and request fields
-        if: steps.contract-version.outputs.version != 'v0.4.4' && steps.contract-version.outputs.version != 'v0.5.0'
-        run: python3 tools/validate_generate_contract.py generate-contract
-      - name: Verify the user-approved synchronized local main evidence
-        if: steps.contract-version.outputs.version == 'v0.4.4' || steps.contract-version.outputs.version == 'v0.5.0'
+      - name: Verify candidate-bound recorded Generate contract evidence
         run: python3 tools/verify_release_acceptance.py "${{ steps.contract-version.outputs.version }}" --contract-only
 
   install-and-mcp:
@@ -145,6 +102,8 @@ jobs:
           python-version: "3.10"
       - name: Install from the checked-out release source
         env:
+          HOLYCRAB_NO_UPDATE_CHECK: "1"
+          HOLYCRAB_EXPECTED_VERSION: "0.6.0"
           HOLYCRAB_INSTALL_SOURCE_DIR: ${{ github.workspace }}
           HOLYCRAB_INSTALL_MCP: "0"
           HOLYCRAB_INSTALL_AGENTS: codex,claude
@@ -155,29 +114,66 @@ jobs:
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
           test -f "${HOME}/.claude/skills/holycrab/agents/openai.yaml"
-          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep '0.5.0'
+          "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" --version | grep "${HOLYCRAB_EXPECTED_VERSION}"
           "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" doctor --json > "${RUNNER_TEMP}/doctor.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("doctor.json").read_text()); assert data["ok"] is True and data["checks"]["config"]["keyConfigured"] is False'
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' | "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab" mcp serve > "${RUNNER_TEMP}/mcp.json"
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("mcp.json").read_text()); assert data["result"]["serverInfo"]["name"] == "holycrab-local"'
 
   install-windows:
-    name: Install and MCP (windows-latest)
-    runs-on: windows-latest
+    name: Native Windows (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            python: "3.10"
+            architecture: x64
+          - os: windows-2025
+            python: "3.14"
+            architecture: x64
+          - os: windows-2022
+            python: "3.10"
+            architecture: x64
+          - os: windows-11-arm
+            python: "3.14"
+            architecture: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
-          python-version: "3.12"
-      - name: Install twice, verify PATH, CLI, and MCP
+          python-version: ${{ matrix.python }}
+          architecture: ${{ matrix.architecture }}
+      - name: Complete portable Windows tests without blanket module skips
+        run: python tools/run_checks.py --report build/validation/report.json
+      - name: Verify recorded contract fingerprint on native Windows
+        run: python tools/verify_release_acceptance.py v0.6.0 --contract-only
+      - name: Actual installed HTTP workflows
+        if: always()
+        run: python tools/run_checks.py --unit-worker build/validation/http-results.json --test-name tests.adversarial.check_http_flows
+      - name: Ordinary-user native lifecycle and real console validation
+        if: always()
         shell: powershell
-        env:
-          HOLYCRAB_TEST_INSTALL_REF: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: .\tests\test_windows_installer.ps1
+        run: .\tests\test_windows_adversarial.ps1 -Report build/validation/windows-native.json
+      - name: Reject missing native equivalents and stale evidence
+        if: always()
+        run: python tools/verify_windows_coverage.py --unit build/validation/unit-results.json --native build/validation/windows-native.json --report build/validation/windows-coverage.json --expected-architecture ${{ matrix.architecture }} --expected-python ${{ matrix.python }}
+      - name: Upload Windows evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: validation-${{ matrix.os }}-python-${{ matrix.python }}
+          path: build/validation/
+          if-no-files-found: error
+          retention-days: 14
 
   release:
-    name: Publish release assets
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
+    name: Prepare verified Draft assets
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]
     permissions:
       contents: write
@@ -192,6 +188,8 @@ jobs:
           set -euo pipefail
           release_version="$RELEASE_VERSION"
           grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$release_version"
+          git fetch --no-tags origin "refs/tags/$release_version:refs/tags/$release_version"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$release_version^{commit}")"
           grep -Fx "VERSION=$release_version" install.sh
           grep -Fx '$Version = "'"$release_version"'"' install.ps1
           test -f ".github/releases/$release_version.md"
@@ -201,21 +199,15 @@ jobs:
       - name: Create the immutable GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RESUME_EXISTING_DRAFT: ${{ github.event_name == 'workflow_dispatch' }}
         shell: bash
         run: |
           set -euo pipefail
           release_version="$RELEASE_VERSION"
-          if [ "$RESUME_EXISTING_DRAFT" = "true" ]; then
-            test "$release_version" = v0.4.4
+          if gh release view "$release_version" >/dev/null 2>&1; then
             test "$(gh release view "$release_version" --json isDraft --jq .isDraft)" = true
             test "$(gh release view "$release_version" --json isPrerelease --jq .isPrerelease)" = false
-            echo "Existing v0.4.4 Draft assets will only be verified, never overwritten."
+            echo "Existing Draft assets will only be verified, never overwritten."
             exit 0
-          fi
-          if gh release view "$release_version" >/dev/null 2>&1; then
-            echo "Release $release_version already exists; refusing to overwrite published assets." >&2
-            exit 1
           fi
           gh release create "$release_version" install.sh install.ps1 SHA256SUMS \
             --verify-tag \
@@ -250,7 +242,7 @@ jobs:
 
   verify-draft-install:
     name: Verify draft installation (${{ matrix.os }})
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
     needs: [release]
     # GitHub only exposes Draft assets to identities with push access. This
     # job does not mutate releases; no token is passed to the installer.
@@ -333,7 +325,7 @@ jobs:
 
   publish-verified-release:
     name: Publish verified release as Latest
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release_tag == 'v0.4.4')
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
     needs: [release, verify-draft-install]
     runs-on: ubuntu-latest
     permissions:

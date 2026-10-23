@@ -2,7 +2,7 @@
 set -eu
 
 REPOSITORY=AstroxNetwork/skills
-VERSION=v0.5.0
+VERSION=v0.6.0
 SOURCE_REF=${HOLYCRAB_INSTALL_REF:-$VERSION}
 SOURCE_DIR=${HOLYCRAB_INSTALL_SOURCE_DIR:-}
 INSTALL_MCP=${HOLYCRAB_INSTALL_MCP-}
@@ -12,6 +12,8 @@ BIN_DIR="$PREFIX/bin"
 LIB_DIR="$PREFIX/lib/holycrab"
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/holycrab-install.XXXXXX")
 BACKUP_DIR="$TEMP_DIR/backup"
+INSTALL_LOCK_HELD=0
+INSTALL_LOCK_DIR="$PREFIX/.holycrab-install.lock"
 INSTALL_STARTED=0
 INSTALL_COMPLETE=0
 HAD_LIB=0
@@ -24,10 +26,10 @@ PATH_REG_PROFILE=
 PATH_REG_ADDED=0
 PATH_REG_ADDED_THIS_RUN=0
 PREVIOUS_PATH_PROFILE=
-SHA256_HOLYCRAB_CLI=2b4599022d1657cc023b82a79bcd515c503ca9d1f82b3c78335c0466635a8de8
-SHA256_CAPABILITIES=7070c245eae8b022f0dfd678acb660a61a58c65644f3c0076edae8e4eec65eb4
+SHA256_HOLYCRAB_CLI=ce732cda8548c77b53b513321fad5a52d5c695a02b04a9d5f45b240f302ab2fb
+SHA256_CAPABILITIES=9a3b05927bfbc75a13f44bd7ee5483d5f4dc3447b65b6d3b8a5ce477a61bcdee
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
-SHA256_SKILL=99254039a826b590a38bda9a53123cc608dfd292879a993ef8e425623148e20b
+SHA256_SKILL=69032d13a515fdba63ac79b4bd66a94df131eeec7420c0f2f661fdef724926e8
 SHA256_OPENAI_YAML=64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7
 SHA256_SEGNO=28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7
 SHA256_SEGNO_LICENSE=de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935
@@ -135,6 +137,7 @@ PY
       echo "HolyCrab installation failed; recovery is incomplete. Backup retained: $BACKUP_DIR" >&2
     fi
   fi
+  if [ "$INSTALL_LOCK_HELD" = "1" ]; then rmdir "$INSTALL_LOCK_DIR" || true; fi
   if [ "$cleanup_ok" = "1" ]; then rm -rf "$TEMP_DIR"; fi
 }
 trap cleanup EXIT
@@ -189,6 +192,31 @@ fetch "holycrab/SKILL.md" "$TEMP_DIR/SKILL.md" "$SHA256_SKILL"
 fetch "holycrab/agents/openai.yaml" "$TEMP_DIR/openai.yaml" "$SHA256_OPENAI_YAML"
 fetch "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl" "$TEMP_DIR/segno.whl" "$SHA256_SEGNO"
 fetch "holycrab/scripts/vendor/LICENSE.segno" "$TEMP_DIR/LICENSE.segno" "$SHA256_SEGNO_LICENSE"
+# BEGIN GENERATED RUNTIME DOWNLOADS
+fetch "runtime-files.json" "$TEMP_DIR/runtime-files.json" "a23da16d43f8a692cbbfe5f5d116e1ebb88fc2852137e8d6ebeb7d2918e16b08"
+mkdir -p "$TEMP_DIR/holycrab_runtime"
+fetch "holycrab/scripts/holycrab_runtime/__init__.py" "$TEMP_DIR/holycrab_runtime/__init__.py" "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe"
+fetch "holycrab/scripts/holycrab_runtime/capabilities.py" "$TEMP_DIR/holycrab_runtime/capabilities.py" "43585789f09a5d1e5f3d215c75f1fc888e6aa9fead3b09d4244f667301fd0f64"
+fetch "holycrab/scripts/holycrab_runtime/cli.py" "$TEMP_DIR/holycrab_runtime/cli.py" "c9a50861d2b56ccb691ded00639f6b5d72bdb2b1d9bbfa262cd672d4ba229d90"
+fetch "holycrab/scripts/holycrab_runtime/exports.py" "$TEMP_DIR/holycrab_runtime/exports.py" "d0dcf10cb10a719b2d8a5d32510c3a20608d5dd88fb14a4225d2d51d23c4a7c6"
+fetch "holycrab/scripts/holycrab_runtime/generation.py" "$TEMP_DIR/holycrab_runtime/generation.py" "578ab3976e6fe04dd66cf2bf542b64989dfbfe3994445c3a98c0f24e60d1c2a1"
+fetch "holycrab/scripts/holycrab_runtime/lifecycle.py" "$TEMP_DIR/holycrab_runtime/lifecycle.py" "6f3898140d2e86a6dbc90574814e7a3fa32b5a09dade3ea909f8bae0787f475a"
+fetch "holycrab/scripts/holycrab_runtime/mcp.py" "$TEMP_DIR/holycrab_runtime/mcp.py" "c72c8a50aa5a4419dcc2f0c45f46f8cf7dbe6afdddf3a5c31d8b93d06dbb08d9"
+fetch "holycrab/scripts/holycrab_runtime/presentation.py" "$TEMP_DIR/holycrab_runtime/presentation.py" "0925e46fbf4ec01d156ab1071c43a8a6e227c22adfed9804316fd32b9b8ee530"
+fetch "holycrab/scripts/holycrab_runtime/real_human.py" "$TEMP_DIR/holycrab_runtime/real_human.py" "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74"
+fetch "holycrab/scripts/holycrab_runtime/results.py" "$TEMP_DIR/holycrab_runtime/results.py" "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2"
+fetch "holycrab/scripts/holycrab_runtime/settings.py" "$TEMP_DIR/holycrab_runtime/settings.py" "88327a0c0c4f3b4a204de07858de6ba0ec74fb0c464370b8746e6681259e5fb1"
+fetch "holycrab/scripts/holycrab_runtime/state.py" "$TEMP_DIR/holycrab_runtime/state.py" "c87236d05ecdcefa64249aa3cf3fa4003918a887751f5469386531fefa330946"
+fetch "holycrab/scripts/holycrab_runtime/tasks.py" "$TEMP_DIR/holycrab_runtime/tasks.py" "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27"
+fetch "holycrab/scripts/holycrab_runtime/transport.py" "$TEMP_DIR/holycrab_runtime/transport.py" "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432"
+fetch "holycrab/scripts/holycrab_runtime/uploads.py" "$TEMP_DIR/holycrab_runtime/uploads.py" "4a1c21aa5df008841d1e0425991800ff36ed219ca82284f05deaadf8b0b79cc5"
+# END GENERATED RUNTIME DOWNLOADS
+mkdir -p "$PREFIX"
+if ! mkdir "$INSTALL_LOCK_DIR" 2>/dev/null; then
+  echo "Another install or uninstall holds $INSTALL_LOCK_DIR. Check that operation before recovering an abandoned lock." >&2
+  exit 1
+fi
+INSTALL_LOCK_HELD=1
 settings=$(python3 - "$TEMP_DIR/holycrab_cli.py" "$LIB_DIR/installation.json" "$PREFIX" "$INSTALL_AGENTS" "$INSTALL_MCP" <<'PY'
 import importlib.util, pathlib, sys
 spec = importlib.util.spec_from_file_location("holycrab_settings", sys.argv[1])
@@ -226,16 +254,8 @@ PY
 fi
 if [ -d "$LIB_DIR" ]; then cp -R "$LIB_DIR" "$BACKUP_DIR/lib"; HAD_LIB=1; fi
 if [ -f "$BIN_DIR/holycrab" ]; then cp "$BIN_DIR/holycrab" "$BACKUP_DIR/holycrab"; HAD_LAUNCHER=1; fi
-case ",$INSTALL_AGENTS," in
-  *,codex,*)
-    if [ -d "$HOME/.agents/skills/holycrab" ]; then cp -R "$HOME/.agents/skills/holycrab" "$BACKUP_DIR/codex-skill"; HAD_CODEX_SKILL=1; fi
-    ;;
-esac
-case ",$INSTALL_AGENTS," in
-  *,claude,*)
-    if [ -d "$HOME/.claude/skills/holycrab" ]; then cp -R "$HOME/.claude/skills/holycrab" "$BACKUP_DIR/claude-skill"; HAD_CLAUDE_SKILL=1; fi
-    ;;
-esac
+if [ -d "$HOME/.agents/skills/holycrab" ]; then cp -R "$HOME/.agents/skills/holycrab" "$BACKUP_DIR/codex-skill"; HAD_CODEX_SKILL=1; fi
+if [ -d "$HOME/.claude/skills/holycrab" ]; then cp -R "$HOME/.claude/skills/holycrab" "$BACKUP_DIR/claude-skill"; HAD_CLAUDE_SKILL=1; fi
 progress "[3/5] Installing verified program files and configuring PATH..."
 INSTALL_STARTED=1
 mkdir -p "$BIN_DIR" "$LIB_DIR/references" "$LIB_DIR/vendor"
@@ -244,6 +264,33 @@ install -m 644 "$TEMP_DIR/capabilities.json" "$LIB_DIR/references/capabilities.j
 install -m 755 "$TEMP_DIR/holycrab" "$BIN_DIR/holycrab"
 install -m 644 "$TEMP_DIR/segno.whl" "$LIB_DIR/vendor/segno-1.6.6-py3-none-any.whl"
 install -m 644 "$TEMP_DIR/LICENSE.segno" "$LIB_DIR/vendor/LICENSE.segno"
+
+# BEGIN GENERATED RUNTIME INSTALL
+mkdir -p "$LIB_DIR/holycrab_runtime"
+install -m 644 "$TEMP_DIR/runtime-files.json" "$LIB_DIR/runtime-files.json"
+install -m 644 "$TEMP_DIR/holycrab_runtime/__init__.py" "$LIB_DIR/holycrab_runtime/__init__.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/capabilities.py" "$LIB_DIR/holycrab_runtime/capabilities.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/cli.py" "$LIB_DIR/holycrab_runtime/cli.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/exports.py" "$LIB_DIR/holycrab_runtime/exports.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/generation.py" "$LIB_DIR/holycrab_runtime/generation.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/lifecycle.py" "$LIB_DIR/holycrab_runtime/lifecycle.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/mcp.py" "$LIB_DIR/holycrab_runtime/mcp.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/presentation.py" "$LIB_DIR/holycrab_runtime/presentation.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/real_human.py" "$LIB_DIR/holycrab_runtime/real_human.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/results.py" "$LIB_DIR/holycrab_runtime/results.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/settings.py" "$LIB_DIR/holycrab_runtime/settings.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/state.py" "$LIB_DIR/holycrab_runtime/state.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/tasks.py" "$LIB_DIR/holycrab_runtime/tasks.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/transport.py" "$LIB_DIR/holycrab_runtime/transport.py"
+install -m 644 "$TEMP_DIR/holycrab_runtime/uploads.py" "$LIB_DIR/holycrab_runtime/uploads.py"
+# END GENERATED RUNTIME INSTALL
+
+python3 - "$TEMP_DIR/holycrab_cli.py" "$LIB_DIR" <<'PYCACHE'
+import importlib.util, pathlib, sys
+spec = importlib.util.spec_from_file_location("holycrab_cache", sys.argv[1])
+cli = importlib.util.module_from_spec(spec); spec.loader.exec_module(cli)
+cli.prepare_runtime_imports(pathlib.Path(sys.argv[2]))
+PYCACHE
 
 persist_path
 
@@ -271,7 +318,7 @@ for agent in selected:
             {"path": str(root / "agents/openai.yaml"), "sha256": openai},
         ])
 value = {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "managedBy": "holycrab-installer",
     "version": version.removeprefix("v"),
     "prefix": prefix,
@@ -286,6 +333,9 @@ value = {
     },
 }
 path = pathlib.Path(target)
+release_manifest = json.loads((path.parent / "runtime-files.json").read_text())
+core.extend({"path": row["target"], "sha256": row["sha256"]} for row in release_manifest["files"] if row["kind"] == "runtime" and not row.get("legacyVariable"))
+core.append({"path": "runtime-files.json", "sha256": __import__("hashlib").sha256((path.parent / "runtime-files.json").read_bytes()).hexdigest()})
 fd, temporary = tempfile.mkstemp(prefix=".installation.", suffix=".tmp", dir=path.parent)
 try:
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
@@ -346,6 +396,13 @@ if [ "$INSTALL_MCP" = "1" ]; then
   esac
 fi
 
+python3 - "$LIB_DIR/holycrab_cli.py" "$BACKUP_DIR/lib/installation.json" "$BACKUP_DIR/mcp-transaction.json" <<'PYFINAL'
+import importlib.util, sys
+spec=importlib.util.spec_from_file_location("holycrab_finalize", sys.argv[1])
+cli=importlib.util.module_from_spec(spec); spec.loader.exec_module(cli)
+cli.finalize_installation(sys.argv[2], sys.argv[3])
+PYFINAL
+
 progress "[5/5] Verifying the installed CLI version and local health..."
 PATH="$BIN_DIR:$PATH"
 export PATH
@@ -354,17 +411,14 @@ if [ "$installed_version" != "holycrab ${VERSION#v}" ]; then
   echo "Installed CLI version does not match $VERSION; installation stopped." >&2
   exit 1
 fi
-doctor_report=$(HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" doctor --json) || {
-  printf '%s\n' "$doctor_report" | python3 -c '
-import importlib.util, json, sys
-spec = importlib.util.spec_from_file_location("holycrab_installer", sys.argv[1])
-cli = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(cli)
-print(cli.format_terminal_result(json.load(sys.stdin)))
-' "$LIB_DIR/holycrab_cli.py" >&2 || true
-  echo "Installed files failed HolyCrab doctor; installation stopped." >&2
+doctor_report=$(HOLYCRAB_NO_UPDATE_CHECK=1 "$BIN_DIR/holycrab" doctor --json) || true
+if ! printf '%s\n' "$doctor_report" | python3 -c 'import json,sys; r=json.load(sys.stdin); raise SystemExit(0 if r.get("runtimeOk") else 1)'; then
+  echo "Installed runtime failed verification; installation stopped." >&2
   exit 1
-}
+fi
+if ! printf '%s\n' "$doctor_report" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("ok") else 1)'; then
+  echo "Program installed, but existing local records need attention. Run holycrab doctor; preserve the records." >&2
+fi
 onboarding_summary=$(printf '%s\n' "$doctor_report" | python3 -c '
 import importlib.util, json, sys
 spec = importlib.util.spec_from_file_location("holycrab_installer", sys.argv[1])

@@ -14,6 +14,11 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+try:
+    from .network_fixtures import getaddrinfo as fixture_dns
+except ImportError:
+    from network_fixtures import getaddrinfo as fixture_dns
+
 
 SCRIPT_PATH = Path(__file__).parents[1] / "holycrab" / "scripts" / "holycrab_cli.py"
 SPEC = importlib.util.spec_from_file_location("holycrab_cli", SCRIPT_PATH)
@@ -43,8 +48,7 @@ class LocalAuthenticationTests(unittest.TestCase):
         self.assertEqual(holycrab.credential(), ("X-User-Token", "local-secret"))
 
     def test_custom_base_url_is_rejected_before_reading_a_key(self) -> None:
-        with patch.dict(os.environ, {"HOLYCRAB_BASE_URL": "https://other.example"}), patch.object(
-            holycrab, "credential"
+        with patch.dict(os.environ, {"HOLYCRAB_BASE_URL": "https://other.example"}), patch.object(holycrab._owner("credential"), "credential"
         ) as credential:
             repair = "Remove-Item Env:HOLYCRAB_BASE_URL" if os.name == "nt" else "unset HOLYCRAB_BASE_URL"
             with self.assertRaisesRegex(SystemExit, repair):
@@ -69,8 +73,7 @@ class LocalAuthenticationTests(unittest.TestCase):
     def test_set_key_reads_key_from_stdin_and_never_prints_it(self) -> None:
         args = argparse.Namespace(stdin=True, no_verify=False)
         output = io.StringIO()
-        with patch("sys.stdin", io.StringIO("entered-secret\n")), patch.object(
-            holycrab,
+        with patch("sys.stdin", io.StringIO("entered-secret\n")), patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 0, "data": {"username": "student", "credit": 100}}),
         ) as send, redirect_stdout(output):
@@ -82,8 +85,7 @@ class LocalAuthenticationTests(unittest.TestCase):
     def test_set_key_accepts_production_success_code_200(self) -> None:
         args = argparse.Namespace(stdin=True, no_verify=False)
         output = io.StringIO()
-        with patch("sys.stdin", io.StringIO("entered-secret\n")), patch.object(
-            holycrab,
+        with patch("sys.stdin", io.StringIO("entered-secret\n")), patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 200, "data": {"username": "student", "credit": 100}}),
         ), redirect_stdout(output):
@@ -97,8 +99,7 @@ class LocalAuthenticationTests(unittest.TestCase):
         output = io.StringIO()
         with patch.dict(os.environ, {"HOLYCRAB_API_KEY": "old-environment-secret"}), patch(
             "sys.stdin", io.StringIO("new-saved-secret\n")
-        ), patch.object(
-            holycrab,
+        ), patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 200, "data": {"username": "student", "credit": 100}}),
         ), redirect_stdout(output):
@@ -118,8 +119,7 @@ class LocalAuthenticationTests(unittest.TestCase):
     def test_status_describes_configuration_and_validity_without_login_language(self) -> None:
         holycrab.save_config({"apiKey": "saved-secret"})
         output = io.StringIO()
-        with patch.object(
-            holycrab,
+        with patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 200, "data": {"username": "student", "credit": 100}}),
         ), redirect_stdout(output):
@@ -169,8 +169,7 @@ class OutputRedactionTests(unittest.TestCase):
         signed_url = "https://cdn.example/result.mp4?X-Tos-Signature=terminal-secret"
         args = argparse.Namespace(uniq_id="task-1", timeout=0.0, interval=1.0)
         output = io.StringIO()
-        with patch.object(
-            holycrab,
+        with patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 0, "data": {"step": 2, "videoUrl": signed_url}}),
         ), redirect_stdout(output):
@@ -208,6 +207,9 @@ class OutputRedactionTests(unittest.TestCase):
 
 class GenerationWorkflowTests(unittest.TestCase):
     def setUp(self) -> None:
+        dns = patch.object(holycrab.socket, 'getaddrinfo', side_effect=fixture_dns)
+        dns.start()
+        self.addCleanup(dns.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.env = patch.dict(
@@ -263,7 +265,7 @@ class GenerationWorkflowTests(unittest.TestCase):
             (200, {"code": 0, "data": {"frozenCredit": 10}}),
             (200, {"code": 0, "data": {"uniqId": "task-audio-default"}}),
         ]
-        with patch.object(holycrab, "send", side_effect=replies) as send:
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send:
             holycrab.create_generation("video", payload, confirmed=True)
         self.assertTrue(send.call_args_list[0].kwargs["payload"]["generateAudio"])
         self.assertTrue(send.call_args_list[1].kwargs["payload"]["generateAudio"])
@@ -276,8 +278,7 @@ class GenerationWorkflowTests(unittest.TestCase):
             "resolution": "480p",
             "generateAudio": False,
         }
-        with patch.object(
-            holycrab,
+        with patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 0, "data": {"frozenCredit": 10}}),
         ) as send:
@@ -292,8 +293,7 @@ class GenerationWorkflowTests(unittest.TestCase):
             "resolution": "768P",
             "ratio": "16:9",
         }
-        with patch.object(
-            holycrab,
+        with patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 0, "data": {"frozenCredit": 10}}),
         ) as send:
@@ -314,7 +314,7 @@ class GenerationWorkflowTests(unittest.TestCase):
             (200, {"code": 0, "data": {"frozenCredit": 10}}),
             (200, {"code": 0, "data": {"uniqId": "task2"}}),
         ]
-        with patch.object(holycrab, "send", side_effect=replies):
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies):
             first = holycrab.create_generation("video", payload, confirmed=True)
             second = holycrab.create_generation("video", payload, confirmed=True)
         self.assertNotEqual(first["attemptId"], second["attemptId"])
@@ -327,7 +327,7 @@ class GenerationWorkflowTests(unittest.TestCase):
             (200, {"code": 0, "data": {"frozenCredit": 5}}),
             (200, {"code": 0, "data": {"uniqId": "task1"}}),
         ]
-        with patch.object(holycrab, "send", side_effect=replies) as send:
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send:
             holycrab.create_generation("image", payload, confirmed=True, attempt_id="attempt-fixed")
             with self.assertRaisesRegex(SystemExit, "already exists"):
                 holycrab.create_generation("image", payload, confirmed=True, attempt_id="attempt-fixed")
@@ -340,8 +340,7 @@ class GenerationWorkflowTests(unittest.TestCase):
 
     def test_unconfirmed_generation_only_estimates(self) -> None:
         payload = {"model": "seedream-5-0-lite-260128", "prompt": "draw", "size": "2k"}
-        with patch.object(
-            holycrab,
+        with patch.object(holycrab._owner("send"),
             "send",
             return_value=(200, {"code": 0, "data": {"frozenCredit": 5}}),
         ) as send:
@@ -352,7 +351,7 @@ class GenerationWorkflowTests(unittest.TestCase):
             "POST", "/api/tasks/image-generation/freeze-credit", payload=payload
         )
 
-    def test_interactive_confirmation_reuses_the_displayed_estimate(self) -> None:
+    def test_interactive_confirmation_revalidates_the_displayed_price_before_submission(self) -> None:
         args = argparse.Namespace(
             kind="image",
             json='{"model":"seedream-5-0-lite-260128","prompt":"draw","size":"2k"}',
@@ -361,13 +360,17 @@ class GenerationWorkflowTests(unittest.TestCase):
         )
         replies = [
             (200, {"code": 0, "data": {"frozenCredit": 5}}),
+            (200, {"code": 0, "data": {"frozenCredit": 5}}),
             (200, {"code": 0, "data": {"uniqId": "task1"}}),
         ]
-        with patch.object(holycrab, "send", side_effect=replies) as send, patch.object(
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send, patch.object(
             sys.stdin, "isatty", return_value=True
         ), patch("builtins.input", return_value="y"), redirect_stdout(io.StringIO()):
             self.assertEqual(holycrab.command_generation_create(args), 0)
-        self.assertEqual(send.call_count, 2)
+        self.assertEqual(send.call_count, 3)
+        self.assertEqual([call.args[1] for call in send.call_args_list], [
+            '/api/tasks/image-generation/freeze-credit', '/api/tasks/image-generation/freeze-credit',
+            '/api/tasks/image-generation'])
 
     def test_ambiguous_network_error_is_recorded_without_retry(self) -> None:
         payload = {"model": "seedream-5-0-lite-260128", "prompt": "draw", "size": "2k"}
@@ -375,7 +378,7 @@ class GenerationWorkflowTests(unittest.TestCase):
             (200, {"code": 0, "data": {"frozenCredit": 5}}),
             urllib.error.URLError("timed out"),
         ]
-        with patch.object(holycrab, "send", side_effect=replies) as send:
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send:
             result = holycrab.create_generation(
                 "image", payload, confirmed=True, attempt_id="attempt-unknown"
             )
@@ -387,15 +390,16 @@ class GenerationWorkflowTests(unittest.TestCase):
     def test_download_fetches_a_task_output_without_printing_its_url(self) -> None:
         destination = Path(self.temp.name) / "result.mp4"
         response = MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.headers = {'Content-Length': '11'}
         response.__enter__.return_value.read.side_effect = [b"video-bytes", b""]
-        with patch.object(
-            holycrab,
+        with patch.object(holycrab._owner("send"),
             "send",
             return_value=(
                 200,
                 {"code": 0, "data": {"uniqId": "task-1", "videoUrl": "https://cdn.example/result.mp4?secret=value"}},
             ),
-        ), patch.object(holycrab, "open_download", return_value=response), redirect_stdout(io.StringIO()) as output:
+        ), patch.object(holycrab._owner("open_download"), "open_download", return_value=response), redirect_stdout(io.StringIO()) as output:
             args = argparse.Namespace(uniq_id="task-1", output=str(destination), index=0, force=False)
             self.assertEqual(holycrab.command_download(args), 0)
         self.assertEqual(destination.read_bytes(), b"video-bytes")
@@ -408,15 +412,16 @@ class GenerationWorkflowTests(unittest.TestCase):
         predictable_partial = destination.with_name(f".{destination.name}.part")
         predictable_partial.symlink_to(protected)
         response = MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.headers = {'Content-Length': '11'}
         response.__enter__.return_value.read.side_effect = [b"video-bytes", b""]
-        with patch.object(
-            holycrab,
+        with patch.object(holycrab._owner("send"),
             "send",
             return_value=(
                 200,
                 {"code": 0, "data": {"uniqId": "task-1", "videoUrl": "https://cdn.example/result.mp4"}},
             ),
-        ), patch.object(holycrab, "open_download", return_value=response), redirect_stdout(
+        ), patch.object(holycrab._owner("open_download"), "open_download", return_value=response), redirect_stdout(
             io.StringIO()
         ):
             args = argparse.Namespace(uniq_id="task-1", output=str(destination), index=0, force=False)
@@ -442,7 +447,7 @@ class PublicProjectionTests(unittest.TestCase):
                 "request": {"prompt": "private prompt"},
             },
         }
-        with patch.object(holycrab, "send", return_value=(200, response)), redirect_stdout(output):
+        with patch.object(holycrab._owner("send"), "send", return_value=(200, response)), redirect_stdout(output):
             self.assertEqual(holycrab.command_task_get(argparse.Namespace(uniq_id="task-1")), 0)
         data = json.loads(output.getvalue())["response"]["data"]
         self.assertEqual(data["uniqId"], "task-1")
@@ -465,7 +470,7 @@ class PublicProjectionTests(unittest.TestCase):
                 "admin": True,
             },
         }
-        with patch.object(holycrab, "send", return_value=(200, response)), redirect_stdout(output):
+        with patch.object(holycrab._owner("send"), "send", return_value=(200, response)), redirect_stdout(output):
             self.assertEqual(holycrab.command_credits_balance(argparse.Namespace()), 0)
         data = json.loads(output.getvalue())["response"]["data"]
         self.assertEqual(data, {"username": "student", "nickname": "Student", "credit": 100})
@@ -521,8 +526,7 @@ class AssetUploadTests(unittest.TestCase):
             ),
             (200, {"code": 0, "data": None}),
         ]
-        with patch.object(holycrab, "send", side_effect=replies) as send, patch.object(
-            holycrab, "open_presigned_upload", return_value=self.upload_response()
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send, patch.object(holycrab._owner("open_presigned_upload"), "open_presigned_upload", return_value=self.upload_response()
         ):
             plan = holycrab.prepare_upload_plan([str(image)])
             result = holycrab.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
@@ -562,8 +566,7 @@ class AssetUploadTests(unittest.TestCase):
                 ]
             )
 
-        with patch.object(holycrab, "send", side_effect=replies) as send, patch.object(
-            holycrab, "open_presigned_upload", return_value=self.upload_response()
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send, patch.object(holycrab._owner("open_presigned_upload"), "open_presigned_upload", return_value=self.upload_response()
         ):
             plan = holycrab.prepare_upload_plan([str(image) for image in images])
             result = holycrab.execute_upload_plan(plan["uploadPlanId"], confirmed=True)
@@ -592,8 +595,7 @@ class AssetUploadTests(unittest.TestCase):
             ),
             (400, {"code": 400, "message": "missing multipart field"}),
         ]
-        with patch.object(holycrab, "send", side_effect=replies), patch.object(
-            holycrab, "open_presigned_upload", return_value=self.upload_response()
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies), patch.object(holycrab._owner("open_presigned_upload"), "open_presigned_upload", return_value=self.upload_response()
         ):
             plan = holycrab.prepare_upload_plan([str(image)])
             result = holycrab.execute_upload_plan(plan["uploadPlanId"], confirmed=True)

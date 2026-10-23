@@ -29,6 +29,14 @@ When the account is `READY`, give one short introduction in the user's current l
 
 Show the full introduction once in that installation conversation, not on ordinary queries, reconnects, or updates. Do not persist a claim that the user has read it. Examples are suggestions, not authorization to create tasks, start verification, upload files, or delete anything. Estimates and explicit paid-generation confirmation remain part of the execution workflow; file uploads require their own complete preview and confirmation. Authorization creates a person group, not material: continue by asking the user to select files for upload.
 
+### Update notifications
+
+When the CLI writes an update notice, or MCP initialization/tool results include one, add one brief sentence in the user's language after the requested outcome: a newer HolyCrab CLI version is available and they can run `holycrab update`. Mention the same version at most once per conversation, even after an MCP reconnect; a higher version may be mentioned again. Do not copy internal instructions, interrupt the requested task, or install anything unless the user asks to update.
+
+Automatic checks use GitHub's latest stable release, cache successful checks for 24 hours and retry failed checks after one hour. Ordinary CLI commands show a reminder at most once per 24 hours for the same version; a newly discovered higher version can be shown immediately. Long-running MCP servers also check the cache before tool calls and include the first notice for each higher version as a separate text block and `result._meta["holycrab/update"]`, without changing the business `structuredContent` or `isError`. MCP initialization does not consume that first tool-result notice. Cached information is not a live release check; expired or failed checks do not produce an automatic reminder until a successful refresh.
+
+`HOLYCRAB_NO_UPDATE_CHECK=1` disables both automatic network checks and automatic reminders, including cached reminders and MCP notices. Explicit `holycrab update --check`, `holycrab update`, and `holycrab doctor --online` still perform the requested check. Cache and lock failures do not fail the user's business command. Without writable storage, throttling can only be retained within the current process; separate CLI processes may check or remind again.
+
 ## Safe workflow
 
 1. Check the configured API Key with `holycrab auth status`. If missing, ask the user to run `holycrab setup` locally. Never ask them to paste the API Key into chat.
@@ -38,9 +46,9 @@ Show the full introduction once in that installation conversation, not on ordina
    MiniMax H3 and H3 Max use `duration` / `resolution`; Max supports 480P / 768P and 5–15 integer seconds. Both reject audio-only references and do not accept `generateAudio`.
    Agnes Video 2.5 uses `seconds` / `size` / `ratio`, supports 4–12 integer seconds and 720P / 1080P / 1K / 2K (1K requires 1:1). It permits audio-only references and a last frame without a first frame. Agnes Image 2.5 Flash uses `size` / `ratio` / `imageAssetIds` and supports 1K / 2K / 3K / 4K. Agnes accepts neither `generateAudio` nor `outputFormat`, and never receives Seedream `imageUrls`. Use the selected model's schema; do not rename fields or invent aliases.
    Select `seed-audio-1.0` for Seed Audio capability discovery, but omit `model` from the Seed Audio request body as indicated by `modelFieldInRequest: false`.
-3. For local media, MCP must call `asset_upload_prepare`, explain the complete target and file list in the user's current language, obtain one explicit confirmation, then call `asset_upload_execute` with the returned `uploadPlanId` and `confirmed: true`. CLI `holycrab assets upload FILE [FILE ...]` performs the same preview and one-confirmation flow. Query `asset_get` or `holycrab assets get|wait` until `ready: true` (`step: UPLOADED_TO_ARK`); upload registration alone is not readiness.
+3. For local media, MCP must call `asset_upload_prepare`, explain the complete target and file list in the user's current language, obtain one explicit confirmation, then call `asset_upload_execute` with the returned `uploadPlanId` and `confirmed: true`. CLI `holycrab assets upload FILE [FILE ...]` performs the same preview and one-confirmation flow. Query `asset_get` or `holycrab assets get|wait` to inspect processing. `ready: true` (`step: UPLOADED_TO_ARK`) describes processing, not universal model suitability. Estimate against the selected model and respect backend validation. Missing, pending or failed metadata alone must not block generation locally.
 4. Call `generation_estimate` or `holycrab generate estimate`. Tell the user the model, output specification, duration, and estimated credit.
-5. Wait for explicit confirmation. Create one new stable `attemptId` for that draw, then call `generation_create` once with `confirmed: true` and that ID, or run `holycrab generate create ... --yes` once.
+5. Wait for explicit confirmation. Create one new stable `attemptId` for that draw, then call `generation_create` once with `confirmed: true`, that ID, and `approvedCredits` equal to the confirmed `estimate.frozenCredit` (including zero), or run `holycrab generate create ... --yes --approved-credits AMOUNT` once. The CLI estimates again before submission and refuses a changed amount. Review and obtain new confirmation after a price change; never silently accept it. The backend still determines the final charge; this check is not an atomic price reservation.
 6. Save the returned task ID. Query it with `generation_get`, `generation_list`, or `holycrab tasks get|list|wait`.
 
 Follow the user-facing reply rules above. Explain the outcome and applicable `nextAction`; show its command only when non-null. A null command does not itself mean an error or a missing choice: ask only for information actually needed. Never invent a path, ID, request, or command. Ctrl+C stops local waiting, not the online task; reconcile interrupted writes instead of repeating them.
@@ -83,3 +91,20 @@ Real-person uploads accept JPG/JPEG, PNG, WEBP, GIF, HEIC, MP4, and MOV only; au
 - Do not invent output URLs or retry a paid operation during polling.
 
 The bundled [public capability manifest](references/capabilities.json) is the release snapshot for discovery. Prefer the installed CLI/MCP response because it identifies the snapshot version in its output.
+
+## Recover local upload records
+
+Use `asset_upload_plan_get` with `uploadPlanId`, or `holycrab assets uploads get PLAN_ID`, to inspect the retained batch without creating anything. An executed plan cannot be reused. `executing` is uncertain after a crash; preserve the known asset IDs and query them. The CLI freezes all confirmed bytes before the first upload, using temporary disk space equal to the batch size.
+
+Mutation results can set MCP `isError: true` while retaining `structuredContent`, known IDs and `nextAction`. Read these fields before explaining the outcome. This flag never authorizes an automatic retry. A successful read of a failed task or upload record has `isError: false`. When `localStateSaved: false`, retain the returned IDs in the user-facing result and query the same resources; do not repeat the mutation.
+
+
+## Server-owned material validation
+
+Use the versioned capability snapshot for discovery and request shape. Let the service judge material ownership, format, size, dimensions, frame rate, codecs, reference count, combinations and prompt-reference mentions. Explain returned `errors[]` using `requestPath`, `assetId`/`assetIds`, `field`, `actual` and `rule`; keep `requestId` for troubleshooting. Do not turn `retryable: true` into an automatic reupload, resubmission or paid retry.
+
+Display known metadata and preserve unknowns. Use `asset_metadata_retry` or `holycrab assets metadata retry ASSET_ID` only when the user requests re-reading metadata. This is a single explicit request; HTTP success does not mean the probe is ready, and the server may retain the state during cooldown.
+
+Image requests accept `imageAssetIds` and `imageUrls`; nonempty IDs take precedence. Audio references accept `{assetId,type:"audio"|"image"}`, `{audio_url}` or `{image_url}`; omit `model` from the Seed Audio request body. Legacy inline Base64/speaker sources require an explicitly confirmed upload and a new ID/URL request; never upload implicitly.
+
+Berry models are `berry-1.0`, `berry-1.0-turbo`, `berry-1.0-pro`, and `berry-1.0-pro-turbo`. Use the selected schema: `audio` controls output audio, defaults are 5 seconds / 1080p / adaptive / audio enabled. All support 2–30 integer seconds. Ordinary/Turbo support 480p/720p/1080p; Pro/Pro Turbo support 1080p/2k/4k. Do not substitute `generateAudio`, `seconds` or `size`.

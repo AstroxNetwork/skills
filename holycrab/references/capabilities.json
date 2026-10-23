@@ -2,45 +2,166 @@
   "schemaVersion": 1,
   "source": {
     "name": "HolyCrab Public Capability Registry",
-    "version": "2026-10-09",
-    "publishedAt": "2026-10-09"
+    "version": "2026-10-23",
+    "publishedAt": "2026-10-23"
   },
   "requestSchemas": {
     "seedanceVideo": {
       "type": "object",
-      "required": ["model", "prompt", "duration", "resolution"],
+      "required": [
+        "model",
+        "prompt",
+        "duration",
+        "resolution"
+      ],
       "additionalProperties": false,
       "properties": {
-        "model": {"type": "string", "enum": ["seedance-2-0", "seedance-2-0-fast", "seedance-2-0-mini", "dreamina-seedance-2-5-260628"]},
-        "prompt": {"type": "string"},
-        "videoTaskType": {"type": "string", "enum": ["reference", "frames", "edit", "extend"]},
-        "sourceVideoAssetId": {"type": "string"},
-        "ratio": {"type": "string", "enum": ["source", "adaptive", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"]},
-        "duration": {"type": "integer", "description": "Model and task-type limits are listed on the selected capability."},
-        "resolution": {"type": "string", "enum": ["480p", "720p", "1080p", "4k"]},
-        "generateAudio": {"type": "boolean", "default": true},
-        "imageAssetIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "videoAssetIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "audioAssetIds": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
-        "firstFrameAssetId": {"type": "string"},
-        "lastFrameAssetId": {"type": "string"}
+        "model": {
+          "type": "string",
+          "enum": [
+            "seedance-2-0",
+            "seedance-2-0-fast",
+            "seedance-2-0-mini",
+            "dreamina-seedance-2-5-260628"
+          ]
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "videoTaskType": {
+          "type": "string",
+          "enum": [
+            "reference",
+            "frames",
+            "edit",
+            "extend"
+          ]
+        },
+        "sourceVideoAssetId": {
+          "type": "string"
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "source",
+            "adaptive",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16",
+            "21:9"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "description": "Model and task-type limits are listed on the selected capability."
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "480p",
+            "720p",
+            "1080p",
+            "4k"
+          ]
+        },
+        "generateAudio": {
+          "type": "boolean",
+          "default": true
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "videoAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "audioAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "firstFrameAssetId": {
+          "type": "string"
+        },
+        "lastFrameAssetId": {
+          "type": "string"
+        }
       }
     },
     "minimaxVideo": {
       "type": "object",
-      "required": ["model", "prompt", "duration", "resolution"],
+      "required": [
+        "model",
+        "prompt",
+        "duration",
+        "resolution"
+      ],
       "additionalProperties": false,
       "properties": {
-        "model": {"type": "string", "const": "MiniMax-H3"},
-        "prompt": {"type": "string", "minLength": 1},
-        "resolution": {"type": "string", "enum": ["768P", "2K"]},
-        "duration": {"type": "integer", "minimum": 4, "maximum": 15},
-        "ratio": {"type": "string", "enum": ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]},
-        "imageAssetIds": {"type": "array", "maxItems": 9, "items": {"type": "string"}, "uniqueItems": true},
-        "videoAssetIds": {"type": "array", "maxItems": 3, "items": {"type": "string"}, "uniqueItems": true},
-        "audioAssetIds": {"type": "array", "maxItems": 3, "items": {"type": "string"}, "uniqueItems": true},
-        "firstFrameAssetId": {"type": "string"},
-        "lastFrameAssetId": {"type": "string"}
+        "model": {
+          "type": "string",
+          "const": "MiniMax-H3"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "768P",
+            "2K"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 15
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "adaptive",
+            "21:9",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16"
+          ]
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "videoAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "audioAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "firstFrameAssetId": {
+          "type": "string"
+        },
+        "lastFrameAssetId": {
+          "type": "string"
+        }
       }
     },
     "minimaxMaxVideo": {
@@ -87,27 +208,21 @@
         },
         "imageAssetIds": {
           "type": "array",
-          "maxItems": 9,
           "items": {
             "type": "string"
-          },
-          "uniqueItems": true
+          }
         },
         "videoAssetIds": {
           "type": "array",
-          "maxItems": 3,
           "items": {
             "type": "string"
-          },
-          "uniqueItems": true
+          }
         },
         "audioAssetIds": {
           "type": "array",
-          "maxItems": 3,
           "items": {
             "type": "string"
-          },
-          "uniqueItems": true
+          }
         },
         "firstFrameAssetId": {
           "type": "string"
@@ -163,30 +278,24 @@
         },
         "imageAssetIds": {
           "type": "array",
-          "maxItems": 8,
           "items": {
             "type": "string",
             "minLength": 1
-          },
-          "uniqueItems": true
+          }
         },
         "videoAssetIds": {
           "type": "array",
-          "maxItems": 1,
           "items": {
             "type": "string",
             "minLength": 1
-          },
-          "uniqueItems": true
+          }
         },
         "audioAssetIds": {
           "type": "array",
-          "maxItems": 3,
           "items": {
             "type": "string",
             "minLength": 1
-          },
-          "uniqueItems": true
+          }
         },
         "firstFrameAssetId": {
           "type": "string",
@@ -240,54 +349,141 @@
         },
         "imageAssetIds": {
           "type": "array",
-          "maxItems": 14,
           "items": {
             "type": "string",
             "minLength": 1
-          },
-          "uniqueItems": true
+          }
         }
       }
     },
     "imageGeneration": {
       "type": "object",
-      "required": ["model", "prompt"],
+      "required": [
+        "model",
+        "prompt"
+      ],
       "additionalProperties": false,
       "properties": {
-        "model": {"type": "string", "enum": ["seedream-5-0-pro-260628", "seedream-5-0-lite-260128", "seedream-4-5-251128"]},
-        "prompt": {"type": "string", "minLength": 1},
-        "size": {"type": "string", "description": "Use a named size listed on the selected capability or WIDTHxHEIGHT."},
-        "aspectRatio": {"type": "string", "enum": ["auto", "21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16"]},
-        "resolution": {"type": "string", "enum": ["1k", "2k", "3k", "4k"]},
-        "imageUrls": {"type": "array", "maxItems": 14, "items": {"type": "string", "format": "uri"}},
-        "outputFormat": {"type": "string", "enum": ["jpeg", "png"], "default": "jpeg"}
+        "model": {
+          "type": "string",
+          "enum": [
+            "seedream-5-0-pro-260628",
+            "seedream-5-0-lite-260128",
+            "seedream-4-5-251128"
+          ]
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "string",
+          "description": "Use a named size listed on the selected capability or WIDTHxHEIGHT."
+        },
+        "aspectRatio": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "21:9",
+            "16:9",
+            "3:2",
+            "4:3",
+            "1:1",
+            "3:4",
+            "2:3",
+            "9:16"
+          ]
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "1k",
+            "2k",
+            "3k",
+            "4k"
+          ]
+        },
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "outputFormat": {
+          "type": "string",
+          "enum": [
+            "jpeg",
+            "png"
+          ],
+          "default": "jpeg"
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "audioGeneration": {
       "type": "object",
-      "required": ["textPrompt"],
+      "required": [
+        "textPrompt"
+      ],
       "additionalProperties": false,
       "properties": {
-        "textPrompt": {"type": "string", "minLength": 1, "maxLength": 3000},
+        "textPrompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 3000,
+          "lengthUnit": "utf16"
+        },
         "references": {
           "type": "array",
-          "maxItems": 3,
           "items": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "speaker": {"type": "string"},
-              "audio_data": {"type": "string", "description": "Raw Base64 without a data URL prefix."},
-              "audio_url": {"type": "string", "format": "uri"},
-              "image_data": {"type": "string", "description": "Raw Base64 without a data URL prefix."},
-              "image_url": {"type": "string", "format": "uri"}
+              "assetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "audio",
+                  "image"
+                ]
+              },
+              "audio_url": {
+                "type": "string",
+                "minLength": 1,
+                "format": "uri"
+              },
+              "image_url": {
+                "type": "string",
+                "minLength": 1,
+                "format": "uri"
+              }
             },
             "oneOf": [
-              {"required": ["speaker"]},
-              {"required": ["audio_data"]},
-              {"required": ["audio_url"]},
-              {"required": ["image_data"]},
-              {"required": ["image_url"]}
+              {
+                "required": [
+                  "assetId",
+                  "type"
+                ]
+              },
+              {
+                "required": [
+                  "audio_url"
+                ]
+              },
+              {
+                "required": [
+                  "image_url"
+                ]
+              }
             ]
           }
         },
@@ -295,11 +491,138 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "format": {"type": "string", "enum": ["wav", "mp3", "pcm", "ogg_opus"]},
-            "sample_rate": {"type": "integer", "enum": [8000, 16000, 24000, 32000, 44100, 48000]},
-            "speech_rate": {"type": "integer", "minimum": -50, "maximum": 100},
-            "loudness_rate": {"type": "integer", "minimum": -50, "maximum": 100},
-            "pitch_rate": {"type": "integer", "minimum": -12, "maximum": 12}
+            "format": {
+              "type": "string",
+              "enum": [
+                "wav",
+                "mp3",
+                "pcm",
+                "ogg_opus"
+              ]
+            },
+            "sample_rate": {
+              "type": "integer",
+              "enum": [
+                8000,
+                16000,
+                24000,
+                32000,
+                44100,
+                48000
+              ]
+            },
+            "speech_rate": {
+              "type": "integer",
+              "minimum": -50,
+              "maximum": 100
+            },
+            "loudness_rate": {
+              "type": "integer",
+              "minimum": -50,
+              "maximum": 100
+            },
+            "pitch_rate": {
+              "type": "integer",
+              "minimum": -12,
+              "maximum": 12
+            }
+          }
+        }
+      }
+    },
+    "mulerouterVideo": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": [
+            "berry-1.0",
+            "berry-1.0-pro",
+            "berry-1.0-turbo",
+            "berry-1.0-pro-turbo"
+          ]
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000,
+          "lengthUnit": "utf16"
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 30,
+          "default": 5
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "480p",
+            "720p",
+            "1080p",
+            "2k",
+            "4k"
+          ],
+          "default": "1080p"
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16",
+            "adaptive"
+          ],
+          "default": "adaptive"
+        },
+        "audio": {
+          "type": "boolean",
+          "default": true
+        },
+        "enableThinking": {
+          "type": "boolean",
+          "const": false,
+          "default": false
+        },
+        "watermark": {
+          "type": "boolean",
+          "const": false,
+          "default": false
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "firstFrameAssetId": {
+          "type": "string"
+        },
+        "lastFrameAssetId": {
+          "type": "string"
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "videoAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "audioAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
           }
         }
       }
@@ -310,61 +633,484 @@
       "id": "seedance-2-0",
       "label": "Seedance 2.0",
       "requestSchemaRef": "seedanceVideo",
-      "resolutions": ["480p", "720p", "1080p", "4k"],
-      "durationSeconds": {"min": 4, "max": 15},
-      "taskTypes": ["reference", "frames"],
-      "referenceLimits": {"images": 9, "videos": 3, "audio": 3, "combinedVideoSeconds": 15, "combinedAudioSeconds": 15},
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p",
+        "4k"
+      ],
+      "durationSeconds": {
+        "min": 4,
+        "max": 15
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audio": 3,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15
+      },
       "generateAudioSupported": true,
-      "generateAudioDefault": true
+      "generateAudioDefault": true,
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 209715200,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          }
+        }
+      },
+      "rules": {
+        "framesAndReferencesMutuallyExclusive": true
+      }
     },
     {
       "id": "seedance-2-0-fast",
       "label": "Seedance 2.0 Fast",
       "requestSchemaRef": "seedanceVideo",
-      "resolutions": ["480p", "720p"],
-      "durationSeconds": {"min": 4, "max": 15},
-      "taskTypes": ["reference", "frames"],
-      "referenceLimits": {"images": 9, "videos": 3, "audio": 3, "combinedVideoSeconds": 15, "combinedAudioSeconds": 15},
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "durationSeconds": {
+        "min": 4,
+        "max": 15
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audio": 3,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15
+      },
       "generateAudioSupported": true,
-      "generateAudioDefault": true
+      "generateAudioDefault": true,
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 209715200,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          }
+        }
+      },
+      "rules": {
+        "framesAndReferencesMutuallyExclusive": true
+      }
     },
     {
       "id": "seedance-2-0-mini",
       "label": "Seedance 2.0 Mini",
       "requestSchemaRef": "seedanceVideo",
-      "resolutions": ["480p", "720p"],
-      "durationSeconds": {"min": 4, "max": 15},
-      "taskTypes": ["reference", "frames"],
-      "referenceLimits": {"images": 9, "videos": 3, "audio": 3, "combinedVideoSeconds": 15, "combinedAudioSeconds": 15},
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "durationSeconds": {
+        "min": 4,
+        "max": 15
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audio": 3,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15
+      },
       "generateAudioSupported": true,
-      "generateAudioDefault": true
+      "generateAudioDefault": true,
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 209715200,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          }
+        }
+      },
+      "rules": {
+        "framesAndReferencesMutuallyExclusive": true
+      }
     },
     {
       "id": "dreamina-seedance-2-5-260628",
       "label": "Seedance 2.5",
       "requestSchemaRef": "seedanceVideo",
-      "resolutions": ["480p", "720p", "1080p"],
-      "durationSeconds": {"min": 4, "max": 30},
-      "taskTypes": ["reference", "frames", "edit", "extend"],
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "durationSeconds": {
+        "min": 4,
+        "max": 30
+      },
+      "taskTypes": [
+        "reference",
+        "frames",
+        "edit",
+        "extend"
+      ],
       "generateAudioSupported": true,
       "generateAudioDefault": true,
-      "ratios": ["source", "adaptive", "16:9", "4:3", "1:1", "3:4", "9:16", "21:9"],
-      "forcedAdaptiveTaskTypes": ["frames", "edit", "extend"],
-      "referenceLimits": {"images": 30, "videos": 10, "audio": 10, "total": 50, "combinedVideoSeconds": 30, "combinedAudioSeconds": 30},
+      "ratios": [
+        "source",
+        "adaptive",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "forcedAdaptiveTaskTypes": [
+        "frames",
+        "edit",
+        "extend"
+      ],
+      "referenceLimits": {
+        "images": 30,
+        "videos": 10,
+        "audio": 10,
+        "total": 50,
+        "combinedVideoSeconds": 30,
+        "combinedAudioSeconds": 30
+      },
       "sourceVideoRules": {
-        "edit": {"sourceMinSeconds": 4, "sourceMaxSeconds": 30, "requestDuration": -1},
-        "extend": {"sourceMinSeconds": 2, "sourceMaxSeconds": 30, "requestDurationMin": 4, "requestDurationMax": 30}
+        "edit": {
+          "sourceMinSeconds": 4,
+          "sourceMaxSeconds": 30,
+          "requestDuration": -1
+        },
+        "extend": {
+          "sourceMinSeconds": 2,
+          "sourceMaxSeconds": 30,
+          "requestDurationMin": 4,
+          "requestDurationMax": 30
+        }
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 209715200,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 30
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          },
+          "pixelCount": {
+            "min": 409600,
+            "max": 8295044
+          },
+          "frameRate": {
+            "min": 24,
+            "max": 60
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 30
+          }
+        }
+      },
+      "rules": {
+        "framesAndReferencesMutuallyExclusive": true
       }
     },
     {
       "id": "MiniMax-H3",
       "label": "MiniMax H3",
       "requestSchemaRef": "minimaxVideo",
-      "resolutions": ["768P", "2K"],
-      "durationSeconds": {"min": 4, "max": 15},
-      "taskTypes": ["reference", "frames"],
-      "ratios": ["adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
-      "referenceLimits": {"images": 9, "videos": 3, "audio": 3, "combinedVideoSeconds": 15, "combinedAudioSeconds": 15},
+      "resolutions": [
+        "768P",
+        "2K"
+      ],
+      "durationSeconds": {
+        "min": 4,
+        "max": 15
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "adaptive",
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audio": 3,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15
+      },
       "rules": {
         "textOnlyRequiresConcreteRatio": true,
         "frameModeForcesAdaptive": true,
@@ -372,6 +1118,92 @@
         "framesAndReferencesMutuallyExclusive": true,
         "audioOnlyReference": false,
         "generateAudioSupported": false
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 52428800,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          },
+          "frameRate": {
+            "min": 23.976,
+            "max": 60
+          },
+          "videoCodecs": [
+            "h264",
+            "hevc"
+          ],
+          "audioCodecs": [
+            "aac",
+            "mp3"
+          ]
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          }
+        }
       }
     },
     {
@@ -413,6 +1245,92 @@
         "framesAndReferencesMutuallyExclusive": true,
         "audioOnlyReference": false,
         "generateAudioSupported": false
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 52428800,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          },
+          "frameRate": {
+            "min": 23.976,
+            "max": 60
+          },
+          "videoCodecs": [
+            "h264",
+            "hevc"
+          ],
+          "audioCodecs": [
+            "aac",
+            "mp3"
+          ]
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          }
+        }
       }
     },
     {
@@ -449,7 +1367,9 @@
         "audio": 3,
         "combinedVideoSeconds": 12,
         "combinedAudioSecondsMin": 2,
-        "combinedAudioSeconds": 12
+        "combinedAudioSeconds": 12,
+        "combinedImagesBytesExclusive": 50000000,
+        "combinedAudioBytesExclusive": 64000000
       },
       "rules": {
         "lastFrameWithoutFirstFrame": true,
@@ -457,6 +1377,527 @@
         "audioOnlyReference": true,
         "generateAudioSupported": false,
         "size1KRequiresSquareRatio": true
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "max": 15000000,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 50000000,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 12
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          },
+          "frameRate": {
+            "min": 24,
+            "max": 60
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "max": 15000000,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 12
+          }
+        }
+      }
+    },
+    {
+      "id": "berry-1.0",
+      "label": "Berry 1.0",
+      "requestSchemaRef": "mulerouterVideo",
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "durationSeconds": {
+        "min": 2,
+        "max": 30
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "adaptive"
+      ],
+      "promptMaxCharacters": 20000,
+      "promptLengthUnit": "utf16",
+      "audioSupported": true,
+      "audioDefault": true,
+      "referenceLimits": {
+        "images": 10,
+        "videos": 5,
+        "audio": 5,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15,
+        "referenceVideoPlusOutputSeconds": 30
+      },
+      "rules": {
+        "lastFrameWithoutFirstFrame": false,
+        "framesAndReferencesMutuallyExclusive": true,
+        "audioOnlyReference": true
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp"
+          ],
+          "sizeBytes": {
+            "max": 20000000,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 240,
+            "max": 8000
+          },
+          "height": {
+            "min": 240,
+            "max": 8000
+          },
+          "aspectRatio": {
+            "min": 0.125,
+            "max": 8
+          },
+          "pngTransparencySupported": false
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 100000000,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 1,
+            "max": 15
+          },
+          "width": {
+            "min": 240,
+            "max": 4096
+          },
+          "height": {
+            "min": 240,
+            "max": 4096
+          },
+          "aspectRatio": {
+            "min": 0.125,
+            "max": 8
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "max": 15000000,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 1,
+            "max": 15
+          }
+        }
+      }
+    },
+    {
+      "id": "berry-1.0-pro",
+      "label": "Berry 1.0 Pro",
+      "requestSchemaRef": "mulerouterVideo",
+      "resolutions": [
+        "1080p",
+        "2k",
+        "4k"
+      ],
+      "durationSeconds": {
+        "min": 2,
+        "max": 30
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "adaptive"
+      ],
+      "promptMaxCharacters": 20000,
+      "promptLengthUnit": "utf16",
+      "audioSupported": true,
+      "audioDefault": true,
+      "referenceLimits": {
+        "images": 10,
+        "videos": 5,
+        "audio": 5,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15,
+        "referenceVideoPlusOutputSeconds": 30
+      },
+      "rules": {
+        "lastFrameWithoutFirstFrame": false,
+        "framesAndReferencesMutuallyExclusive": true,
+        "audioOnlyReference": true
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp"
+          ],
+          "sizeBytes": {
+            "max": 20000000,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 240,
+            "max": 8000
+          },
+          "height": {
+            "min": 240,
+            "max": 8000
+          },
+          "aspectRatio": {
+            "min": 0.125,
+            "max": 8
+          },
+          "pngTransparencySupported": false
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 100000000,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 1,
+            "max": 15
+          },
+          "width": {
+            "min": 240,
+            "max": 4096
+          },
+          "height": {
+            "min": 240,
+            "max": 4096
+          },
+          "aspectRatio": {
+            "min": 0.125,
+            "max": 8
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "max": 15000000,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 1,
+            "max": 15
+          }
+        }
+      }
+    },
+    {
+      "id": "berry-1.0-turbo",
+      "label": "Berry 1.0 Turbo",
+      "requestSchemaRef": "mulerouterVideo",
+      "resolutions": [
+        "480p",
+        "720p",
+        "1080p"
+      ],
+      "durationSeconds": {
+        "min": 2,
+        "max": 30
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "adaptive"
+      ],
+      "promptMaxCharacters": 20000,
+      "promptLengthUnit": "utf16",
+      "audioSupported": true,
+      "audioDefault": true,
+      "referenceLimits": {
+        "images": 10,
+        "videos": 5,
+        "audio": 5,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15,
+        "referenceVideoPlusOutputSeconds": 30
+      },
+      "rules": {
+        "lastFrameWithoutFirstFrame": false,
+        "framesAndReferencesMutuallyExclusive": true,
+        "audioOnlyReference": true
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp"
+          ],
+          "sizeBytes": {
+            "max": 20000000,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 240,
+            "max": 8000
+          },
+          "height": {
+            "min": 240,
+            "max": 8000
+          },
+          "aspectRatio": {
+            "min": 0.125,
+            "max": 8
+          },
+          "pngTransparencySupported": false
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 100000000,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 1,
+            "max": 15
+          },
+          "width": {
+            "min": 240,
+            "max": 4096
+          },
+          "height": {
+            "min": 240,
+            "max": 4096
+          },
+          "aspectRatio": {
+            "min": 0.125,
+            "max": 8
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "max": 15000000,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 1,
+            "max": 15
+          }
+        }
+      }
+    },
+    {
+      "id": "berry-1.0-pro-turbo",
+      "label": "Berry 1.0 Pro Turbo",
+      "requestSchemaRef": "mulerouterVideo",
+      "resolutions": [
+        "1080p",
+        "2k",
+        "4k"
+      ],
+      "durationSeconds": {
+        "min": 2,
+        "max": 30
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "adaptive"
+      ],
+      "promptMaxCharacters": 20000,
+      "promptLengthUnit": "utf16",
+      "audioSupported": true,
+      "audioDefault": true,
+      "referenceLimits": {
+        "images": 10,
+        "videos": 5,
+        "audio": 5,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15,
+        "referenceVideoPlusOutputSeconds": 30
+      },
+      "rules": {
+        "lastFrameWithoutFirstFrame": false,
+        "framesAndReferencesMutuallyExclusive": true,
+        "audioOnlyReference": true
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp"
+          ],
+          "sizeBytes": {
+            "max": 20000000,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 240,
+            "max": 8000
+          },
+          "height": {
+            "min": 240,
+            "max": 8000
+          },
+          "aspectRatio": {
+            "min": 0.125,
+            "max": 8
+          },
+          "pngTransparencySupported": false
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 100000000,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 1,
+            "max": 15
+          },
+          "width": {
+            "min": 240,
+            "max": 4096
+          },
+          "height": {
+            "min": 240,
+            "max": 4096
+          },
+          "aspectRatio": {
+            "min": 0.125,
+            "max": 8
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "max": 15000000,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 1,
+            "max": 15
+          }
+        }
       }
     }
   ],
@@ -465,35 +1906,196 @@
       "id": "seedream-5-0-pro-260628",
       "label": "Seedream 5.0 Pro",
       "requestSchemaRef": "imageGeneration",
-      "sizes": ["1K", "2K"],
-      "customSize": {"minPixels": 921600, "maxPixels": 4624220, "dimensionMultiple": 16, "minAspectRatio": "1:16", "maxAspectRatio": "16:1"},
-      "referenceLimits": {"images": 10, "maxBytesEach": 31457280, "minEdgePixelsExclusive": 14, "maxPixelsEach": 36000000},
-      "referenceFormats": ["jpeg", "png", "webp", "bmp", "tiff", "gif", "heic", "heif"],
+      "sizes": [
+        "1K",
+        "2K"
+      ],
+      "customSize": {
+        "minPixels": 921600,
+        "maxPixels": 4624220,
+        "dimensionMultiple": 16,
+        "minAspectRatio": "1:16",
+        "maxAspectRatio": "16:1"
+      },
+      "referenceLimits": {
+        "images": 10,
+        "maxBytesEach": 31457280
+      },
+      "referenceFormats": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp",
+        "tiff",
+        "gif",
+        "heic",
+        "heif"
+      ],
       "outputFormatSupported": true,
-      "outputFormats": ["jpeg", "png"],
-      "outputFormatDefault": "jpeg"
+      "outputFormats": [
+        "jpeg",
+        "png"
+      ],
+      "outputFormatDefault": "jpeg",
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        }
+      },
+      "referenceSelectionPriority": "nonempty imageAssetIds before imageUrls"
     },
     {
       "id": "seedream-5-0-lite-260128",
       "label": "Seedream 5.0 Lite",
       "requestSchemaRef": "imageGeneration",
-      "sizes": ["2K", "3K", "4K"],
-      "customSize": {"minPixels": 3686400, "maxPixels": 16777216, "minAspectRatio": "1:16", "maxAspectRatio": "16:1"},
-      "referenceLimits": {"images": 14, "maxBytesEach": 31457280, "minEdgePixelsExclusive": 14, "maxPixelsEach": 36000000},
-      "referenceFormats": ["jpeg", "png", "webp", "bmp", "tiff", "gif", "heic", "heif"],
+      "sizes": [
+        "2K",
+        "3K",
+        "4K"
+      ],
+      "customSize": {
+        "minPixels": 3686400,
+        "maxPixels": 16777216,
+        "minAspectRatio": "1:16",
+        "maxAspectRatio": "16:1"
+      },
+      "referenceLimits": {
+        "images": 14,
+        "maxBytesEach": 31457280
+      },
+      "referenceFormats": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp",
+        "tiff",
+        "gif",
+        "heic",
+        "heif"
+      ],
       "outputFormatSupported": true,
-      "outputFormats": ["jpeg", "png"],
-      "outputFormatDefault": "jpeg"
+      "outputFormats": [
+        "jpeg",
+        "png"
+      ],
+      "outputFormatDefault": "jpeg",
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        }
+      },
+      "referenceSelectionPriority": "nonempty imageAssetIds before imageUrls"
     },
     {
       "id": "seedream-4-5-251128",
       "label": "Seedream 4.5",
       "requestSchemaRef": "imageGeneration",
-      "sizes": ["2K", "4K"],
-      "customSize": {"minPixels": 3686400, "maxPixels": 16777216, "minAspectRatio": "1:16", "maxAspectRatio": "16:1"},
-      "referenceLimits": {"images": 14, "maxBytesEach": 31457280, "minEdgePixelsExclusive": 14, "maxPixelsEach": 36000000},
-      "referenceFormats": ["jpeg", "png", "webp", "bmp", "tiff", "gif", "heic", "heif"],
-      "outputFormatSupported": false
+      "sizes": [
+        "2K",
+        "4K"
+      ],
+      "customSize": {
+        "minPixels": 3686400,
+        "maxPixels": 16777216,
+        "minAspectRatio": "1:16",
+        "maxAspectRatio": "16:1"
+      },
+      "referenceLimits": {
+        "images": 14,
+        "maxBytesEach": 31457280
+      },
+      "referenceFormats": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp",
+        "tiff",
+        "gif",
+        "heic",
+        "heif"
+      ],
+      "outputFormatSupported": false,
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        }
+      },
+      "referenceSelectionPriority": "nonempty imageAssetIds before imageUrls"
     },
     {
       "id": "agnes-image-2.5-flash",
@@ -521,7 +2123,47 @@
       },
       "referenceFieldInRequest": "imageAssetIds",
       "outputFormatSupported": false,
-      "customSizeSupported": false
+      "customSizeSupported": false,
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          }
+        }
+      },
+      "referenceFormats": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp",
+        "tiff",
+        "gif",
+        "heic",
+        "heif"
+      ]
     }
   ],
   "audioModels": [
@@ -531,16 +2173,99 @@
       "requestSchemaRef": "audioGeneration",
       "modelFieldInRequest": false,
       "textPromptMaxCharacters": 3000,
-      "formats": ["wav", "mp3", "pcm", "ogg_opus"],
-      "sampleRates": [8000, 16000, 24000, 32000, 44100, 48000],
-      "speechRate": {"min": -50, "max": 100},
-      "loudnessRate": {"min": -50, "max": 100},
-      "pitchRate": {"min": -12, "max": 12},
-      "outputDurationSeconds": {"max": 120},
-      "referenceLimits": {"audio": 3, "images": 1, "audioSecondsEachMax": 30, "audioBytesEachMax": 10485760, "imageBytesEachMax": 10485760, "imagesAndAudioMutuallyExclusive": true},
-      "promptRules": {"audioReferencesRequireEveryMention": true, "audioMentionPrefixes": ["@Audio", "@音频"], "imageMentionsForbidden": true, "mentionsWithoutReferencesForbidden": true},
-      "referenceAudioFormats": ["wav", "mp3", "pcm", "ogg"],
-      "referenceImageFormats": ["jpeg", "png", "webp"]
+      "formats": [
+        "wav",
+        "mp3",
+        "pcm",
+        "ogg_opus"
+      ],
+      "sampleRates": [
+        8000,
+        16000,
+        24000,
+        32000,
+        44100,
+        48000
+      ],
+      "speechRate": {
+        "min": -50,
+        "max": 100
+      },
+      "loudnessRate": {
+        "min": -50,
+        "max": 100
+      },
+      "pitchRate": {
+        "min": -12,
+        "max": 12
+      },
+      "outputDurationSeconds": {
+        "max": 120
+      },
+      "referenceLimits": {
+        "audio": 3,
+        "images": 1,
+        "audioSecondsEachMax": 30,
+        "audioBytesEachMax": 10485760,
+        "imageBytesEachMax": 10485760,
+        "imagesAndAudioMutuallyExclusive": true
+      },
+      "promptRules": {
+        "audioReferencesRequireEveryMention": true,
+        "audioMentionPrefixes": [
+          "@Audio",
+          "@音频"
+        ],
+        "imageMentionsForbidden": true,
+        "mentionsWithoutReferencesForbidden": true
+      },
+      "referenceAudioFormats": [
+        "wav",
+        "mp3",
+        "pcm",
+        "ogg",
+        "opus"
+      ],
+      "referenceImageFormats": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp"
+      ],
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3",
+            "pcm",
+            "ogg",
+            "opus"
+          ],
+          "durationSeconds": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 30
+          },
+          "sizeBytes": {
+            "max": 10485760,
+            "maxInclusive": true
+          }
+        },
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp"
+          ],
+          "sizeBytes": {
+            "max": 10485760,
+            "maxInclusive": true
+          }
+        }
+      }
     }
   ]
 }

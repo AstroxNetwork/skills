@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "version": "0.6.0",
+  "files": [
+    {
+      "source": "holycrab/scripts/holycrab_cli.py",
+      "stage": "holycrab_cli.py",
+      "target": "holycrab_cli.py",
+      "kind": "runtime",
+      "legacyVariable": "HOLYCRAB_CLI",
+      "sha256": "ce732cda8548c77b53b513321fad5a52d5c695a02b04a9d5f45b240f302ab2fb"
+    },
+    {
+      "source": "holycrab/references/capabilities.json",
+      "stage": "capabilities.json",
+      "target": "references/capabilities.json",
+      "kind": "runtime",
+      "legacyVariable": "CAPABILITIES",
+      "sha256": "9a3b05927bfbc75a13f44bd7ee5483d5f4dc3447b65b6d3b8a5ce477a61bcdee"
+    },
+    {
+      "source": "bin/holycrab",
+      "stage": "holycrab",
+      "target": "../../bin/holycrab",
+      "kind": "launcher",
+      "legacyVariable": "LAUNCHER",
+      "sha256": "e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1"
+    },
+    {
+      "source": "holycrab/SKILL.md",
+      "stage": "SKILL.md",
+      "target": "SKILL.md",
+      "kind": "skill",
+      "legacyVariable": "SKILL",
+      "sha256": "69032d13a515fdba63ac79b4bd66a94df131eeec7420c0f2f661fdef724926e8"
+    },
+    {
+      "source": "holycrab/agents/openai.yaml",
+      "stage": "openai.yaml",
+      "target": "agents/openai.yaml",
+      "kind": "skill",
+      "legacyVariable": "OPENAI_YAML",
+      "sha256": "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7"
+    },
+    {
+      "source": "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl",
+      "stage": "segno.whl",
+      "target": "vendor/segno-1.6.6-py3-none-any.whl",
+      "kind": "runtime",
+      "legacyVariable": "SEGNO",
+      "sha256": "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7"
+    },
+    {
+      "source": "holycrab/scripts/vendor/LICENSE.segno",
+      "stage": "LICENSE.segno",
+      "target": "vendor/LICENSE.segno",
+      "kind": "runtime",
+      "legacyVariable": "SEGNO_LICENSE",
+      "sha256": "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/__init__.py",
+      "stage": "holycrab_runtime/__init__.py",
+      "target": "holycrab_runtime/__init__.py",
+      "kind": "runtime",
+      "sha256": "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/capabilities.py",
+      "stage": "holycrab_runtime/capabilities.py",
+      "target": "holycrab_runtime/capabilities.py",
+      "kind": "runtime",
+      "sha256": "43585789f09a5d1e5f3d215c75f1fc888e6aa9fead3b09d4244f667301fd0f64"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/cli.py",
+      "stage": "holycrab_runtime/cli.py",
+      "target": "holycrab_runtime/cli.py",
+      "kind": "runtime",
+      "sha256": "c9a50861d2b56ccb691ded00639f6b5d72bdb2b1d9bbfa262cd672d4ba229d90"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/exports.py",
+      "stage": "holycrab_runtime/exports.py",
+      "target": "holycrab_runtime/exports.py",
+      "kind": "runtime",
+      "sha256": "d0dcf10cb10a719b2d8a5d32510c3a20608d5dd88fb14a4225d2d51d23c4a7c6"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/generation.py",
+      "stage": "holycrab_runtime/generation.py",
+      "target": "holycrab_runtime/generation.py",
+      "kind": "runtime",
+      "sha256": "578ab3976e6fe04dd66cf2bf542b64989dfbfe3994445c3a98c0f24e60d1c2a1"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/lifecycle.py",
+      "stage": "holycrab_runtime/lifecycle.py",
+      "target": "holycrab_runtime/lifecycle.py",
+      "kind": "runtime",
+      "sha256": "6f3898140d2e86a6dbc90574814e7a3fa32b5a09dade3ea909f8bae0787f475a"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/mcp.py",
+      "stage": "holycrab_runtime/mcp.py",
+      "target": "holycrab_runtime/mcp.py",
+      "kind": "runtime",
+      "sha256": "c72c8a50aa5a4419dcc2f0c45f46f8cf7dbe6afdddf3a5c31d8b93d06dbb08d9"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/presentation.py",
+      "stage": "holycrab_runtime/presentation.py",
+      "target": "holycrab_runtime/presentation.py",
+      "kind": "runtime",
+      "sha256": "0925e46fbf4ec01d156ab1071c43a8a6e227c22adfed9804316fd32b9b8ee530"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/real_human.py",
+      "stage": "holycrab_runtime/real_human.py",
+      "target": "holycrab_runtime/real_human.py",
+      "kind": "runtime",
+      "sha256": "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/results.py",
+      "stage": "holycrab_runtime/results.py",
+      "target": "holycrab_runtime/results.py",
+      "kind": "runtime",
+      "sha256": "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/settings.py",
+      "stage": "holycrab_runtime/settings.py",
+      "target": "holycrab_runtime/settings.py",
+      "kind": "runtime",
+      "sha256": "88327a0c0c4f3b4a204de07858de6ba0ec74fb0c464370b8746e6681259e5fb1"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/state.py",
+      "stage": "holycrab_runtime/state.py",
+      "target": "holycrab_runtime/state.py",
+      "kind": "runtime",
+      "sha256": "c87236d05ecdcefa64249aa3cf3fa4003918a887751f5469386531fefa330946"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/tasks.py",
+      "stage": "holycrab_runtime/tasks.py",
+      "target": "holycrab_runtime/tasks.py",
+      "kind": "runtime",
+      "sha256": "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/transport.py",
+      "stage": "holycrab_runtime/transport.py",
+      "target": "holycrab_runtime/transport.py",
+      "kind": "runtime",
+      "sha256": "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432"
+    },
+    {
+      "source": "holycrab/scripts/holycrab_runtime/uploads.py",
+      "stage": "holycrab_runtime/uploads.py",
+      "target": "holycrab_runtime/uploads.py",
+      "kind": "runtime",
+      "sha256": "4a1c21aa5df008841d1e0425991800ff36ed219ca82284f05deaadf8b0b79cc5"
+    }
+  ]
+}

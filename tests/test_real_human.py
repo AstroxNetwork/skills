@@ -41,10 +41,10 @@ class RealHumanTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.env = patch.dict(os.environ, {"HOLYCRAB_CONFIG_DIR": self.temp.name,
-                                          "HOLYCRAB_API_KEY": "test-api-secret"})
+                                          "HOLYCRAB_API_KEY": "test-api-secret", "HOLYCRAB_NO_UPDATE_CHECK": "1"})
         self.env.start()
         self.addCleanup(self.env.stop)
-        self.no_network = patch.object(cli, "send", side_effect=AssertionError("Unexpected API request"))
+        self.no_network = patch.object(cli._owner("send"), "send", side_effect=AssertionError("Unexpected API request"))
         self.send = self.no_network.start()
         self.addCleanup(self.no_network.stop)
 
@@ -120,7 +120,7 @@ class RealHumanTests(unittest.TestCase):
     def test_qr_failure_preserves_created_session_without_retry(self):
         self.send.side_effect = None
         self.send.return_value = session()
-        with patch.object(cli, "authorization_qr", side_effect=OSError("disk failed"), create=True):
+        with patch.object(cli._owner("authorization_qr"), "authorization_qr", side_effect=OSError("disk failed"), create=True):
             result = self.call("real_human_authorization_start", name="小林")
         self.assertFalse(result["isError"], result)
         self.assertEqual(result["structuredContent"]["h5Link"], LINK)
@@ -154,7 +154,7 @@ class RealHumanTests(unittest.TestCase):
     def test_cache_failure_does_not_block_remote_authorization_query(self):
         self.send.side_effect = None
         self.send.return_value = ok({"authorizationId": AUTH_ID, "status": "CREATED"})
-        with patch.object(cli, "authorization_cache_dir", side_effect=PermissionError("denied")):
+        with patch.object(cli._owner("authorization_cache_dir"), "authorization_cache_dir", side_effect=PermissionError("denied")):
             result = self.call("real_human_authorization_get", authorizationId=AUTH_ID)
         self.assertFalse(result["isError"], result)
         self.assertIn("warning", result["structuredContent"])
@@ -439,7 +439,7 @@ class AssetWorkflowTests(unittest.TestCase):
                                 ok({"arkAccountId": 77})]
         response = MagicMock()
         response.__enter__.return_value.status = 200
-        with patch.object(cli, "open_presigned_upload", return_value=response) as upload:
+        with patch.object(cli._owner("open_presigned_upload"), "open_presigned_upload", return_value=response) as upload:
             prepared = self.call("asset_upload_prepare", files=[str(path)], groupUniqId=GROUP_ID)
             self.assertFalse(prepared["isError"], prepared)
             result = self.call("asset_upload_execute", uploadPlanId=prepared["structuredContent"]["uploadPlanId"], confirmed=True)
@@ -458,7 +458,7 @@ class AssetWorkflowTests(unittest.TestCase):
         path = Path(self.temp.name) / "reference.jpg"
         path.write_bytes(b"\xff\xd8\xffimage")
         self.send.side_effect = [(404, {"message": "Group not found"})]
-        with patch.object(cli, "open_presigned_upload") as upload:
+        with patch.object(cli._owner("open_presigned_upload"), "open_presigned_upload") as upload:
             self.assertTrue(self.call("asset_upload_prepare", files=[str(path)], groupUniqId=GROUP_ID)["isError"])
         upload.assert_not_called()
         self.send.assert_called_once()
@@ -484,10 +484,10 @@ class AssetWorkflowTests(unittest.TestCase):
                                         "objectKey": "7/" + ASSET_ID + ".jpg", "uniqId": ASSET_ID}), outcome]
             response = MagicMock()
             response.__enter__.return_value.status = 200
-            with patch.object(cli, "open_presigned_upload", return_value=response) as upload:
+            with patch.object(cli._owner("open_presigned_upload"), "open_presigned_upload", return_value=response) as upload:
                 prepared = self.call("asset_upload_prepare", files=[str(path)], groupUniqId=GROUP_ID)
                 result = self.call("asset_upload_execute", uploadPlanId=prepared["structuredContent"]["uploadPlanId"], confirmed=True)
-            self.assertFalse(result["isError"])
+            self.assertTrue(result["isError"])
             failure = result["structuredContent"]["failedOrUnknown"]
             self.assertEqual(failure["state"], "unknown")
             text = json.dumps(result)
@@ -579,7 +579,7 @@ class AssetWorkflowTests(unittest.TestCase):
         path.write_bytes(b"\xff\xd8\xffoffline-fixture")
         upload_response = MagicMock()
         upload_response.__enter__.return_value.status = 200
-        with patch.object(cli, "open_presigned_upload", return_value=upload_response):
+        with patch.object(cli._owner("open_presigned_upload"), "open_presigned_upload", return_value=upload_response):
             prepared = self.call("asset_upload_prepare", files=[str(path)], groupUniqId=GROUP_ID)
             uploaded = self.call("asset_upload_execute", uploadPlanId=prepared["structuredContent"]["uploadPlanId"], confirmed=True)
         self.assertFalse(uploaded["isError"])

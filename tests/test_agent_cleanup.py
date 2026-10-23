@@ -80,7 +80,7 @@ class AgentCleanupTests(unittest.TestCase):
             self.assertEqual(any(item.startswith("MCP cleanup pending") for item in warnings), pending)
 
     def test_unavailable_client_has_manual_recovery_without_deletion(self):
-        with patch.object(cli, "find_agent_client", return_value=None), patch.object(cli.subprocess, "run") as run:
+        with patch.object(cli._owner("find_agent_client"), "find_agent_client", return_value=None), patch.object(cli.subprocess, "run") as run:
             warnings = cli.remove_managed_mcp_registrations(self.manifest(), "/chosen/bin/holycrab")
         run.assert_not_called()
         self.assertTrue(warnings[0].startswith("MCP cleanup pending for codex"))
@@ -109,7 +109,7 @@ class AgentCleanupTests(unittest.TestCase):
         self.assertEqual(command[-3:], ["mcp", "get", "holycrab"])
 
     def test_online_doctor_uses_the_same_exact_match(self):
-        with patch.object(cli, "load_installation", return_value=self.manifest()), \
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value=self.manifest()), \
                 patch.object(cli.shutil, "which", return_value="/clients/codex"), \
                 patch.object(cli.subprocess, "run", return_value=self.response(command="/chosen/bin/holycrab-other")):
             result = cli.mcp_registration_check("codex", "/chosen/bin/holycrab")
@@ -118,15 +118,15 @@ class AgentCleanupTests(unittest.TestCase):
     def test_optional_uninstalled_client_is_not_a_broken_registration(self):
         manifest = self.manifest('claude')
         manifest['agentRegistrations']['claude'].update(managed=False, executable=None)
-        with patch.object(cli, 'load_installation', return_value=manifest), \
-                patch.object(cli, 'find_agent_client', return_value=None):
+        with patch.object(cli._owner('load_installation'), 'load_installation', return_value=manifest), \
+                patch.object(cli._owner('find_agent_client'), 'find_agent_client', return_value=None):
             result = cli.mcp_registration_check('claude', '/chosen/bin/holycrab')
         self.assertTrue(result['ok'])
         self.assertFalse(result['installed'])
         self.assertEqual(result['status'], 'not-installed')
         manifest['agentRegistrations']['claude']['managed'] = True
-        with patch.object(cli, 'load_installation', return_value=manifest), \
-                patch.object(cli, 'find_agent_client', return_value=None):
+        with patch.object(cli._owner('load_installation'), 'load_installation', return_value=manifest), \
+                patch.object(cli._owner('find_agent_client'), 'find_agent_client', return_value=None):
             self.assertFalse(cli.mcp_registration_check('claude', '/chosen/bin/holycrab')['ok'])
 
     @unittest.skipIf(os.name == "nt", "Unix registration fixture; native PowerShell test covers Windows registration")
@@ -134,11 +134,11 @@ class AgentCleanupTests(unittest.TestCase):
         for previous, owned in (({}, False), (self.manifest(), True)):
             previous.update({"prefix": "/chosen", "managedBy": cli.INSTALLATION_MANAGER})
             current = {"prefix": "/chosen", "agents": ["codex"], "mcp": True}
-            with patch.object(cli, "load_installation", return_value=current), \
-                    patch.object(cli, "read_json_file", return_value=previous), \
+            with patch.object(cli._owner("load_installation"), "load_installation", return_value=current), \
+                    patch.object(cli._owner("read_json_file"), "read_json_file", return_value=previous), \
                     patch.object(cli.shutil, "which", return_value="/clients/codex"), \
                     patch.object(cli.subprocess, "run", return_value=self.response()) as run, \
-                    patch.object(cli, "write_private_json") as write:
+                    patch.object(cli._owner("write_private_json"), "write_private_json") as write:
                 cli.register_installer_mcp("codex", None, "/chosen/bin/holycrab", ["mcp", "serve"], "old.json")
             self.assertEqual(run.call_count, 1)
             record = write.call_args.args[1]["agentRegistrations"]["codex"]
@@ -148,11 +148,11 @@ class AgentCleanupTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "Unix registration fixture; native PowerShell test covers Windows registration")
     def test_new_registration_is_checked_and_recorded_without_secrets(self):
         missing = MagicMock(returncode=1, stdout="", stderr="No MCP server named 'holycrab' found.")
-        with patch.object(cli, "load_installation", return_value={"prefix": "/chosen"}), \
-                patch.object(cli, "read_json_file", return_value={}), \
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value={"prefix": "/chosen"}), \
+                patch.object(cli._owner("read_json_file"), "read_json_file", return_value={}), \
                 patch.object(cli.shutil, "which", return_value="/clients/codex"), \
                 patch.object(cli.subprocess, "run", side_effect=[missing, MagicMock(returncode=0), self.response()]) as run, \
-                patch.object(cli, "write_private_json") as write:
+                patch.object(cli._owner("write_private_json"), "write_private_json") as write:
             cli.register_installer_mcp("codex", None, "/chosen/bin/holycrab", ["mcp", "serve"], "old.json")
         self.assertEqual(run.call_count, 3)
         record = write.call_args.args[1]["agentRegistrations"]["codex"]
@@ -161,11 +161,11 @@ class AgentCleanupTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt", "Unix registration fixture; native PowerShell test covers Windows registration")
     def test_unknown_inspection_never_overwrites_registration(self):
-        with patch.object(cli, "load_installation", return_value={"prefix": "/chosen"}), \
-                patch.object(cli, "read_json_file", return_value={}), \
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value={"prefix": "/chosen"}), \
+                patch.object(cli._owner("read_json_file"), "read_json_file", return_value={}), \
                 patch.object(cli.shutil, "which", return_value="/clients/codex"), \
                 patch.object(cli.subprocess, "run", return_value=MagicMock(returncode=1, stdout="", stderr="denied")) as run, \
-                patch.object(cli, "write_private_json") as write:
+                patch.object(cli._owner("write_private_json"), "write_private_json") as write:
             cli.register_installer_mcp("codex", None, "/chosen/bin/holycrab", ["mcp", "serve"], "old.json")
         self.assertEqual(run.call_count, 1)
         self.assertFalse(write.call_args.args[1]["agentRegistrations"]["codex"]["managed"])
@@ -173,11 +173,11 @@ class AgentCleanupTests(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "Unix registration fixture; native PowerShell test covers Windows registration")
     def test_legacy_installation_gains_ownership_record(self):
         previous = {"prefix": "/chosen", "managedBy": cli.INSTALLATION_MANAGER, "mcp": True, "agents": ["codex"]}
-        with patch.object(cli, "load_installation", return_value={"prefix": "/chosen"}), \
-                patch.object(cli, "read_json_file", return_value=previous), \
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value={"prefix": "/chosen"}), \
+                patch.object(cli._owner("read_json_file"), "read_json_file", return_value=previous), \
                 patch.object(cli.shutil, "which", return_value="/clients/codex"), \
                 patch.object(cli.subprocess, "run", return_value=self.response()), \
-                patch.object(cli, "write_private_json") as write:
+                patch.object(cli._owner("write_private_json"), "write_private_json") as write:
             cli.register_installer_mcp("codex", None, "/chosen/bin/holycrab", ["mcp", "serve"], "old.json")
         self.assertTrue(write.call_args.args[1]["agentRegistrations"]["codex"]["managed"])
 
@@ -188,14 +188,14 @@ class AgentCleanupTests(unittest.TestCase):
             launcher = root / "bin" / "holycrab"
             args = cli.build_parser().parse_args(["uninstall", "--yes"])
             output = io.StringIO()
-            with patch.object(cli, "validated_uninstall_manifest", return_value=({}, root, library, launcher)), \
-                    patch.object(cli, "remove_managed_mcp_registrations", return_value=["MCP cleanup pending for codex: client unavailable"]), \
-                    patch.object(cli, "remove_managed_skill_files", return_value=[]), \
-                    patch.object(cli, "remove_managed_path_registration", return_value=["PATH registration was kept because the installer did not add it"]), \
-                    patch.object(cli, "schedule_windows_program_cleanup"), \
-                    patch.object(cli, "config_dir", return_value=root / "config"), redirect_stdout(output):
+            with patch.object(cli._owner("validated_uninstall_manifest"), "validated_uninstall_manifest", return_value=({}, root, library, launcher)), \
+                    patch.object(cli._owner("remove_managed_mcp_registrations"), "remove_managed_mcp_registrations", return_value=["MCP cleanup pending for codex: client unavailable"]), \
+                    patch.object(cli._owner("remove_managed_skill_files"), "remove_managed_skill_files", return_value=[]), \
+                    patch.object(cli._owner("remove_managed_path_registration"), "remove_managed_path_registration", return_value=["PATH registration was kept because the installer did not add it"]), \
+                    patch.object(cli._owner("schedule_windows_program_cleanup"), "schedule_windows_program_cleanup"), \
+                    patch.object(cli._owner("config_dir"), "config_dir", return_value=root / "config"), redirect_stdout(output):
                 result = cli.command_uninstall(args)
-        self.assertEqual(result, 0)
+        self.assertEqual(result, 1)
         self.assertIn("Agent registration cleanup is incomplete", output.getvalue())
         self.assertNotIn("HolyCrab uninstall completed", output.getvalue())
         self.assertIn("Info: PATH", output.getvalue())

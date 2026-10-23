@@ -40,9 +40,9 @@ class UpdateRecoveryTests(unittest.TestCase):
                 cli.installer_settings({}, "/chosen", agents)
 
     def test_missing_install_record_never_downloads_or_executes(self):
-        with patch.object(cli, "release_installer", return_value=("install.sh", "url", "digest")), \
-                patch.object(cli, "load_installation", return_value=None), \
-                patch.object(cli, "open_download") as download, patch.object(cli.subprocess, "run") as execute:
+        with patch.object(cli._owner("release_installer"), "release_installer", return_value=("install.sh", "url", "digest")), \
+                patch.object(cli._owner("load_installation"), "load_installation", return_value=None), \
+                patch.object(cli._owner("open_download"), "open_download") as download, patch.object(cli.subprocess, "run") as execute:
             with self.assertRaisesRegex(SystemExit, "record is missing"):
                 cli.run_update({})
         download.assert_not_called()
@@ -57,10 +57,10 @@ class UpdateRecoveryTests(unittest.TestCase):
         remote = MagicMock()
         remote.__enter__.return_value.read.side_effect = [body, b""]
         errors = io.StringIO()
-        with patch.object(cli, "load_installation", return_value=self.record()), \
-                patch.object(cli, "installation_path", return_value=Path('/chosen/lib/holycrab/installation.json')), \
-                patch.object(cli, "open_download", return_value=remote), \
-                patch.object(cli, "SENSITIVE_OUTPUT_VALUES", {"private-test-key"}), \
+        with patch.object(cli._owner("load_installation"), "load_installation", return_value=self.record()), \
+                patch.object(cli._owner("installation_path"), "installation_path", return_value=Path('/chosen/lib/holycrab/installation.json')), \
+                patch.object(cli._owner("open_download"), "open_download", return_value=remote), \
+                patch.object(cli._owner("SENSITIVE_OUTPUT_VALUES"), "SENSITIVE_OUTPUT_VALUES", {"private-test-key"}), \
                 patch.object(cli.subprocess, "run", return_value=MagicMock(returncode=1,
                     stderr=b"x" * 10000 + b"Permission denied private-test-key", stdout=b"")), redirect_stderr(errors):
             with self.assertRaisesRegex(SystemExit, "installer failed"):
@@ -94,15 +94,15 @@ class UpdateRecoveryTests(unittest.TestCase):
         before = {'command': '/old/holycrab', 'args': ['mcp', 'serve'], 'scope': 'user'}
         after = {**before, 'command': '/new/holycrab'}
         journal = {'codex': {'executable': '/clients/codex', 'before': before, 'after': after}}
-        with patch.object(cli, 'read_json_file', return_value=journal), \
-                patch.object(cli, 'inspect_agent_registration', side_effect=[(after, False, 0), (before, False, 0)]), \
-                patch.object(cli, 'run_agent_client', return_value=MagicMock(returncode=0)) as run:
+        with patch.object(cli._owner('read_json_file'), 'read_json_file', return_value=journal), \
+                patch.object(cli._owner('inspect_agent_registration'), 'inspect_agent_registration', side_effect=[(after, False, 0), (before, False, 0)]), \
+                patch.object(cli._owner('run_agent_client'), 'run_agent_client', return_value=MagicMock(returncode=0)) as run:
             cli.restore_installer_mcp(Path('fixture.json'))
         self.assertEqual(run.call_count, 2)
         self.assertIn('/old/holycrab', run.call_args.args[1])
-        with patch.object(cli, 'read_json_file', return_value=journal), \
-                patch.object(cli, 'inspect_agent_registration', return_value=({**after, 'command': '/user/choice'}, False, 0)), \
-                patch.object(cli, 'run_agent_client') as run:
+        with patch.object(cli._owner('read_json_file'), 'read_json_file', return_value=journal), \
+                patch.object(cli._owner('inspect_agent_registration'), 'inspect_agent_registration', return_value=({**after, 'command': '/user/choice'}, False, 0)), \
+                patch.object(cli._owner('run_agent_client'), 'run_agent_client') as run:
             with self.assertRaisesRegex(RuntimeError, 'changed'):
                 cli.restore_installer_mcp(Path('fixture.json'))
         run.assert_not_called()
@@ -127,11 +127,11 @@ class UpdateRecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             journal = Path(temporary) / 'mcp-transaction.json'
             journal.write_text('{"codex": {"before": null}}')
-            with patch.object(cli, 'load_installation', return_value={'prefix': '/chosen'}), \
-                    patch.object(cli, 'find_agent_client', return_value=None), \
-                    patch.object(cli, 'mcp_points_to_cli', return_value=True), \
-                    patch.object(cli, 'write_private_json'), \
-                    patch.object(cli, 'restore_installer_mcp') as restore:
+            with patch.object(cli._owner('load_installation'), 'load_installation', return_value={'prefix': '/chosen'}), \
+                    patch.object(cli._owner('find_agent_client'), 'find_agent_client', return_value=None), \
+                    patch.object(cli._owner('mcp_points_to_cli'), 'mcp_points_to_cli', return_value=True), \
+                    patch.object(cli._owner('write_private_json'), 'write_private_json'), \
+                    patch.object(cli._owner('restore_installer_mcp'), 'restore_installer_mcp') as restore:
                 cli.register_installer_mcp('claude', None, '/chosen/bin/holycrab', ['mcp', 'serve'], '', str(journal))
             restore.assert_not_called()
 
@@ -144,10 +144,10 @@ class UpdateRecoveryTests(unittest.TestCase):
                    'HOLYCRAB_INSTALL_AGENTS': 'none', 'HOLYCRAB_INSTALL_MCP': '0', 'HOLYCRAB_NO_UPDATE_CHECK': '1'}
             first = subprocess.run(['sh', str(ROOT / 'install.sh')], env=env, capture_output=True, text=True)
             self.assertEqual(first.returncode, 0, first.stderr)
-            program = root / 'prefix/lib/holycrab/holycrab_cli.py'
-            program.write_bytes(program.read_bytes().replace(b'VERSION = "0.5.0"', b'VERSION = "0.4.3"'))
+            program = root / 'prefix/lib/holycrab/holycrab_runtime/settings.py'
+            program.write_bytes(program.read_bytes().replace(b'VERSION = "0.6.0"', b'VERSION = "0.4.3"'))
             old = program.read_bytes()
-            note = program.parent / 'user-note.txt'
+            note = root / 'prefix/lib/holycrab/user-note.txt'
             note.write_text('preserve')
             fake = root / 'fake-bin'
             fake.mkdir()
@@ -157,7 +157,7 @@ class UpdateRecoveryTests(unittest.TestCase):
             env['PATH'] = str(fake) + os.pathsep + env['PATH']
             failed = subprocess.run(['sh', str(ROOT / 'install.sh')], env=env, capture_output=True, text=True)
             self.assertNotEqual(failed.returncode, 0)
-            self.assertNotIn('HolyCrab 0.5.0 installed', failed.stdout)
+            self.assertNotIn('HolyCrab 0.6.0 installed', failed.stdout)
             self.assertIn('restored', failed.stderr)
             self.assertEqual(program.read_bytes(), old)
             self.assertEqual(note.read_text(), 'preserve')

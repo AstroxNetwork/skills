@@ -28,7 +28,7 @@ COMMANDS = {
     "real-human groups list": [], "real-human groups rename": ["group1", "--name", "Fixture"],
     "real-human groups delete": ["group1", "--yes"], "real-human assets list": ["--group", "group1"],
     "real-human assets delete": ["asset1", "--group", "group1", "--yes"],
-    "assets upload": [], "assets get": ["asset1"], "assets wait": ["asset1", "--timeout", "0"],
+    "assets metadata retry": ["asset1"], "assets uploads get": ["plan1"], "assets upload": [], "assets get": ["asset1"], "assets wait": ["asset1", "--timeout", "0"],
     "mcp serve": [], "update": ["--check"], "doctor": ["--json"], "uninstall": ["--yes"],
 }
 
@@ -86,8 +86,8 @@ class CommandMatrixTests(unittest.TestCase):
             return ok({"uniqId": "group1", "name": kwargs["payload"]["name"]})
         if path == "/api/real-human-groups/group1/assets":
             return ok({"records": [{"uniqId": "asset1", "step": "UPLOADED_TO_ARK"}], "total": 1, "pages": 1})
-        if path == "/api/user-assets/asset1":
-            return ok({"uniqId": "asset1", "step": "UPLOADED_TO_ARK", "name": "Fixture", "assetType": "IMAGE"})
+        if path in {"/api/user-assets/asset1", "/api/user-assets/asset1/metadata/retry"}:
+            return ok({"uniqId": "asset1", "step": "UPLOADED_TO_ARK", "name": "Fixture", "assetType": "IMAGE", "metadataStatus": "PENDING"})
         if path.endswith("pre-signed-download-url"):
             return ok({"uniqId": "asset1", "preSignedUrl": "https://storage.example/fixture", "objectKey": "fixture"})
         if path.endswith("/upload"):
@@ -107,6 +107,11 @@ class CommandMatrixTests(unittest.TestCase):
         return argv
 
     def context(self, stack: ExitStack, *, failure: bool = False) -> None:
+        try:
+            from .network_fixtures import getaddrinfo
+        except ImportError:
+            from network_fixtures import getaddrinfo
+        stack.enter_context(patch.object(cli.socket, 'getaddrinfo', side_effect=getaddrinfo))
         for name, kwargs in {
             "startup_maintenance": {}, "cleanup_authorization_qrs": {"return_value": None},
             "send": {"side_effect": (lambda *a, **k: (503, {"code": 503})) if failure else self.transport},
@@ -115,24 +120,25 @@ class CommandMatrixTests(unittest.TestCase):
             "validate_verification_link": {"side_effect": lambda url: url},
             "authorization_qr": {"return_value": (str(self.root / "qr.png"), None)},
             "local_health_report": {"return_value": {"ok": not failure, "version": cli.VERSION, "checks": {}, "repairs": []}},
+            "upload_plan_record": {"side_effect": ValueError("fixture failure")} if failure else {"return_value": {"uploadPlanId": "plan1", "state": "completed"}},
             "check_for_update": {"return_value": {"updateAvailable": False, **({"error": "fixture failure"} if failure else {})}},
             "validated_uninstall_manifest": {"return_value": ({"agents": [], "mcp": False}, self.root / "prefix", self.root / "prefix/lib/holycrab", self.root / "prefix/bin/holycrab")},
             # Unit feedback tests do not launch a detached native cleaner. Its
             # actual self-delete and timing remain covered by Windows PS 5.1 CI.
             "schedule_windows_program_cleanup": {},
         }.items():
-            stack.enter_context(patch.object(cli, name, **kwargs))
+            stack.enter_context(patch.object(cli._owner(name), name, **kwargs))
         stack.enter_context(patch.object(cli.getpass, "getpass", return_value="hc_test_input_only"))
         stack.enter_context(patch.object(cli.sys, "stdin", io.StringIO('{"jsonrpc":"2.0","id":1,"method":"initialize"}\n')))
 
-    def test_inventory_is_exactly_31_commands(self) -> None:
+    def test_inventory_is_exactly_33_commands(self) -> None:
         self.assertEqual(set(leaf_commands(cli.build_parser())), set(COMMANDS))
-        self.assertEqual(len(COMMANDS), 31)
+        self.assertEqual(len(COMMANDS), 33)
 
     def test_every_command_help_bypasses_all_housekeeping(self) -> None:
         for command in leaf_commands(cli.build_parser()):
             with self.subTest(command=command), ExitStack() as stack:
-                housekeeping = [stack.enter_context(patch.object(cli, name)) for name in
+                housekeeping = [stack.enter_context(patch.object(cli._owner(name), name)) for name in
                                 ("startup_maintenance", "cleanup_authorization_qrs", "cleanup_upload_plans", "send")]
                 stack.enter_context(patch.object(cli.sys, "argv", ["holycrab", *command.split(), "--help"]))
                 stack.enter_context(redirect_stdout(io.StringIO()))
@@ -187,9 +193,9 @@ class CommandMatrixTests(unittest.TestCase):
             with self.subTest(command=command, terminal=terminal), ExitStack() as stack:
                 self.context(stack, failure=True)
                 if command in local_faults:
-                    stack.enter_context(patch.object(cli, local_faults[command], side_effect=OSError("fixture failure")))
+                    stack.enter_context(patch.object(cli._owner(local_faults[command]), local_faults[command], side_effect=OSError("fixture failure")))
                 if command == "uninstall":
-                    stack.enter_context(patch.object(cli, "remove_managed_mcp_registrations", side_effect=RuntimeError("MCP cleanup failed; program preserved")))
+                    stack.enter_context(patch.object(cli._owner("remove_managed_mcp_registrations"), "remove_managed_mcp_registrations", side_effect=RuntimeError("MCP cleanup failed; program preserved")))
                 if command == "mcp serve":
                     stack.enter_context(patch.object(cli.sys, "stdin", io.StringIO('{broken}\n')))
                 output, errors = (TerminalBuffer(), TerminalBuffer()) if terminal else (io.StringIO(), io.StringIO())
@@ -204,8 +210,8 @@ class CommandMatrixTests(unittest.TestCase):
                 self.assertNotIn("Traceback", output.getvalue() + errors.getvalue())
                 self.assertNotIn("Task created.", errors.getvalue())
 
-    def test_all_20_mcp_tools_schema_errors_are_protocol_only(self) -> None:
-        self.assertEqual(len(cli.MCP_TOOLS), 20)
+    def test_all_22_mcp_tools_schema_errors_are_protocol_only(self) -> None:
+        self.assertEqual(len(cli.MCP_TOOLS), 22)
         for tool in cli.MCP_TOOLS:
             with self.subTest(tool=tool["name"]), redirect_stdout(io.StringIO()) as output, redirect_stderr(TerminalBuffer()) as errors:
                 response = cli.mcp_dispatch({"id": 1, "method": "tools/call", "params": {
@@ -213,8 +219,8 @@ class CommandMatrixTests(unittest.TestCase):
                 self.assertTrue(response["result"]["isError"])
                 self.assertEqual(output.getvalue() + errors.getvalue(), "")
 
-    def test_all_20_mcp_tools_valid_results_are_protocol_only(self) -> None:
-        arguments = {"capability_get": {"model": "seedream-5-0-lite-260128"},
+    def test_all_22_mcp_tools_valid_results_are_protocol_only(self) -> None:
+        arguments = {"asset_upload_plan_get": {"uploadPlanId": "plan1"}, "capability_get": {"model": "seedream-5-0-lite-260128"},
             "generation_estimate": {"kind": "image", "request": self.payload()},
             "generation_create": {"kind": "image", "request": self.payload(), "confirmed": True, "attemptId": "mcp-create"},
             "generation_get": {"taskId": "task1"}, "generation_attempt_get": {"attemptId": "fixture"},
@@ -223,7 +229,7 @@ class CommandMatrixTests(unittest.TestCase):
             "real_human_group_delete": {"groupUniqId": "group1", "confirmed": True},
             "real_human_assets_list": {"groupUniqId": "group1"},
             "real_human_asset_delete": {"groupUniqId": "group1", "assetId": "asset1", "confirmed": True},
-            "asset_get": {"assetId": "asset1"}, "asset_upload_prepare": {"files": [str(self.file)]}}
+            "asset_metadata_retry": {"assetId": "asset1"}, "asset_get": {"assetId": "asset1"}, "asset_upload_prepare": {"files": [str(self.file)]}}
         for tool in cli.MCP_TOOLS:
             with self.subTest(tool=tool["name"]), ExitStack() as stack:
                 self.context(stack)
