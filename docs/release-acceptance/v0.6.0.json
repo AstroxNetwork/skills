@@ -2,10 +2,30 @@
   "version": "v0.6.0",
   "candidateSha256": "166c866bd575406364cfc45339bb9041025b56a7131b45ebbf92306b0f16db12",
   "realHumanCoreFlow": {
-    "status": "pending",
-    "operator": null,
-    "testedAt": null,
-    "notes": "Fresh acceptance has not been performed. Historical v0.4.4/v0.5.0 waivers do not apply to the changed upload and state core."
+    "status": "passed",
+    "mode": "existing-authorization-live-upload-query",
+    "operator": "Codex automated acceptance, user-authorized scope",
+    "testedAt": "2026-10-23T13:59:02.208921+00:00",
+    "notes": "Fresh upload and query acceptance passed against candidate af62761 using one existing authorized person and its existing HEIC material. No new authorization session or liveness verification was performed. One presign, one PUT, one registration; CLI/MCP readiness, group listing, preserved original asset, completed local state, identical downloaded bytes and unchanged balance were verified. Metadata remained PENDING at the final observation and is not a model-compliance claim. Paid generation and production publication were not performed.",
+    "authorization": {
+      "status": "reused-existing",
+      "freshVerificationPerformed": false,
+      "userApprovedReuse": true
+    },
+    "uploadAndQuery": {
+      "status": "passed",
+      "files": 1,
+      "localState": "completed",
+      "step": "UPLOADED_TO_ARK",
+      "byteIntegrity": "passed",
+      "metadataStatus": "PENDING"
+    },
+    "evidenceFile": "docs/release-acceptance/v0.6.0-live-upload.json",
+    "evidenceSha256": "9cae055ec5b45b02a7ce9db0b06a03535005dbaab041e964fff57dc5eef87849",
+    "desktopWindowsValidation": {
+      "status": "excluded-by-user",
+      "scope": "Windows 10/11 x64 desktop; existing native Windows CI evidence is retained"
+    }
   },
   "generateContractCheck": {
     "status": "passed",
