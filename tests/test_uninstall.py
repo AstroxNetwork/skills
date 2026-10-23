@@ -121,7 +121,7 @@ elif arguments[:2] == ["mcp", "remove"]:
             env["FAKE_AGENT_DENIED"] = "1"
             removed = subprocess.run([str(command), "uninstall", "--yes"], env=env,
                                      text=True, capture_output=True)
-            self.assertEqual(removed.returncode, 0, removed.stderr)
+            self.assertEqual(removed.returncode, 1, removed.stderr)
             self.assertIn("MCP cleanup pending for codex", removed.stdout)
             self.assertIn("Agent registration cleanup is incomplete", removed.stdout)
             self.assertNotIn("HolyCrab uninstall completed", removed.stdout)

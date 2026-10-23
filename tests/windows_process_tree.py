@@ -44,13 +44,18 @@ def is_alive(pid, timeout=0):
         kernel.CloseHandle(handle)
 
 
-def wait_pid(path):
-    deadline = time.monotonic() + 10
-    while not path.exists():
+def wait_pid(path, timeout=10):
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            value = path.read_text(encoding='ascii').strip()
+        except FileNotFoundError:
+            value = ''
+        if value.isascii() and value.isdigit() and int(value) > 0:
+            return int(value)
         if time.monotonic() >= deadline:
-            raise AssertionError('Fixture never created its required descendant')
+            raise AssertionError(f'Fixture never published a valid descendant PID in {path}: {value!r}')
         time.sleep(.025)
-    return int(path.read_text(encoding='ascii'))
 
 
 def run_case(suite):
@@ -58,7 +63,8 @@ def run_case(suite):
     root.mkdir()
     grandchild = root / 'grandchild.py'
     grandchild.write_text('import os,sys,time\nfrom pathlib import Path\n'
-                          'Path(sys.argv[1]).write_text(str(os.getpid()),encoding="ascii")\n'
+                          'pending=Path(sys.argv[1]+".pending")\n'
+                          'pending.write_text(str(os.getpid()),encoding="ascii");pending.replace(sys.argv[1])\n'
                           'time.sleep(60)\n', encoding='utf-8')
     child = root / 'child.py'
     child.write_text('import os,subprocess,sys,time\nfrom pathlib import Path\n'
@@ -68,7 +74,8 @@ def run_case(suite):
                      'while not grand.exists():\n'
                      ' if time.monotonic()>deadline: raise SystemExit(7)\n'
                      ' time.sleep(.025)\n'
-                     'mine.write_text(str(os.getpid()),encoding="ascii")\n'
+                     'pending=mine.with_suffix(".pending")\n'
+                     'pending.write_text(str(os.getpid()),encoding="ascii");pending.replace(mine)\n'
                      'if sys.argv[4]=="wait": time.sleep(60)\n', encoding='utf-8')
     scenarios = []
     for mode in ('exit', 'wait'):

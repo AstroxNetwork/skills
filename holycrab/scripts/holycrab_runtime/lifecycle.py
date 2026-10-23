@@ -1097,44 +1097,70 @@ def remove_managed_path_registration(manifest: dict[str, Any], prefix: Path, lau
 
 
 def schedule_windows_program_cleanup(launcher: Path, library: Path) -> None:  # pragma: no cover - Windows CI
-    powershell = shutil.which("powershell")
-    if powershell is None:
-        raise RuntimeError("PowerShell is required to finish Windows self-uninstall")
-    descriptor, helper_name = tempfile.mkstemp(prefix="holycrab-uninstall-", suffix=".ps1")
+    identity = ""
+    expected = ""
+    if launcher.exists():
+        info = launcher.stat()
+        identity = ":".join(str(getattr(info, key)) for key in ("st_dev", "st_ino", "st_mtime_ns", "st_size"))
+        expected = hashlib.sha256(launcher.read_bytes()).hexdigest()
+    descriptor, helper_name = tempfile.mkstemp(prefix="holycrab-uninstall-", suffix=".py")
     helper = Path(helper_name)
     failure_log = helper.with_suffix(".log")
-    program = r'''param([string]$Launcher,[string]$Library,[string]$SelfPath,[string]$FailureLog)
-$deadline = [DateTime]::UtcNow.AddSeconds(8)
-Start-Sleep -Milliseconds 750
-do {
-  Remove-Item -LiteralPath $Launcher -Force -ErrorAction SilentlyContinue
-  # Runtime files are removed by Python using the owned-file inventory.
-  # Never recursively remove a directory that may contain user files.
-  try { [IO.Directory]::Delete($Library, $false) } catch {}
-  # A nonempty library can intentionally contain modified or user-owned files.
-  if (-not (Test-Path -LiteralPath $Launcher)) { break }
-  Start-Sleep -Milliseconds 200
-} while ([DateTime]::UtcNow -lt $deadline)
-if (Test-Path -LiteralPath $Launcher) {
-  $message = "launcherExists=$([bool](Test-Path -LiteralPath $Launcher)); libraryExists=$([bool](Test-Path -LiteralPath $Library))"
-  [IO.File]::WriteAllText($FailureLog, $message, [Text.UTF8Encoding]::new($false))
-}
-Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
+    # Only stdlib imports: installed runtime files have already been removed.
+    # Use the interpreter that is running this CLI, independently of shell hosts.
+    program = r'''import hashlib
+import sys
+import time
+from pathlib import Path
+
+launcher, library, helper, failure_log = map(Path, sys.argv[1:5])
+expected, identity = sys.argv[5:7]
+deadline = time.monotonic() + 8
+failure = None
+time.sleep(.75)
+try:
+    while True:
+        try:
+            info = launcher.stat()
+            current = ":".join(str(getattr(info, key)) for key in ("st_dev", "st_ino", "st_mtime_ns", "st_size"))
+            if launcher.is_symlink() or current != identity or hashlib.sha256(launcher.read_bytes()).hexdigest() != expected:
+                failure = "Launcher changed after uninstall; it was preserved: " + str(launcher)
+                break
+            launcher.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            if time.monotonic() < deadline:
+                time.sleep(.2)
+                continue
+            failure = "Could not remove launcher: " + str(error)
+            break
+        # A nonempty library can contain modified or user-owned files.
+        try:
+            library.rmdir()
+        except OSError:
+            pass
+        break
+finally:
+    try:
+        helper.unlink()
+    except OSError as error:
+        failure = (failure + "; " if failure else "") + "Could not remove cleanup helper: " + str(error)
+    if failure:
+        failure_log.write_text(failure, encoding="utf-8")
+if failure:
+    raise SystemExit(1)
 '''
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
         stream.write(program)
-    # Windows PowerShell can exit before processing -File under DETACHED_PROCESS.
     # A windowless process can outlive this parent without DETACHED_PROCESS.
     creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    # PS7 -> Python -> Windows PowerShell otherwise inherits PS7's module
-    # search path, which can make Remove-Item/Start-Sleep unavailable in PS5.1.
-    cleanup_env = {key: value for key, value in os.environ.items() if key.upper() != "PSMODULEPATH"}
     try:
         subprocess.Popen(
-            [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(helper),
-             str(launcher), str(library), str(helper), str(failure_log)],
+            [sys.executable, "-I", "-S", str(helper), str(launcher), str(library),
+             str(helper), str(failure_log), expected, identity],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            close_fds=True, creationflags=creation_flags, env=cleanup_env,
+            close_fds=True, creationflags=creation_flags,
         )
     except OSError:
         try:
@@ -1270,7 +1296,9 @@ def perform_uninstall(args: argparse.Namespace) -> int:
         print("HolyCrab program files were uninstalled; Agent registration cleanup is incomplete. Follow the pending cleanup instructions above.")
     else:
         print("HolyCrab uninstall completed.")
-    return 0
+    # Automation must not mistake an incomplete managed registration cleanup
+    # for success. Preserved manual/user-owned entries remain informational.
+    return 1 if pending else 0
 
 
 def file_check(path: Path, expected: str | None = None,

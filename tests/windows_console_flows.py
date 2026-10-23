@@ -1,6 +1,7 @@
 """ConPTY acceptance of real installed CLI HTTP operations and installer interruption."""
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -175,30 +176,56 @@ def interrupt_installer(suite):
         + f"if pathlib.Path(sys.argv[0]).resolve() == pathlib.Path({str(suite.cli)!r}).resolve() and 'doctor' in sys.argv:\n"
         + " print('Native installer interrupt barrier',file=sys.stderr,flush=True);time.sleep(30)\n", encoding="utf-8")
     env = dict(suite.env, PYTHONPATH=str(guard), HOLYCRAB_TEST_LOOPBACK="1")
-    managed.write_bytes(clean_bytes + marker)
-    try:
-        before = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                  for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
-        with Console([suite.ps51, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(suite.source / "install.ps1")], env, str(suite.root)) as console:
-            console.until("Native installer interrupt barrier", timeout=100)
-            during = managed.read_bytes()
-            assert during == candidate_bytes and marker not in during, "Installer never overwrote the marked runtime before interruption"
-            assert hashlib.sha256(during).hexdigest() != before[managed.relative_to(suite.prefix).as_posix()]
-            console.send("\x03")
-            code = console.finish(timeout=40)
-            assert code != 0, console.output
-            assert "HolyCrab 0.6.0 installed" not in console.output
-        after = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                 for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
-        assert after == before, "Interrupted installer did not restore previous runtime/launcher exactly"
-        assert managed.read_bytes() == clean_bytes + marker, "Rollback did not restore the pre-update marker"
-        assert suite.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
-        return {"ConPTY": True, "exitCode": code, "candidateOverwriteObserved": True,
-                "preUpdateMarkerRestored": True, "previousBytesRestored": True}
-    finally:
-        # Undo only the deliberate fixture change; do not reinstall away other
-        # failures or catch the failed rollback assertion.
-        managed.write_bytes(clean_bytes)
+    scenarios = []
+    for shell_label, shell in (("PowerShell5.1", suite.ps51), ("PowerShell7", suite.ps7)):
+        for mode in ("script-file", "streamed-iex", "streamed-iex-from-script"):
+            if mode == "script-file":
+                command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(suite.source / "install.ps1")]
+            else:
+                # Feed the exact installer text through IEX, as irm|iex does,
+                # while keeping a real interactive host to observe survival.
+                expression = ("function global:prompt { 'HC_INSTALL_HOST_READY> ' }; "
+                              "Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_SOURCE_DIR 'install.ps1') -Raw -Encoding UTF8 | Invoke-Expression")
+                if mode == "streamed-iex-from-script":
+                    wrapper = suite.root / "iex_outer_script.ps1"
+                    wrapper.write_text(expression, encoding="utf-8")
+                    command = [shell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-File", str(wrapper)]
+                else:
+                    encoded = base64.b64encode(expression.encode("utf-16-le")).decode("ascii")
+                    command = [shell, "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-EncodedCommand", encoded]
+            managed.write_bytes(clean_bytes + marker)
+            try:
+                before = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                          for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+                with Console(command, env, str(suite.root)) as console:
+                    console.until("Native installer interrupt barrier", timeout=100)
+                    during = managed.read_bytes()
+                    assert during == candidate_bytes and marker not in during, "Installer never overwrote the marked runtime before interruption"
+                    assert hashlib.sha256(during).hexdigest() != before[managed.relative_to(suite.prefix).as_posix()]
+                    console.send("\x03")
+                    if mode == "script-file":
+                        code = console.finish(timeout=40)
+                        assert code == 130, console.output
+                    else:
+                        console.until("HC_INSTALL_HOST_READY> ", timeout=40)
+                        console.send("[Console]::WriteLine(('INSTALLER_HOST_CODE=' + $LASTEXITCODE)); exit 0\r")
+                        console.until("INSTALLER_HOST_CODE=130")
+                        assert console.finish(timeout=10) == 0, console.output
+                        code = 130  # observed installer LASTEXITCODE, not the later host exit
+                    assert "HolyCrab 0.6.0 installed" not in console.output
+                after = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                         for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+                assert after == before, "Interrupted installer did not restore previous runtime/launcher exactly"
+                assert managed.read_bytes() == clean_bytes + marker, "Rollback did not restore the pre-update marker"
+                assert suite.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+                scenarios.append({"shell": shell_label, "mode": mode, "installerExitCode": code,
+                                  "interactiveHostPreserved": mode != "script-file", "previousBytesRestored": True})
+            finally:
+                # Undo only the deliberate fixture change; do not reinstall away
+                # other failures or catch the failed rollback assertion.
+                managed.write_bytes(clean_bytes)
+    return {"ConPTY": True, "scenarios": scenarios, "candidateOverwriteObserved": True,
+            "preUpdateMarkerRestored": True, "previousBytesRestored": True}
 
 
 def special_arguments(suite):

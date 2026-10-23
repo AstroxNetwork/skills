@@ -47,28 +47,48 @@ class WindowsCleanupTests(unittest.TestCase):
                 capture_output=True, text=True, timeout=15)
             self.assertEqual(parent.returncode, 0, parent.stderr)
             deadline = time.monotonic() + 12
-            while (launcher.exists() or list(scratch.glob('*.ps1'))) and time.monotonic() < deadline:
+            while (launcher.exists() or list(scratch.glob('*.py'))) and time.monotonic() < deadline:
                 time.sleep(.05)
             diagnostics = {p.name: p.read_text(encoding='utf-8', errors='replace') for p in scratch.glob('*.log')}
             self.assertFalse(launcher.exists(), diagnostics)
-            self.assertFalse(list(scratch.glob('*.ps1')), 'Cleanup helper did not remove itself')
+            self.assertFalse(list(scratch.glob('*.py')), 'Cleanup helper did not remove itself')
             self.assertFalse(diagnostics)
             self.assertEqual(note.read_text(encoding='utf-8'), 'keep this user file')
 
-    def test_cleanup_helper_does_not_inherit_other_powershell_module_paths(self):
-        with patch.object(lifecycle.shutil, 'which', return_value='powershell.exe'), \
-             patch.object(lifecycle.subprocess, 'Popen') as spawn, \
-             patch.dict(lifecycle.os.environ, {'PSModulePath': 'PowerShell7/modules',
-                                              'pSmOdUlEpAtH': 'other/modules',
-                                              'HOLYCRAB_TEST_SENTINEL': 'keep'}):
-            lifecycle.schedule_windows_program_cleanup(Path('launcher.cmd'), Path('library'))
-            args, kwargs = spawn.call_args
+    def test_cleanup_helper_runs_isolated_and_preserves_a_replaced_launcher(self):
+        for contents in (b'user replacement', b'owned launcher'):
+            with self.subTest(same_bytes=contents == b'owned launcher'):
+                self.check_replaced_launcher(contents)
+
+    def check_replaced_launcher(self, contents):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            launcher, library = root / '启动器.cmd', root / 'library'
+            launcher.write_bytes(b'owned launcher')
+            library.mkdir()
+            note = library / 'user.txt'
+            note.write_bytes(b'user file')
+            with patch.object(lifecycle.subprocess, 'Popen') as spawn:
+                lifecycle.schedule_windows_program_cleanup(launcher, library)
+            command = spawn.call_args.args[0]
+            helper, log = Path(command[3]), Path(command[7])
+            self.assertEqual(command[:3], [sys.executable, '-I', '-S'])
+            replacement = root / 'replacement.cmd'
+            replacement.write_bytes(contents)
+            replacement.replace(launcher)
+            # A hostile sitecustomize would exit before cleanup without -I/-S.
+            (root / 'sitecustomize.py').write_text('raise SystemExit(73)', encoding='ascii')
             try:
-                child_environment = kwargs['env']
-                self.assertFalse(any(key.upper() == 'PSMODULEPATH' for key in child_environment))
-                self.assertEqual(child_environment['HOLYCRAB_TEST_SENTINEL'], 'keep')
+                result = subprocess.run(command, env=dict(os.environ, PYTHONPATH=str(root)),
+                                        capture_output=True, timeout=15)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertEqual(launcher.read_bytes(), contents)
+                self.assertEqual(note.read_bytes(), b'user file')
+                self.assertFalse(helper.exists())
+                self.assertIn('Launcher changed', log.read_text(encoding='utf-8'))
             finally:
-                Path(args[0][args[0].index('-File') + 1]).unlink()
+                helper.unlink(missing_ok=True)
+                log.unlink(missing_ok=True)
 
     def fixture(self, root):
         library = root / 'prefix/lib/holycrab'

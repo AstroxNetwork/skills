@@ -195,7 +195,7 @@ class AgentCleanupTests(unittest.TestCase):
                     patch.object(cli._owner("schedule_windows_program_cleanup"), "schedule_windows_program_cleanup"), \
                     patch.object(cli._owner("config_dir"), "config_dir", return_value=root / "config"), redirect_stdout(output):
                 result = cli.command_uninstall(args)
-        self.assertEqual(result, 0)
+        self.assertEqual(result, 1)
         self.assertIn("Agent registration cleanup is incomplete", output.getvalue())
         self.assertNotIn("HolyCrab uninstall completed", output.getvalue())
         self.assertIn("Info: PATH", output.getvalue())
