@@ -120,8 +120,9 @@ class Suite:
 
     def run(self, command, *, expected=0, env=None, input=None, timeout=100, descendant_timeout=20):
         from stage_process import WindowsJob
+        serialized = command if isinstance(command, str) else [str(part) for part in command]
         actual = [sys.executable, str(self.source / "tools/stage_process.py"),
-                  json.dumps([str(part) for part in command]), "--forward-stdin"]
+                  json.dumps(serialized), "--forward-stdin"]
         process = subprocess.Popen(actual, env=env or self.env, stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    encoding="utf-8", errors="replace", cwd=self.root)
@@ -159,6 +160,12 @@ class Suite:
         return self.run([shell or self.ps51, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                          "-EncodedCommand", encoded], **kwargs)
 
+    def cmd(self, expression, *, delayed=False, **kwargs):
+        # cmd.exe parses /c itself, not with the CRT rules list2cmdline uses.
+        # Pass this as an exact Windows command line; callers supply cmd syntax.
+        command = f'"{os.environ["ComSpec"]}" /d /v:{"on" if delayed else "off"} /s /c "{expression}"'
+        return self.run(command, **kwargs)
+
     def install(self, *, source=None, prefix=None, shell=None, expected=0, env=None):
         target = source or self.source
         install_env = dict(env or self.env, HOLYCRAB_INSTALL_SOURCE_DIR=str(target))
@@ -180,6 +187,22 @@ class Suite:
             self.report["environment"]["shells"][label] = result.stdout.strip()
         assert self.report["environment"]["shells"]["WindowsPowerShell"].startswith("5.1.")
         assert self.report["environment"]["shells"]["PowerShell"].startswith("7.")
+        probe = self.root / "console_probe.py"
+        probe.write_text('import ctypes,json,sys\nfrom ctypes import wintypes as W\n'
+                         'k=ctypes.WinDLL("kernel32",use_last_error=True)\n'
+                         'k.GetStdHandle.argtypes=[W.DWORD];k.GetStdHandle.restype=W.HANDLE\n'
+                         'k.GetConsoleMode.argtypes=[W.HANDLE,ctypes.POINTER(W.DWORD)];k.GetConsoleMode.restype=W.BOOL\n'
+                         'modes=[]\n'
+                         'for number in (-10,-11,-12):\n'
+                         ' mode=W.DWORD();assert k.GetConsoleMode(k.GetStdHandle(number),ctypes.byref(mode));modes.append(mode.value)\n'
+                         'assert all(stream.isatty() for stream in (sys.stdin,sys.stdout,sys.stderr))\n'
+                         'print("Native console stdout",flush=True)\n'
+                         'print("Native console stderr",file=sys.stderr,flush=True)\n', encoding="utf-8")
+        with Console([sys.executable, str(probe)], self.env, str(self.root)) as console:
+            assert console.finish() == 0, console.output
+            assert "Native console stdout" in console.output and "Native console stderr" in console.output, console.output
+        self.report["environment"]["console"] = {"stdioIsatty": True, "allWin32ConsoleModes": True,
+                                                  "stdoutAndStderrCaptured": True}
         blocked = self.run([sys.executable, "-c", "import socket; socket.create_connection(('holycrab-test.invalid',443),1)"], expected=None)
         assert blocked.returncode != 0 and "Offline validation blocked" in blocked.stderr
         assert self.report["environment"]["networkIsolation"]["firewallEnabled"] is True
@@ -226,8 +249,8 @@ class Suite:
             self.install(shell=shell)
             result = self.ps("& " + ps_quote(self.launcher) + " --version; exit $LASTEXITCODE", shell=shell)
             assert result.stdout.strip() == "holycrab 0.6.0"
-        cmd = os.environ["ComSpec"]
-        result = self.run([cmd, "/d", "/v:on", "/s", "/c", '""' + str(self.launcher) + '" --version"'])
+        result = self.cmd('"%HOLYCRAB_TEST_LAUNCHER%" --version', delayed=True,
+                          env=dict(self.env, HOLYCRAB_TEST_LAUNCHER=str(self.launcher)))
         assert result.stdout.strip() == "holycrab 0.6.0"
         launch_text = self.launcher.read_text(encoding="utf-8")
         invocation = next(line for line in launch_text.splitlines() if 'holycrab_cli.py' in line and '%*' in line)
@@ -240,8 +263,27 @@ class Suite:
         assert actual_python["version"] == list(sys.version_info[:3])
         assert actual_python["platform"] == sysconfig.get_platform()
         self.report["environment"]["installerPython"] = {"executable": str(selected), **actual_python}
+        # Copy the actual generated launcher byte-for-byte. These small Python
+        # programs test launcher exit-code ownership, not the uninstall flow.
+        probe_prefix = self.root / "launcher exit contract"
+        probe_launcher = probe_prefix / "bin/holycrab.cmd"
+        probe_cli = probe_prefix / "lib/holycrab/holycrab_cli.py"
+        probe_launcher.parent.mkdir(parents=True)
+        probe_cli.parent.mkdir(parents=True)
+        shutil.copyfile(self.launcher, probe_launcher)
+        probe_env = dict(self.env, HOLYCRAB_TEST_LAUNCHER=str(probe_launcher))
+        for exit_code in (37, 130):
+            probe_cli.write_text("import pathlib,sys\npathlib.Path(__file__).unlink()\n"
+                                 + f"raise SystemExit({exit_code})\n", encoding="utf-8")
+            self.cmd('"%HOLYCRAB_TEST_LAUNCHER%"', env=probe_env, expected=exit_code)
+            assert not probe_cli.exists(), "Exit-code fixture did not remove its entrypoint"
+            assert probe_launcher.read_bytes() == self.launcher.read_bytes(), "Launcher removed itself after a failed child"
+        missing = self.cmd('"%HOLYCRAB_TEST_LAUNCHER%" --version', env=probe_env, expected=2)
+        assert "can't open file" in missing.stderr
+        assert probe_launcher.read_bytes() == self.launcher.read_bytes(), "Ordinary --version deleted the broken installation's launcher"
         return {"PowerShell5": True, "PowerShell7": True, "cmdDelayedExpansion": True,
-                "actualInstallerPythonMatchesMatrix": True}
+                "actualInstallerPythonMatchesMatrix": True,
+                "launcherContractExitCodes": [37, 130, 2], "missingEntryPreservesLauncher": True}
 
     def ps7_python_ps51(self):
         """Exercise the real intermediary process that bypasses PS7's PS5 path fix."""
@@ -287,22 +329,21 @@ pathlib.Path(proof).write_text(json.dumps({'inheritedPS7ModulePath': inherited,
         return detail
 
     def special_paths(self):
-        prefix = self.root / "中文 用户 🦀 (safe)&literal%PATH%!"
+        prefix = self.root / "中文 用户 🦀 (safe)&literal"
         self.install(prefix=prefix)
         launcher = prefix / "bin/holycrab.cmd"
         for shell in (self.ps51, self.ps7):
             result = self.ps("& " + ps_quote(launcher) + " --version; exit $LASTEXITCODE", shell=shell)
             assert result.stdout.strip() == "holycrab 0.6.0", result.stdout
-        # Pass the path through an environment variable: avoids cmd.exe expanding
-        # literal %PATH% before the launcher itself starts (a shell behavior).
+        # cmd receives the path through a quoted environment variable.
         cmd_env = dict(self.env, HOLYCRAB_TEST_LAUNCHER=str(launcher))
-        result = self.run([os.environ["ComSpec"], "/d", "/v:off", "/c", '"%HOLYCRAB_TEST_LAUNCHER%" --version'], env=cmd_env)
+        result = self.cmd('"%HOLYCRAB_TEST_LAUNCHER%" --version', env=cmd_env)
         assert result.stdout.strip() == "holycrab 0.6.0", result.stdout
         code = self.ps("& " + ps_quote(launcher) + " unknown-command; exit $LASTEXITCODE", expected=2)
         assert "invalid choice" in code.stderr
         self.run([sys.executable, str(prefix / "lib/holycrab/holycrab_cli.py"), "uninstall", "--yes"])
         self.wait_missing(prefix / "lib/holycrab/holycrab_cli.py")
-        return {"unicode": True, "spaces": True, "metacharacters": "()&%!", "exitCode": 2}
+        return {"unicode": True, "spaces": True, "metacharacters": "()&", "exitCode": 2}
 
     def long_paths(self):
         prefix = self.root
@@ -326,6 +367,13 @@ pathlib.Path(proof).write_text(json.dumps({'inheritedPS7ModulePath': inherited,
             result = self.install(prefix=prefix, expected=None)
             assert result.returncode != 0, f"Unsafe/unsupported prefix unexpectedly succeeded: {prefix}"
             assert "install" in (result.stderr + result.stdout).lower() or "path" in (result.stderr + result.stdout).lower()
+        for name in ("literal%PATH%", "literal!TOKEN!"):
+            prefix = self.root / name
+            assert not prefix.exists()
+            result = self.install(prefix=prefix, expected=None)
+            assert result.returncode != 0 and "CMD launcher" in result.stderr, result.stderr
+            assert "HOLYCRAB_INSTALL_PREFIX" in result.stderr
+            assert not prefix.exists(), "Unsupported launcher path was rejected only after writing files"
         target = self.root / "junction-target"
         target.mkdir(exist_ok=True)
         sentinel = target / "keep.txt"; sentinel.write_text("unchanged")
@@ -337,7 +385,8 @@ pathlib.Path(proof).write_text(json.dumps({'inheritedPS7ModulePath': inherited,
             assert list(target.iterdir()) == [sentinel]
         finally:
             junction.rmdir()
-        return {"reserved": True, "trailingDot": True, "tooLong": True, "uncDenied": True, "junctionRejected": True}
+        return {"reserved": True, "trailingDot": True, "tooLong": True, "uncDenied": True, "junctionRejected": True,
+                "cmdExpansionPathsRejectedBeforeWrites": ["%", "!"]}
 
     def immutable_ref(self):
         prefix = self.root / "immutable-ref"
@@ -519,6 +568,26 @@ function Invoke-WebRequest {
         assert not path.exists(), f"Deferred cleanup did not finish: {path}"
 
     def uninstall_user_files(self):
+        # This is a real installed CLI through its CMD launcher. A native
+        # sharing lock lets runtime removal succeed but makes the purge fail.
+        failed_prefix = self.root / "failed purge prefix"
+        failed_config = self.root / "failed purge config"
+        failed_launcher = failed_prefix / "bin/holycrab.cmd"
+        failed_cli = failed_prefix / "lib/holycrab/holycrab_cli.py"
+        env = dict(self.env, HOLYCRAB_CONFIG_DIR=str(failed_config),
+                   HOLYCRAB_TEST_LAUNCHER=str(failed_launcher))
+        self.install(prefix=failed_prefix, env=env)
+        failed_config.mkdir(exist_ok=True)
+        locked_config = failed_config / "config.json"
+        original_config = b'{"testState":"must remain while locked"}\n'
+        locked_config.write_bytes(original_config)
+        with read_lock(locked_config):
+            failure = self.cmd('"%HOLYCRAB_TEST_LAUNCHER%" uninstall --purge --yes', env=env, expected=1)
+            assert "local data purge was incomplete" in failure.stderr, failure.stderr
+            self.wait_missing(failed_cli)
+            self.wait_missing(failed_launcher)
+            assert locked_config.read_bytes() == original_config
+
         self.install(env=dict(self.env, HOLYCRAB_INSTALL_AGENTS="codex"))
         skill_file = Path(os.environ["USERPROFILE"]) / ".agents/skills/holycrab/SKILL.md"
         skill_file.write_bytes(skill_file.read_bytes() + b"\nUser-edited guidance: keep this.\n")
@@ -543,7 +612,8 @@ function Invoke-WebRequest {
         for identifier in ("uninstall.purge-preserve-unknown", "uninstall.shared-path-preservation", "uninstall.preserve-modified-skill"):
             self.report["cases"].append({"id": identifier, "status": "passed", "driver": "win.uninstall.user_files"})
         return {"unknownFilesPreserved": True, "managedFilesGone": True, "asyncCompletionObserved": True,
-                "modifiedSkillPreserved": True, "sharedUserPathPreserved": True}
+                "modifiedSkillPreserved": True, "sharedUserPathPreserved": True,
+                "lockedConfigPurgeExitCode": 1, "failedPurgeConfigPreserved": True}
 
     def execute(self):
         self.case("win.environment.non_admin", self.environment)

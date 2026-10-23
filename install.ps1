@@ -24,6 +24,9 @@ $Prefix = [IO.Path]::GetFullPath($Prefix)
 if ($Prefix.StartsWith('\\')) {
     throw "Unsupported installation path: use a local directory; UNC network installations are not supported."
 }
+if ($Prefix.IndexOfAny([char[]]'%!') -ge 0) {
+    throw "Unsupported installation directory: the CMD launcher cannot reliably start from a path containing % or !. Choose another HOLYCRAB_INSTALL_PREFIX without these characters. This restriction applies only to the installation directory, not request files."
+}
 $PrefixParts = @($RawPrefix -split '[\\/]' | Where-Object { $_ -and $_ -notin @('.', '..') -and $_ -notmatch '^[A-Za-z]:$' })
 foreach ($Part in $PrefixParts) {
     if ($Part.EndsWith('.') -or $Part.EndsWith(' ') -or $Part.IndexOfAny([IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
@@ -96,13 +99,13 @@ $ReleaseFiles = @(
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
     @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" },
 # BEGIN GENERATED RUNTIME DOWNLOADS
-    @{ Relative = "runtime-files.json"; Name = "runtime-files.json"; Sha256 = "45c455cf44dd5e909870e3e46b0fce70ffceffd72d60eef9963434bbed81ecf9" },
+    @{ Relative = "runtime-files.json"; Name = "runtime-files.json"; Sha256 = "765b021b1b676daf5ae2bfd08c0b61232268a54187f2b7f994da8a7d8ff6533b" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/__init__.py"; Name = "holycrab_runtime/__init__.py"; Sha256 = "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/capabilities.py"; Name = "holycrab_runtime/capabilities.py"; Sha256 = "43585789f09a5d1e5f3d215c75f1fc888e6aa9fead3b09d4244f667301fd0f64" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/cli.py"; Name = "holycrab_runtime/cli.py"; Sha256 = "c9a50861d2b56ccb691ded00639f6b5d72bdb2b1d9bbfa262cd672d4ba229d90" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/exports.py"; Name = "holycrab_runtime/exports.py"; Sha256 = "d0dcf10cb10a719b2d8a5d32510c3a20608d5dd88fb14a4225d2d51d23c4a7c6" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/generation.py"; Name = "holycrab_runtime/generation.py"; Sha256 = "578ab3976e6fe04dd66cf2bf542b64989dfbfe3994445c3a98c0f24e60d1c2a1" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/lifecycle.py"; Name = "holycrab_runtime/lifecycle.py"; Sha256 = "1de85250cf361eb87c5e8488026c169e1d6484645a7a48d22bb2b745f338f0f6" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/lifecycle.py"; Name = "holycrab_runtime/lifecycle.py"; Sha256 = "bfe1ec1d9e376478ce89317d30a16c106b5320f749f85f54fd0083614b42a454" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/mcp.py"; Name = "holycrab_runtime/mcp.py"; Sha256 = "c72c8a50aa5a4419dcc2f0c45f46f8cf7dbe6afdddf3a5c31d8b93d06dbb08d9" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/presentation.py"; Name = "holycrab_runtime/presentation.py"; Sha256 = "0925e46fbf4ec01d156ab1071c43a8a6e227c22adfed9804316fd32b9b8ee530" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/real_human.py"; Name = "holycrab_runtime/real_human.py"; Sha256 = "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74" },
@@ -317,7 +320,7 @@ cli.prepare_runtime_imports(pathlib.Path(sys.argv[2]))
     $PythonInvocation = '"' + $Python.Executable.Replace('%', '%%') + '"'
     if ($Python.Arguments.Count -gt 0) { $PythonInvocation += " " + ($Python.Arguments -join " ") }
     $Launcher = Join-Path $BinDir "holycrab.cmd"
-    $LauncherContent = "@echo off`r`nsetlocal DisableDelayedExpansion`r`nchcp 65001 >nul`r`nset `"PYTHONUTF8=1`"`r`nset `"PYTHONIOENCODING=utf-8`"`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`nset `"_HOLYCRAB_EXIT_CODE=%ERRORLEVEL%`"`r`nif exist `"%~dp0..\lib\holycrab\holycrab_cli.py`" exit /b %_HOLYCRAB_EXIT_CODE%`r`n(goto) 2>nul & del /f /q `"%~f0`" >nul 2>&1`r`n"
+    $LauncherContent = "@echo off`r`nsetlocal DisableDelayedExpansion`r`nchcp 65001 >nul`r`nset `"PYTHONUTF8=1`"`r`nset `"PYTHONIOENCODING=utf-8`"`r`n$PythonInvocation `"%~dp0..\lib\holycrab\holycrab_cli.py`" %*`r`nset `"_HOLYCRAB_EXIT_CODE=%ERRORLEVEL%`"`r`nexit /b %_HOLYCRAB_EXIT_CODE%`r`n"
     [IO.File]::WriteAllText($Launcher, $LauncherContent, [Text.UTF8Encoding]::new($false))
 
     $PathResult = Add-HolyCrabPath $BinDir $PreviousPathManaged

@@ -128,7 +128,8 @@ class Service:
                 self.end_headers()
                 try:
                     self.wfile.write(body)
-                except (BrokenPipeError, ConnectionResetError):
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    # Windows reports the deliberately timed-out client as 10053.
                     pass
             do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = handle_request
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)

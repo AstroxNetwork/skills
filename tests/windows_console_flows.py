@@ -158,31 +158,47 @@ def installer_summary(suite):
 
 
 def interrupt_installer(suite):
-    # A shim at the process boundary pauses actual installed doctor execution.
-    # No installer rollback code or managed file is mocked/replaced.
+    # sitecustomize pauses the actual installed doctor at Python startup; a
+    # .cmd interpreter shim would reparse argv and invalidate the interruption.
+    # The pre-update file differs by a harmless marker, so omitting restoration
+    # cannot pass merely because both installations used the same candidate.
     import hashlib
-    before = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-              for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
-    fake = suite.root / "interrupt-python"; fake.mkdir(exist_ok=True)
-    shim = fake / "pause.py"
-    shim.write_text("import os,sys,time\n"
-                    "if 'doctor' in sys.argv:\n print('Native installer interrupt barrier',flush=True);time.sleep(30)\n"
-                    "os.execv(sys.executable,[sys.executable,*sys.argv[1:]])\n", encoding="utf-8")
-    python = str(Path(sys.executable)).replace("%", "%%")
-    shim_path = str(shim).replace("%", "%%")
-    (fake / "python.cmd").write_text('@echo off\r\nsetlocal DisableDelayedExpansion\r\n"' + python + '" "' + shim_path + '" %*\r\n', encoding="utf-8")
-    env = dict(suite.env, PATH=str(fake) + os.pathsep + suite.env["PATH"])
-    with Console([suite.ps51, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(suite.source / "install.ps1")], env, str(suite.root)) as console:
-        console.until("Native installer interrupt barrier", timeout=100)
-        console.send("\x03")
-        code = console.finish(timeout=40)
-        assert code != 0, console.output
-        assert "HolyCrab 0.6.0 installed" not in console.output
-    after = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-             for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
-    assert after == before, "Interrupted installer did not restore previous runtime/launcher exactly"
-    assert suite.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
-    return {"ConPTY": True, "exitCode": code, "previousBytesRestored": True}
+    from run_checks import NETWORK_GUARD
+    managed = suite.cli.parent / "holycrab_runtime/settings.py"
+    clean_bytes = managed.read_bytes()
+    candidate_bytes = (suite.source / "holycrab/scripts/holycrab_runtime/settings.py").read_bytes()
+    assert clean_bytes == candidate_bytes, "Rollback probe needs a clean installed candidate"
+    marker = b"\n# Native interruption rollback sentinel: preserve the pre-update bytes.\n"
+    assert marker not in clean_bytes
+    guard = suite.root / "interrupt-python"; guard.mkdir(exist_ok=True)
+    (guard / "sitecustomize.py").write_text(NETWORK_GUARD + "\nimport pathlib,sys,time\n"
+        + f"if pathlib.Path(sys.argv[0]).resolve() == pathlib.Path({str(suite.cli)!r}).resolve() and 'doctor' in sys.argv:\n"
+        + " print('Native installer interrupt barrier',file=sys.stderr,flush=True);time.sleep(30)\n", encoding="utf-8")
+    env = dict(suite.env, PYTHONPATH=str(guard), HOLYCRAB_TEST_LOOPBACK="1")
+    managed.write_bytes(clean_bytes + marker)
+    try:
+        before = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                  for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+        with Console([suite.ps51, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(suite.source / "install.ps1")], env, str(suite.root)) as console:
+            console.until("Native installer interrupt barrier", timeout=100)
+            during = managed.read_bytes()
+            assert during == candidate_bytes and marker not in during, "Installer never overwrote the marked runtime before interruption"
+            assert hashlib.sha256(during).hexdigest() != before[managed.relative_to(suite.prefix).as_posix()]
+            console.send("\x03")
+            code = console.finish(timeout=40)
+            assert code != 0, console.output
+            assert "HolyCrab 0.6.0 installed" not in console.output
+        after = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                 for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+        assert after == before, "Interrupted installer did not restore previous runtime/launcher exactly"
+        assert managed.read_bytes() == clean_bytes + marker, "Rollback did not restore the pre-update marker"
+        assert suite.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+        return {"ConPTY": True, "exitCode": code, "candidateOverwriteObserved": True,
+                "preUpdateMarkerRestored": True, "previousBytesRestored": True}
+    finally:
+        # Undo only the deliberate fixture change; do not reinstall away other
+        # failures or catch the failed rollback assertion.
+        managed.write_bytes(clean_bytes)
 
 
 def special_arguments(suite):
@@ -209,7 +225,7 @@ def special_arguments(suite):
         for shell in (suite.ps51, suite.ps7):
             result = suite.ps("& $env:HC_TEST_DRIVER; exit $LASTEXITCODE", shell=shell, env=env)
             assert result.returncode == 0
-        suite.run([os.environ["ComSpec"], "/d", "/v:on", "/c", '"%HC_TEST_DRIVER%"'], env=env)
+        suite.cmd('"%HC_TEST_DRIVER%"', delayed=True, env=env)
         assert len(rows) == 3, rows
         assert all(row[0] == "POST" and "freeze-credit" in row[1] and row[2]["prompt"] == prompt for row in rows), rows
         assert not marker.exists(), "Prompt or path text was executed as a shell command"

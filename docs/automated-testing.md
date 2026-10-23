@@ -41,7 +41,35 @@ python tools/verify_windows_coverage.py --unit build/validation/unit-results.jso
 
 GitHub 官方提供的 `windows-11-arm` 为 ARM 桌面环境，不代表 Windows 10/11 x64 桌面已验证；见 [runner 环境说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。请求文件支持 UTF-8、UTF-8 BOM 和带 BOM 的 UTF-16；PowerShell 5.1 重定向默认 UTF-16LE、PowerShell 7 默认 UTF-8 的差异单独验证，见 [微软编码说明](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding)。不支持的 UNC/保留名/目录重定向安装位置须明确拒绝；长路径按实际系统能力验证，不宣称所有文件系统相同。
 
+安装前另拒绝包含 `%` 或 `!` 的安装目录，并提示更换 `HOLYCRAB_INSTALL_PREFIX`：这是 CMD 启动器的展开限制，不是 Windows 文件系统禁止这些字符。中文、emoji、空格、括号和 `&` 的安装路径继续执行实际启动验证。请求文件名含 `%` 或 `!` 仍受支持：`win.argv.shells` 通过关闭延迟展开的 batch 调用、引用环境变量及 `@request` 文件，验证三种 Shell 实际发送完全相同的请求体且没有执行其中的命令文本。不能由调用者先展开参数后，再要求 CLI 恢复原文；参见 [CMD 非递归变量替换](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd)。
+
+ConPTY 驱动在重定向日志的工作进程下显式设置 `STARTF_USESTDHANDLES` 与空标准句柄，让 Windows 填入控制台句柄；原生探针要求三个 `isatty()`、三个 `GetConsoleMode()` 及双流捕获全部通过。依据：[Microsoft Terminal 维护者说明](https://github.com/microsoft/terminal/issues/4380#issuecomment-580865346)、[GetStdHandle 的附加控制台行为](https://learn.microsoft.com/en-us/windows/console/getstdhandle#attachdetach-behavior)。
+
+CMD 启动器始终原样返回 Python 的退出码，不再因 CLI 入口缺失而自删；卸载清理由专用助手负责。`win.shells.launchers` 复制实际生成的启动器，以独立测试入口验证自删入口后退出 37/130，以及入口已缺失时普通 `--version` 返回 2 且启动器保留；这些是启动器契约测试，不冒充完整卸载。`win.uninstall.user_files` 另实际安装后持有配置文件共享锁，从 CMD 发起 `uninstall --purge --yes`，要求程序删除后清理配置失败仍返回 1、配置字节保留，并观察延迟清理最终完成。
+
+安装中断回归先给已安装的一个运行时文件追加无行为注释，再记录全部文件摘要。到真实 doctor 启动屏障时，必须证明候选已经覆盖该文件；中断后要求完整快照及原注释全部恢复，避免同一候选覆盖同一候选产生“没有回滚也通过”的假阳性。最后只还原夹具主动修改的文件，不重装掩盖其他失败。
+
 Windows 10/11 x64 桌面、真实授权/上传/付费生成未包含在离线验收。最终结果以同一提交的 CI 报告为准；以上是检查定义，不是已经通过的声明。
+
+### Windows 特殊字符请求文件
+
+PowerShell 直接调用 `.cmd` 时也经过 CMD 的参数解析。若请求文件名含 `%` 或 `!`，在不含这两个字符的工作目录中保存以下 `holycrab-estimate.cmd`（ASCII/UTF-8 无 BOM 均可）：
+
+```bat
+@echo off
+setlocal DisableDelayedExpansion
+"%HC_LAUNCHER%" generate estimate --kind image --json "%HC_REQUEST%"
+```
+
+PowerShell 5.1/7 设置字面值后执行；它只估算，不提交生成：
+
+```powershell
+$env:HC_LAUNCHER = (Get-Command holycrab.cmd -CommandType Application).Source
+$env:HC_REQUEST = '@C:\素材\图片 (x)&%PATH%!TOKEN!.json'
+.\holycrab-estimate.cmd
+```
+
+原生验收用同一调用形式检查实际 HTTP 请求。将特殊文本保留在 JSON 文件内；不要把提示词拼成 Shell 命令，也不要使用会再次展开参数的 `call`。
 
 ## 按需加上的本地检查
 

@@ -98,7 +98,7 @@
       "stage": "holycrab_runtime/lifecycle.py",
       "target": "holycrab_runtime/lifecycle.py",
       "kind": "runtime",
-      "sha256": "1de85250cf361eb87c5e8488026c169e1d6484645a7a48d22bb2b745f338f0f6"
+      "sha256": "bfe1ec1d9e376478ce89317d30a16c106b5320f749f85f54fd0083614b42a454"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/mcp.py",

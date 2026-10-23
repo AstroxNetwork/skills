@@ -1123,13 +1123,15 @@ Remove-Item -LiteralPath $SelfPath -Force -ErrorAction SilentlyContinue
 '''
     with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
         stream.write(program)
-    creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+    # Windows PowerShell can exit before processing -File under DETACHED_PROCESS.
+    # A windowless process can outlive this parent without DETACHED_PROCESS.
+    creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
     # PS7 -> Python -> Windows PowerShell otherwise inherits PS7's module
     # search path, which can make Remove-Item/Start-Sleep unavailable in PS5.1.
     cleanup_env = {key: value for key, value in os.environ.items() if key.upper() != "PSMODULEPATH"}
     try:
         subprocess.Popen(
-            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(helper),
+            [powershell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(helper),
              str(launcher), str(library), str(helper), str(failure_log)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             close_fds=True, creationflags=creation_flags, env=cleanup_env,
@@ -1198,7 +1200,7 @@ def perform_uninstall(args: argparse.Namespace) -> int:
     if os.name == "nt":  # pragma: no cover - Windows CI
         # Sources are not held open by Python. Retry other transient file locks
         # here, while the full ownership-aware deletion code is still loaded.
-        # The detached helper only handles the still-running batch launcher.
+        # The background helper only handles the still-running batch launcher.
         try:
             if library.is_symlink():
                 library.unlink()

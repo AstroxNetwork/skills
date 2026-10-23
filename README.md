@@ -34,6 +34,8 @@ irm https://holycrab.ai/cli/install.ps1 | iex
 
 安装器会把命令放到用户目录的 `.local/bin`，安装 Codex 与 Claude Code 的 Skill，并在检测到对应客户端时登记本地 MCP。macOS/Linux 安装器会幂等写入当前 shell 的启动配置；PowerShell 安装器会更新当前会话和用户级 PATH。它不会写入 API Key。
 
+Windows 的安装目录不能含 `%` 或 `!`，这是 CMD 启动器的限制；可通过 `HOLYCRAB_INSTALL_PREFIX` 选择其他目录。请求文件仍可包含这些字符，按 [Windows 特殊字符调用示例](docs/automated-testing.md#windows-特殊字符请求文件) 传入，避免 Shell 在 CLI 启动前展开文件名。
+
 ## 覆盖安装、升级和卸载
 
 从 `v0.4.1` 起，CLI 启动时会按本地缓存检查 GitHub 最新稳定版，只提示、不静默安装。`v0.6.0` 成功检查后缓存 24 小时，失败后约 1 小时再尝试；同一新版每天最多提醒一次，发现更高版本可重新提醒。MCP 持续运行期间也会在工具调用时按相同周期检查，Agent 在当前会话简短告知一次。自动检查采用短网络超时，失败不会中止原命令。

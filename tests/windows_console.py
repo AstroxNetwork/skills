@@ -110,6 +110,13 @@ class Console:
             self.check(k.UpdateProcThreadAttribute(self.attributes, 0, 0x00020016, self.pc, ctypes.sizeof(W.HANDLE), None, None))
             startup = STARTUPINFOEX()
             startup.StartupInfo.cb = ctypes.sizeof(startup)
+            # A redirected parent can otherwise leak its file/pipe stdio even
+            # with bInheritHandles=False. NULL handles plus USESTDHANDLES make
+            # ConPTY populate real console handles (microsoft/terminal#4380).
+            startup.StartupInfo.dwFlags = 0x00000100  # STARTF_USESTDHANDLES
+            startup.StartupInfo.hStdInput = None
+            startup.StartupInfo.hStdOutput = None
+            startup.StartupInfo.hStdError = None
             startup.lpAttributeList = ctypes.addressof(self.attributes)
             block = ctypes.create_unicode_buffer("\0".join(f"{key}={value}" for key, value in sorted(env.items(), key=lambda row: row[0].upper())) + "\0\0")
             flags = 0x00080000 | 0x00000400 | 0x00000004  # extended, Unicode, suspended
@@ -121,7 +128,8 @@ class Console:
             limits.BasicLimitInformation.LimitFlags = 0x2000  # KILL_ON_JOB_CLOSE
             self.check(k.SetInformationJobObject(self.job, 9, ctypes.byref(limits), ctypes.sizeof(limits)))
             self.check(k.AssignProcessToJobObject(self.job, self.info.hProcess))
-            k.ResumeThread(self.info.hThread)
+            if k.ResumeThread(self.info.hThread) == 0xFFFFFFFF:
+                raise ctypes.WinError(ctypes.get_last_error())
             k.CloseHandle(self.input_read); self.input_read = W.HANDLE()
             k.CloseHandle(self.output_write); self.output_write = W.HANDLE()
             self.reader = threading.Thread(target=self._read, name="conpty-output", daemon=True)

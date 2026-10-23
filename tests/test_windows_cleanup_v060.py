@@ -3,8 +3,11 @@ import argparse
 import hashlib
 import io
 import os
+import subprocess
+import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import ExitStack, redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -20,6 +23,38 @@ lifecycle = cli._owner('perform_uninstall')
 
 
 class WindowsCleanupTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Requires native Windows scheduled process cleanup')
+    def test_native_scheduled_cleanup_outlives_parent_and_preserves_user_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            library = root / 'library with spaces'
+            library.mkdir()
+            note = library / 'user-note.txt'
+            note.write_text('keep this user file', encoding='utf-8')
+            launcher = root / 'launcher with spaces.cmd'
+            launcher.write_text('@echo off\n', encoding='ascii')
+            scratch = root / 'helpers'
+            scratch.mkdir()
+            source = Path(__file__).resolve().parents[1] / 'holycrab/scripts'
+            program = (
+                'import sys; from pathlib import Path; '
+                'sys.path.insert(0, sys.argv[1]); '
+                'from holycrab_runtime.lifecycle import schedule_windows_program_cleanup; '
+                'schedule_windows_program_cleanup(Path(sys.argv[2]), Path(sys.argv[3]))'
+            )
+            parent = subprocess.run([sys.executable, '-c', program, str(source), str(launcher), str(library)],
+                env=dict(os.environ, TEMP=str(scratch), TMP=str(scratch)),
+                capture_output=True, text=True, timeout=15)
+            self.assertEqual(parent.returncode, 0, parent.stderr)
+            deadline = time.monotonic() + 12
+            while (launcher.exists() or list(scratch.glob('*.ps1'))) and time.monotonic() < deadline:
+                time.sleep(.05)
+            diagnostics = {p.name: p.read_text(encoding='utf-8', errors='replace') for p in scratch.glob('*.log')}
+            self.assertFalse(launcher.exists(), diagnostics)
+            self.assertFalse(list(scratch.glob('*.ps1')), 'Cleanup helper did not remove itself')
+            self.assertFalse(diagnostics)
+            self.assertEqual(note.read_text(encoding='utf-8'), 'keep this user file')
+
     def test_cleanup_helper_does_not_inherit_other_powershell_module_paths(self):
         with patch.object(lifecycle.shutil, 'which', return_value='powershell.exe'), \
              patch.object(lifecycle.subprocess, 'Popen') as spawn, \

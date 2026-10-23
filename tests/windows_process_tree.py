@@ -10,22 +10,36 @@ from ctypes import wintypes as W
 from pathlib import Path
 
 
-def is_alive(pid):
+def is_alive(pid, timeout=0):
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
     kernel.OpenProcess.argtypes = [W.DWORD, W.BOOL, W.DWORD]
     kernel.OpenProcess.restype = W.HANDLE
     kernel.WaitForSingleObject.argtypes = [W.HANDLE, W.DWORD]
     kernel.WaitForSingleObject.restype = W.DWORD
+    kernel.GetExitCodeProcess.argtypes = [W.HANDLE, ctypes.POINTER(W.DWORD)]
+    kernel.GetExitCodeProcess.restype = W.BOOL
     kernel.CloseHandle.argtypes = [W.HANDLE]
     kernel.CloseHandle.restype = W.BOOL
-    handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+    handle = kernel.OpenProcess(0x00100000 | 0x1000, False, pid)  # SYNCHRONIZE + QUERY_LIMITED_INFORMATION
     if not handle:
         error = ctypes.get_last_error()
         if error == 87:  # ERROR_INVALID_PARAMETER: PID no longer exists
             return False
         raise ctypes.WinError(error)
     try:
-        return kernel.WaitForSingleObject(handle, 0) == 258
+        result = kernel.WaitForSingleObject(handle, int(timeout * 1000))
+        if result == 0:  # The process is signaled even while its PID can still be opened.
+            return False
+        if result == 258:
+            code = W.DWORD()
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            if timeout:
+                raise AssertionError(f'Process {pid} did not exit within {timeout}s; exit status={code.value}')
+            return True
+        if result == 0xFFFFFFFF:
+            raise ctypes.WinError(ctypes.get_last_error())
+        raise AssertionError(f'Unexpected process wait status {result} for PID {pid}')
     finally:
         kernel.CloseHandle(handle)
 
@@ -70,7 +84,9 @@ def run_case(suite):
             raise AssertionError('Harness falsely passed a command that left a running grandchild')
         for path in (child_pid, grand_pid):
             assert path.exists(), 'The fault fixture never created its full process tree'
-            assert not is_alive(wait_pid(path)), 'Harness returned while a descendant remained alive'
+            # Job accounting can reach zero before process teardown signals the
+            # process object. Observe the actual exit, with a bounded deadline.
+            assert not is_alive(wait_pid(path), timeout=5), 'Harness returned while a descendant remained alive'
         scenarios.append({'trigger': mode, 'allDescendantsGone': True})
 
     # Exercise KILL_ON_JOB_CLOSE itself: bypass explicit TerminateJobObject.
