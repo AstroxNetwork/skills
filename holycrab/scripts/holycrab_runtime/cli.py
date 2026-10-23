@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import codecs
 import getpass
 import http.client
 import json
@@ -31,7 +32,14 @@ from . import uploads as _uploads
 
 
 def parse_json_argument(value: str) -> dict[str, Any]:
-    raw = Path(value[1:]).expanduser().read_text(encoding="utf-8") if value.startswith("@") else value
+    raw = value
+    if value.startswith("@"):
+        encoded = Path(value[1:]).expanduser().read_bytes()
+        encoding = "utf-16" if encoded.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)) else "utf-8-sig"
+        try:
+            raw = encoded.decode(encoding)
+        except UnicodeError:
+            raise _results.CommandUsageError("Request file must use UTF-8 or UTF-16 with a BOM; save it with one of these encodings and retry.") from None
     parsed = json.loads(raw)
     if not isinstance(parsed, dict):
         raise SystemExit("JSON input must be an object")
@@ -40,12 +48,13 @@ def parse_json_argument(value: str) -> dict[str, Any]:
 
 def command_set_key(args: argparse.Namespace) -> int:
     if args.stdin:
-        api_key = sys.stdin.readline().strip()
+        api_key = sys.stdin.read().strip()
     else:
         _presentation.command_progress(f"Create or copy an API Key at: {_settings.PUBLIC_ACCOUNT_URL}")
         api_key = getpass.getpass("Paste API Key (input hidden): ").strip()
     if not api_key:
         raise SystemExit("API Key cannot be empty")
+    api_key = _state.validate_api_key(api_key)
     _settings.SENSITIVE_OUTPUT_VALUES.add(api_key)
     account = None
     if not args.no_verify:
@@ -55,8 +64,8 @@ def command_set_key(args: argparse.Namespace) -> int:
             _transport.response_data(status, response)
         if account is None:
             raise ValueError("Account verification returned an incomplete response; the API Key was not saved")
-    config = _state.load_config()
-    previously_configured = bool(config.get("apiKey"))
+    config = _state.load_config(decrypt=False)
+    previously_configured = bool(config.get("apiKey") or config.get("apiKeyDpapi"))
     config["apiKey"] = api_key
     _state.save_config(config)
     _presentation.command_progress("HolyCrab API Key saved locally with user-only permissions.")
@@ -98,7 +107,7 @@ def command_auth_status(args: argparse.Namespace) -> int:
 
 
 def command_clear_key(args: argparse.Namespace) -> int:
-    config = _state.load_config()
+    config = _state.load_config(decrypt=False)
     config.pop("apiKey", None)
     config.pop("apiKeyDpapi", None)
     _state.save_config(config)
@@ -154,6 +163,7 @@ def command_generation_create(args: argparse.Namespace) -> int:
         confirmed=True,
         attempt_id=args.attempt_id,
         approved_estimate=approved_estimate,
+        approved_credits=getattr(args, "approved_credits", None),
         progress=_presentation.command_progress,
     )
     _presentation.print_result(result)
@@ -228,6 +238,8 @@ def command_download(args: argparse.Namespace) -> int:
         _presentation.command_progress(f"Downloading output {args.index + 1}...\nPath: {destination}")
         with _transport.open_download(url) as remote, os.fdopen(descriptor, "wb") as local:
             descriptor = -1
+            if getattr(remote, "status", 200) != 200 or remote.headers.get("Content-Range"):
+                raise SystemExit("Download did not return a complete file; partial responses are not accepted. The output was not replaced")
             content_length = remote.headers.get("Content-Length") if getattr(remote, "headers", None) else None
             expected_length = int(content_length) if isinstance(content_length, str) and content_length.isascii() and content_length.isdigit() else None
             if expected_length is not None and expected_length > _settings.MAX_DOWNLOAD_RESPONSE_BYTES:
@@ -250,10 +262,15 @@ def command_download(args: argparse.Namespace) -> int:
             os.replace(partial, destination)
         else:
             try:
-                os.link(partial, destination)
+                if os.name == "nt":
+                    # Windows rename is atomic and refuses an existing destination,
+                    # including filesystems without hard-link support (e.g. exFAT).
+                    os.rename(partial, destination)
+                else:
+                    os.link(partial, destination)
             except FileExistsError as error:
                 raise SystemExit(f"Output already exists: {destination}. Use --force to replace it") from error
-            partial.unlink()
+            partial.unlink(missing_ok=True)
     finally:
         if descriptor >= 0:
             os.close(descriptor)
@@ -504,6 +521,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_json_argument(gen_create)
     gen_create.add_argument("--yes", action="store_true", help="Confirm exactly one billable task")
     gen_create.add_argument("--attempt-id", help="Local ID for this one submission attempt")
+    gen_create.add_argument("--approved-credits", type=int, help="Require the current estimate to match the exact credit amount approved by the user")
     gen_create.set_defaults(func=command_generation_create)
     attempts = generate_sub.add_parser("attempts", help="Inspect one-shot local submission records")
     attempts_sub = attempts.add_subparsers(dest="attempts_command", required=True)
@@ -671,6 +689,9 @@ def main() -> int:
         return 130
     except KeyboardInterrupt:
         print("Stopped. Ctrl+C ended this local operation; it does not cancel an existing online task or authorization.", file=sys.stderr)
+        return 130
+    except EOFError:
+        print("Stopped: input ended before confirmation. No operation was approved by this input.", file=sys.stderr)
         return 130
     except _results.CommandUsageError as error:
         print(f"Invalid argument: {_presentation.sanitize_text_for_output(str(error))}", file=sys.stderr)

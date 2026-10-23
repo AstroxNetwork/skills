@@ -66,7 +66,7 @@ MCP_TOOLS = [
     {"name": "capabilities_list", "description": "List the public generation capability snapshot bundled with this release.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
     {"name": "capability_get", "description": "Get limits for one public model.", "inputSchema": {"type": "object", "properties": {"model": {"type": "string"}}, "required": ["model"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
     {"name": "generation_estimate", "description": "Estimate credit without creating a task.", "inputSchema": {"type": "object", "properties": {"kind": {"enum": ["video", "image", "audio"]}, "request": {"type": "object"}}, "required": ["kind", "request"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
-    {"name": "generation_create", "description": "Create exactly one billable generation after explicit user confirmation. Supply one stable attemptId per confirmed draw. Query generation_attempt_get to reconcile it; never submit the same attempt again.", "inputSchema": {"type": "object", "properties": {"kind": {"enum": ["video", "image", "audio"]}, "request": {"type": "object"}, "confirmed": {"type": "boolean"}, "attemptId": {**_settings.ATTEMPT_ID_SCHEMA, "description": "Client-generated stable ID for this one confirmed draw."}}, "required": ["kind", "request", "confirmed", "attemptId"], "additionalProperties": False}, "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}},
+    {"name": "generation_create", "description": "Create exactly one billable generation after explicit user confirmation. Supply one stable attemptId per confirmed draw. Query generation_attempt_get to reconcile it; never submit the same attempt again.", "inputSchema": {"type": "object", "properties": {"kind": {"enum": ["video", "image", "audio"]}, "request": {"type": "object"}, "confirmed": {"type": "boolean"}, "attemptId": {**_settings.ATTEMPT_ID_SCHEMA, "description": "Client-generated stable ID for this one confirmed draw."}, "approvedCredits": {"type": "integer", "minimum": 0, "description": "Exact frozenCredit amount the user approved; reject a changed estimate before submission."}}, "required": ["kind", "request", "confirmed", "attemptId"], "additionalProperties": False}, "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}},
     {"name": "generation_get", "description": "Get one generation task by ID.", "inputSchema": {"type": "object", "properties": {"taskId": {"type": "string"}}, "required": ["taskId"], "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
     {"name": "generation_list", "description": "List tasks for the current HolyCrab user.", "inputSchema": {"type": "object", "properties": {"page": {"type": "integer", "minimum": 1}, "pageSize": {"type": "integer", "minimum": 1, "maximum": 100}, "startDate": {"type": "string"}, "endDate": {"type": "string"}, "taskType": {"type": "string", "enum": ["IMAGE", "VIDEO", "AUDIO", "TEXT"]}}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}},
     {"name": "generation_attempt_list", "description": "List local one-shot generation submission attempts.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
@@ -214,6 +214,7 @@ def _mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
             arguments.get("request"),
             confirmed=arguments.get("confirmed") is True,
             attempt_id=attempt_id.strip(),
+            approved_credits=arguments.get("approvedCredits"),
         )
     if name == "generation_get":
         task_id = _presentation.public_id(arguments.get("taskId"), "taskId")
@@ -255,7 +256,7 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
     if identifier is None and method in {"notifications/initialized", "notifications/cancelled"}:
         return None
     if method == "initialize":
-        params = message.get("params") or {}
+        params = message.get("params", {})
         if not isinstance(params, dict):
             return {"jsonrpc": "2.0", "id": identifier, "error": {"code": -32602, "message": "Invalid params"}}
         requested = params.get("protocolVersion")
@@ -281,12 +282,12 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": identifier, "result": {"tools": MCP_TOOLS}}
     if method == "tools/call":
-        params = message.get("params") or {}
+        params = message.get("params", {})
         if not isinstance(params, dict):
             return {"jsonrpc": "2.0", "id": identifier, "error": {"code": -32602, "message": "Invalid params"}}
         notification = None
         try:
-            arguments = params.get("arguments") or {}
+            arguments = params.get("arguments", {})
             if not isinstance(arguments, dict):
                 raise ValueError("arguments must be an object")
             notification = _pending_update_notification()

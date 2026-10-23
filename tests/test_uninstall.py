@@ -345,6 +345,7 @@ elif arguments[:2] == ["mcp", "remove"]:
                     patch.object(cli._owner("remove_managed_mcp_registrations"), "remove_managed_mcp_registrations", return_value=[]), \
                     patch.object(cli._owner("remove_managed_skill_files"), "remove_managed_skill_files", return_value=[]), \
                     patch.object(cli._owner("send"), "send") as send, \
+                    patch.object(cli._owner("schedule_windows_program_cleanup"), "schedule_windows_program_cleanup"), \
                     patch.object(cli.urllib.request, "urlopen") as urlopen, \
                     patch.object(sys, "argv", ["holycrab", "uninstall", "--yes"]):
                 result = cli.main()

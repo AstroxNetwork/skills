@@ -16,7 +16,32 @@ Windows 使用 `python tools/run_checks.py`。需要 Python 3.10 或以上；基
 - 校验完整 runtime 清单、安装器哈希、公开能力快照，编译全部 runtime、tools 和 tests，检查 Unix shell 语法；Git checkout 中还检查补丁空白问题。
 - Windows 自动发现同一套测试，明确记录 Unix 安装/卸载及 PTY 用例的跳过原因；Windows CI 另外运行原生 PowerShell 5.1 安装、DPAPI、中文路径、MCP、健康检查失败回滚和卸载。
 
-CI 保留 Linux/macOS/Windows × Python 3.10/3.14 的六组基础检查，以及三个平台的原生安装检查。一个平台的结果不能代替另一平台。
+CI 保留 Linux/macOS 与 Windows Server 2025 × Python 3.10/3.14，并增加 Windows Server 2022 x64/Python 3.10 与 Windows 11 ARM/原生 Python 3.14。Windows 基础测试与原生验收在同一作业内执行。一个平台的结果不能代替另一平台。
+
+## 对抗性检查
+
+```sh
+python3 tools/run_checks.py --profile adversarial
+```
+
+该入口在标准检查后实际安装候选、启动本地 HTTP 故障服务，逐一执行 16 个模型与 22 个 MCP 工具；检查真实请求体、退出码、状态文件和请求次数。测试子进程只允许访问指定的本机服务，使用假凭据。另覆盖断连、拒绝、并发同一生成/上传、上传注册结果未知、活动操作拒绝清理状态、重定向、206 与截断下载。
+
+随后在临时副本执行十种定向变异：重复提交、清理活动状态、复用上传计划、丢音频估算请求体、吞错误退出码、错误 MCP isError、接受截断下载、跳过安装器摘要、删除修改后的 Skill、接受变化的费用。每项先证明基线行为通过，再要求变异因行为断言失败。编译错误、夹具报错、超时、缺报告、跳过均不算成功杀死变异；变异后的安装哈希会重新生成，避免只因哈希不符而误报。
+
+## 原生 Windows 验收
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/test_windows_adversarial.ps1 -Report build/validation/windows-native.json
+python tools/verify_windows_coverage.py --unit build/validation/unit-results.json --native build/validation/windows-native.json --report build/validation/windows-coverage.json
+```
+
+外层需要管理员权限创建临时普通账户、配置仅对该账户生效的出站隔离；实际验收必须证明普通用户 token。源仓库需包含不可变 v0.5.0 提交 `52f697e35ad2689791423cb10eae5c8259e4c943`；不会用改版本号代替真实升级。隔离用户执行 PowerShell 5.1、PowerShell 7、CMD、DPAPI、特殊路径、实际文件占用、升级/回滚/卸载和 ConPTY 控制台流程。清理必须观察最终文件结果。
+
+`tests/windows_native_cases.json` 列出全部 53 个必需用例；`tests/windows_skip_coverage.json` 为基线 60 项跳过逐项归类：26 项恢复在 Windows 运行，31 项须原生补位，2 项纯 Unix，1 项网站外部验收。门禁同时核对完整原生列表、基础报告与原生报告的源码指纹。新增跳过、缺项、失败、重复 ID、管理员 token 或旧报告均失败。
+
+GitHub 官方提供的 `windows-11-arm` 为 ARM 桌面环境，不代表 Windows 10/11 x64 桌面已验证；见 [runner 环境说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)。请求文件支持 UTF-8、UTF-8 BOM 和带 BOM 的 UTF-16；PowerShell 5.1 重定向默认 UTF-16LE、PowerShell 7 默认 UTF-8 的差异单独验证，见 [微软编码说明](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_character_encoding)。不支持的 UNC/保留名/目录重定向安装位置须明确拒绝；长路径按实际系统能力验证，不宣称所有文件系统相同。
+
+Windows 10/11 x64 桌面、真实授权/上传/付费生成未包含在离线验收。最终结果以同一提交的 CI 报告为准；以上是检查定义，不是已经通过的声明。
 
 ## 按需加上的本地检查
 
@@ -56,7 +81,7 @@ python3 tools/run_checks.py \
 
 ## 测试脚本自身的检查
 
-`tests/test_automation_runner.py` 真正启动成功/失败/超时子进程、构造失败/跳过/空测试集，验证退出码和 JSON 报告；空测试集或全部跳过都必须失败。还验证网络阻断、环境隔离、Windows 新测试自动纳入和源码、公共文档、验收记录与嵌套 fixture 的指纹变化。
+`tests/test_automation_runner.py` 真正启动成功/失败/超时子进程、构造失败/跳过/空测试集，验证退出码和 JSON 报告；空测试集、全部跳过、expectedFailure 或父进程退出后仍有子进程运行都必须失败。还验证网络阻断、环境隔离、Windows 新测试自动纳入和源码、公共文档、验收记录与嵌套 fixture 的指纹变化。
 
 `tests/test_native_install_checks.py` 使用丢文件、多文件、改字节、遗漏新模块等反例验证安装清单检查；直接执行修改版本后的 CLI，防止版本 fixture 只是替换了无效字符串；构造哈希正确但 doctor 失败的安装包，验证故障确实发生，并在 Unix 实测逐文件回滚。Windows 使用同一故障 fixture 做原生安装回滚。
 

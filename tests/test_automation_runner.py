@@ -45,6 +45,16 @@ class RunnerTests(unittest.TestCase):
         self.assertIsNotNone(result["exitCode"])
         self.assertLess(result["seconds"], 15)
 
+    def test_successful_parent_cannot_hide_a_running_grandchild(self):
+        marker = self.root / 'escaped.txt'
+        child = 'import time; from pathlib import Path; time.sleep(3); Path(' + repr(str(marker)) + ').write_text("escaped")'
+        result = self.stage('import subprocess, sys; subprocess.Popen([sys.executable, "-c", ' + repr(child) + '])')
+        self.assertEqual(result['status'], 'failed')
+        self.assertIn('descendant', result['reason'])
+        import time
+        time.sleep(3)
+        self.assertFalse(marker.exists(), 'Leaked child must actually be terminated')
+
     def test_python_network_guard_blocks_unmocked_connections(self):
         result = self.stage("import socket; socket.create_connection(('127.0.0.1', 9))")
         self.assertEqual(result["status"], "failed")
@@ -116,17 +126,27 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(report["executed"], 0)
         self.assertEqual(report["status"], "failed")
 
+    def test_expected_failure_cannot_be_accepted_as_verified_behavior(self):
+        result, report = self.worker("class Fixture(unittest.TestCase):\n"
+                                    " @unittest.expectedFailure\n"
+                                    " def test_broken(self): self.assertEqual(1, 2)\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report['status'], 'failed')
+        self.assertEqual(len(report['expectedFailures']), 1)
+
     def test_windows_filter_does_not_drop_new_test_modules(self):
         tests = []
-        for name in ("test_installer.InstallerTests.test_unix", "test_future.FutureTests.test_new"):
+        for name in ("test_installer.InstallerTests.test_installs_cli_and_skill_into_isolated_home",
+                     "test_installer.InstallerTests.test_windows_mcp_helper_accepts_utf8_bom_and_chinese_paths",
+                     "test_future.FutureTests.test_new"):
             test = unittest.FunctionTestCase(lambda: None)
             test.id = lambda name=name: name
             tests.append(test)
         suite = runner.platform_suite(unittest.TestSuite(tests), "Windows")
         result = unittest.TextTestRunner(stream=io.StringIO()).run(suite)
-        self.assertEqual(result.testsRun, 2)
+        self.assertEqual(result.testsRun, 3)
         self.assertEqual(len(result.skipped), 1)
-        self.assertEqual(result.skipped[0][0].id(), "test_installer.InstallerTests.test_unix")
+        self.assertEqual(result.skipped[0][0].id(), "test_installer.InstallerTests.test_installs_cli_and_skill_into_isolated_home")
 
     def test_fingerprint_changes_when_source_or_test_bytes_change(self):
         tools = self.root / "tools"

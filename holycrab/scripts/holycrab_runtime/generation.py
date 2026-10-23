@@ -96,6 +96,7 @@ def estimate_generation(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
             canonical_request_hash(kind, normalized))
 
 
+@_state.protect_operation
 def create_generation(
     kind: str,
     payload: dict[str, Any],
@@ -103,13 +104,14 @@ def create_generation(
     confirmed: bool,
     attempt_id: str | None = None,
     approved_estimate: dict[str, Any] | None = None,
+    approved_credits: int | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     selected_attempt = attempt_id or uuid.uuid4().hex
     context: dict[str, Any] = {}
     try:
         result = _create_generation(kind, payload, confirmed=confirmed, attempt_id=selected_attempt,
-                                    approved_estimate=approved_estimate, progress=progress, context=context)
+                                    approved_estimate=approved_estimate, approved_credits=approved_credits, progress=progress, context=context)
         if isinstance(result, _results.ApprovedEstimate):
             return result
         return _results.OperationResult(result, result.get("state") if result.get("state") in {"failed", "unknown"} else "success")
@@ -126,9 +128,11 @@ def create_generation(
 
 
 def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, attempt_id: str,
-                       approved_estimate: dict[str, Any] | None, progress: Callable[[str], None] | None,
+                       approved_estimate: dict[str, Any] | None, approved_credits: int | None, progress: Callable[[str], None] | None,
                        context: dict[str, Any]) -> dict[str, Any]:
     payload = _capabilities.normalize_generation_request(kind, payload)
+    if approved_credits is not None and (type(approved_credits) is not int or approved_credits < 0):
+        raise ValueError("approvedCredits must be a nonnegative integer")
     selected_attempt = attempt_id
     if confirmed and _state.attempt_exists(selected_attempt):
         raise SystemExit(
@@ -141,6 +145,12 @@ def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, a
     if approved_estimate is not None and (not isinstance(approved_estimate, _results.ApprovedEstimate)
             or approved_estimate.request_hash != canonical_request_hash(kind, payload)):
         raise ValueError("The approved estimate does not match this request; estimate again")
+    if confirmed:
+        if approved_estimate is not None:
+            approved_credits = estimate['estimate']['frozenCredit']
+            estimate = estimate_generation(kind, payload)
+        if approved_credits is not None and estimate['estimate']['frozenCredit'] != approved_credits:
+            raise ValueError(f"Credit estimate changed from {approved_credits} to {estimate['estimate']['frozenCredit']}; no task was submitted. Review the new estimate and confirm again.")
     if not confirmed:
         return _results.ApprovedEstimate({
             **estimate,

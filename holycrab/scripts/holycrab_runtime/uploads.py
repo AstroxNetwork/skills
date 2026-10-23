@@ -261,6 +261,7 @@ def upload_plan_record(plan_id: str) -> dict[str, Any]:
     return result
 
 
+@_state.protect_operation
 def execute_upload_plan(plan_id: str, *, confirmed: bool,
                         progress: Callable[[str], None] | None = None) -> dict[str, Any]:
     context: dict[str, Any] = {}

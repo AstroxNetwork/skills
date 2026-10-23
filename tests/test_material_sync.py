@@ -278,10 +278,10 @@ class BerryTests(unittest.TestCase):
                     self.assertEqual(cli.command_download(argparse.Namespace(uniq_id=task_id, output=str(destination), index=0, force=False)), 0)
                 self.assertEqual(destination.read_bytes(), b'video')
                 self.assertEqual(sum(method == 'POST' and not path.endswith('/freeze-credit') for method, path, _ in calls), 1)
-                self.assertEqual(sum(path.endswith('/freeze-credit') for _, path, _ in calls), 1)
+                self.assertEqual(sum(path.endswith('/freeze-credit') for _, path, _ in calls), 2)
                 with self.assertRaises(SystemExit):
                     cli.create_generation('video', request, confirmed=True, attempt_id='berryFlow' + str(index))
-                self.assertEqual(len(calls), 4)
+                self.assertEqual(len(calls), 5)
 
     def test_catalog_defaults_routes(self):
         self.assertEqual(len(cli.all_models()), 16)

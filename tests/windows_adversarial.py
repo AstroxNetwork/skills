@@ -1,0 +1,552 @@
+#!/usr/bin/env python3
+"""Native Windows acceptance run under an ordinary ephemeral user.
+
+Invoked by test_windows_adversarial.ps1. Requires actual baseline sources prepared
+from the pinned Git object, and emits a case-by-case report even on failure.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import ctypes
+import hashlib
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import sysconfig
+import time
+import traceback
+from contextlib import contextmanager
+from pathlib import Path
+
+from windows_console import Console
+from windows_mcp_smoke import run_smoke
+
+BASELINE_SHA = "52f697e35ad2689791423cb10eae5c8259e4c943"
+
+
+def ps_quote(value):
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def snapshot(root):
+    return {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in root.rglob("*") if path.is_file() and "__pycache__" not in path.parts}
+
+
+@contextmanager
+def read_lock(path):
+    from ctypes import wintypes as W
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateFileW.argtypes = [W.LPCWSTR, W.DWORD, W.DWORD, ctypes.c_void_p, W.DWORD, W.DWORD, W.HANDLE]
+    kernel.CreateFileW.restype = W.HANDLE
+    kernel.CloseHandle.argtypes = [W.HANDLE]
+    handle = kernel.CreateFileW(str(path), 0x80000000, 1, None, 3, 0, None)
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        yield
+    finally:
+        kernel.CloseHandle(handle)
+
+
+class Suite:
+    def __init__(self, args):
+        self.args = args
+        self.root = Path(args.root).resolve()
+        self.source = Path(args.source).resolve()
+        self.baseline = Path(args.baseline).resolve()
+        self.prefix = self.root / "ordinary prefix"
+        self.config = self.root / "private config"
+        stamp = json.loads(Path(args.source_stamp).read_text(encoding="utf-8"))
+        sys.path.insert(0, str(self.source / "tools"))
+        from run_checks import source_fingerprint
+        fingerprint = source_fingerprint(self.source)
+        assert fingerprint == stamp["sourceFingerprint"], "Copied candidate differs from the source fingerprint"
+        expected_cases = json.loads((self.source / "tests/windows_native_cases.json").read_text(encoding="utf-8"))
+        self.report = {"commit": stamp["commit"], "sourceFingerprint": fingerprint,
+                       "expectedCaseIds": expected_cases,
+                       "schemaVersion": 1, "suite": "windows-adversarial", "cases": [],
+                       "baselineCommit": BASELINE_SHA, "environment": {
+                           "os": platform.platform(), "machine": platform.machine(),
+                           "python": sys.version, "executable": sys.executable,
+                           "pythonPlatform": sysconfig.get_platform(), "pointerBits": ctypes.sizeof(ctypes.c_void_p) * 8,
+                           "windowsEdition": platform.win32_edition(),
+                           "networkIsolation": stamp.get("networkIsolation"),
+                           "shells": {}, "username": os.environ.get("USERNAME"),
+                           "profile": os.environ.get("USERPROFILE"),
+                           "administrator": bool(ctypes.windll.shell32.IsUserAnAdmin()),
+                           "installerSha256": snapshot(self.source).get("install.ps1")}}
+        self.env = dict(os.environ, HOLYCRAB_INSTALL_SOURCE_DIR=str(self.source),
+                        HOLYCRAB_INSTALL_PREFIX=str(self.prefix), HOLYCRAB_CONFIG_DIR=str(self.config),
+                        HOLYCRAB_INSTALL_AGENTS="none", HOLYCRAB_INSTALL_MCP="0",
+                        HOLYCRAB_NO_UPDATE_CHECK="1", PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
+        for key in ("HOLYCRAB_API_KEY", "HOLYCRAB_API_BASE", "HOLYCRAB_BASE_URL", "HOLYCRAB_INSTALL_REF"):
+            self.env.pop(key, None)
+        self.ps51 = str(Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe")
+        self.ps7 = shutil.which("pwsh")
+        if not self.ps7:
+            self.ps7 = str(Path(os.environ["ProgramFiles"]) / "PowerShell/7/pwsh.exe")
+        self.launcher = self.prefix / "bin/holycrab.cmd"
+        self.cli = self.prefix / "lib/holycrab/holycrab_cli.py"
+
+    def case(self, identifier, fn):
+        start = time.monotonic()
+        row = {"id": identifier}
+        try:
+            detail = fn()
+            row.update(status="passed", detail=detail)
+        except BaseException as exc:
+            row.update(status="failed", error=f"{type(exc).__name__}: {exc}", traceback=traceback.format_exc())
+        row["seconds"] = round(time.monotonic() - start, 3)
+        self.report["cases"].append(row)
+        print(json.dumps({"id": identifier, "status": row["status"]}), flush=True)
+        if row['status'] == 'failed':
+            print(row['traceback'], flush=True)
+        self.write_report()
+
+    def write_report(self):
+        self.report["ok"] = bool(self.report["cases"]) and all(row["status"] == "passed" for row in self.report["cases"])
+        Path(self.args.report).write_text(json.dumps(self.report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def run(self, command, *, expected=0, env=None, input=None, timeout=100, descendant_timeout=20):
+        from stage_process import WindowsJob
+        actual = [sys.executable, str(self.source / "tools/stage_process.py"),
+                  json.dumps([str(part) for part in command]), "--forward-stdin"]
+        process = subprocess.Popen(actual, env=env or self.env, stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   encoding="utf-8", errors="replace", cwd=self.root)
+        job = None
+        try:
+            # The wrapper cannot launch its first child before assignment.
+            job = WindowsJob(process)
+            try:
+                stdout, stderr = process.communicate("G" + (input or ""), timeout=timeout)
+            except subprocess.TimeoutExpired as error:
+                job.terminate()
+                stdout, stderr = process.communicate(timeout=5)
+                if not job.wait_empty(timeout=5):
+                    raise AssertionError("Timed-out command left descendant processes after termination") from error
+                raise subprocess.TimeoutExpired(command, timeout, stdout, stderr) from error
+            if not job.wait_empty(timeout=descendant_timeout):
+                count = job.active()
+                job.terminate()
+                if not job.wait_empty(timeout=5):
+                    raise AssertionError("Leaked descendants could not be terminated")
+                raise RuntimeError(f"Command exited but left {count} descendant processes; the entire job was terminated")
+            result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+            if expected is not None and result.returncode != expected:
+                raise AssertionError(f"exit {result.returncode}, expected {expected}: {result.stdout[-3000:]}\n{result.stderr[-3000:]}")
+            return result
+        finally:
+            if job:
+                job.close()
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+
+    def ps(self, code, *, shell=None, **kwargs):
+        encoded = base64.b64encode(("$ErrorActionPreference='Stop'; " + code).encode("utf-16-le")).decode("ascii")
+        return self.run([shell or self.ps51, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                         "-EncodedCommand", encoded], **kwargs)
+
+    def install(self, *, source=None, prefix=None, shell=None, expected=0, env=None):
+        target = source or self.source
+        install_env = dict(env or self.env, HOLYCRAB_INSTALL_SOURCE_DIR=str(target))
+        if prefix is not None:
+            install_env["HOLYCRAB_INSTALL_PREFIX"] = str(prefix)
+        return self.ps("& " + ps_quote(target / "install.ps1"), shell=shell, env=install_env, expected=expected)
+
+    def cli_run(self, *args, **kwargs):
+        return self.run([sys.executable, "-X", "utf8", str(self.cli), *args], **kwargs)
+
+    def environment(self):
+        assert self.report["environment"]["administrator"] is False, "Acceptance must use a non-admin token"
+        actual = self.ps("[Security.Principal.WindowsIdentity]::GetCurrent().Name; $HOME; $PSVersionTable.PSVersion.ToString()").stdout.splitlines()
+        assert actual[0].lower().endswith("\\" + self.args.username.lower()), actual
+        assert Path(actual[1]).name.lower() == self.args.username.lower(), actual
+        assert Path(os.environ["USERPROFILE"]).name.lower() == self.args.username.lower()
+        for label, shell in (("WindowsPowerShell", self.ps51), ("PowerShell", self.ps7)):
+            result = self.ps("$PSVersionTable.PSVersion.ToString()", shell=shell)
+            self.report["environment"]["shells"][label] = result.stdout.strip()
+        assert self.report["environment"]["shells"]["WindowsPowerShell"].startswith("5.1.")
+        assert self.report["environment"]["shells"]["PowerShell"].startswith("7.")
+        blocked = self.run([sys.executable, "-c", "import socket; socket.create_connection(('holycrab-test.invalid',443),1)"], expected=None)
+        assert blocked.returncode != 0 and "Offline validation blocked" in blocked.stderr
+        assert self.report["environment"]["networkIsolation"]["firewallEnabled"] is True
+        return {"identity": actual[0], "home": actual[1], "nonLoopbackAuditBlocked": True}
+
+    def existing_native(self):
+        evidence = self.root / "existing-native.json"
+        env = dict(self.env, RUNNER_TEMP=str(self.root))
+        env.pop("HOLYCRAB_TEST_INSTALL_REF", None)
+        self.ps("& " + ps_quote(self.source / "tests/test_windows_installer.ps1")
+                + " -EvidenceReport " + ps_quote(evidence), env=env, timeout=400)
+        rows = json.loads(evidence.read_text(encoding="utf-8"))
+        assert len(rows) == 7 and len({row["id"] for row in rows}) == 7
+        self.report["cases"].extend(rows)
+        return {"nativeCases": [row["id"] for row in rows]}
+
+    def upgrade(self):
+        assert (self.baseline / ".holycrab-baseline-sha").read_text().strip() == BASELINE_SHA
+        self.install(source=self.baseline, env=dict(self.env, HOLYCRAB_INSTALL_AGENTS="codex"))
+        assert self.cli_run("--version").stdout.strip() == "holycrab 0.5.0"
+        key = "hc_test_windows_actual_baseline_123456789"
+        saved = self.cli_run("setup", "--stdin", "--no-verify", input=key + "\n")
+        assert key not in saved.stdout + saved.stderr
+        before = (self.config / "config.json").read_bytes()
+        assert key.encode() not in before
+        note = self.prefix / "lib/holycrab/user-note.txt"
+        note.write_text("keep user contents", encoding="utf-8")
+        skill = Path(os.environ["USERPROFILE"]) / ".agents/skills/holycrab"
+        (skill / "user-note.txt").write_text("keep skill note", encoding="utf-8")
+        self.install(env=dict(self.env, HOLYCRAB_INSTALL_AGENTS="", HOLYCRAB_INSTALL_MCP=""))
+        assert self.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+        assert (self.config / "config.json").read_bytes() == before
+        assert note.read_text() == "keep user contents"
+        assert (skill / "user-note.txt").read_text() == "keep skill note"
+        assert json.loads(self.cli_run("doctor", "--json").stdout)["runtimeOk"] is True
+        self.credential_bytes = before
+        self.report["cases"].append({"id": "upgrade.real-v050", "status": "passed", "driver": "win.upgrade.real_v050"})
+        return {"oldVersion": "0.5.0", "newVersion": "0.6.0", "credentialUnchanged": True,
+                "baselineSha": BASELINE_SHA, "userFilesPreserved": True}
+
+    def shells(self):
+        for shell in (self.ps51, self.ps7):
+            self.install(shell=shell)
+            result = self.ps("& " + ps_quote(self.launcher) + " --version; exit $LASTEXITCODE", shell=shell)
+            assert result.stdout.strip() == "holycrab 0.6.0"
+        cmd = os.environ["ComSpec"]
+        result = self.run([cmd, "/d", "/v:on", "/s", "/c", '""' + str(self.launcher) + '" --version"'])
+        assert result.stdout.strip() == "holycrab 0.6.0"
+        launch_text = self.launcher.read_text(encoding="utf-8")
+        invocation = next(line for line in launch_text.splitlines() if 'holycrab_cli.py' in line and '%*' in line)
+        match = re.match(r'^"([^"]+)"', invocation)
+        assert match, "Cannot identify the installed interpreter from its actual launcher"
+        selected = Path(match[1].replace('%%', '%')).resolve()
+        assert os.path.normcase(str(selected)) == os.path.normcase(str(Path(sys.executable).resolve())), (selected, sys.executable)
+        identity = self.run([str(selected), "-c", "import json,sys,sysconfig;print(json.dumps({'version':list(sys.version_info[:3]),'platform':sysconfig.get_platform()}))"])
+        actual_python = json.loads(identity.stdout)
+        assert actual_python["version"] == list(sys.version_info[:3])
+        assert actual_python["platform"] == sysconfig.get_platform()
+        self.report["environment"]["installerPython"] = {"executable": str(selected), **actual_python}
+        return {"PowerShell5": True, "PowerShell7": True, "cmdDelayedExpansion": True,
+                "actualInstallerPythonMatchesMatrix": True}
+
+    def special_paths(self):
+        prefix = self.root / "中文 用户 🦀 (safe)&literal%PATH%!"
+        self.install(prefix=prefix)
+        launcher = prefix / "bin/holycrab.cmd"
+        for shell in (self.ps51, self.ps7):
+            result = self.ps("& " + ps_quote(launcher) + " --version; exit $LASTEXITCODE", shell=shell)
+            assert result.stdout.strip() == "holycrab 0.6.0", result.stdout
+        # Pass the path through an environment variable: avoids cmd.exe expanding
+        # literal %PATH% before the launcher itself starts (a shell behavior).
+        cmd_env = dict(self.env, HOLYCRAB_TEST_LAUNCHER=str(launcher))
+        result = self.run([os.environ["ComSpec"], "/d", "/v:off", "/c", '"%HOLYCRAB_TEST_LAUNCHER%" --version'], env=cmd_env)
+        assert result.stdout.strip() == "holycrab 0.6.0", result.stdout
+        code = self.ps("& " + ps_quote(launcher) + " unknown-command; exit $LASTEXITCODE", expected=2)
+        assert "invalid choice" in code.stderr
+        self.run([sys.executable, str(prefix / "lib/holycrab/holycrab_cli.py"), "uninstall", "--yes"])
+        self.wait_missing(prefix / "lib/holycrab/holycrab_cli.py")
+        return {"unicode": True, "spaces": True, "metacharacters": "()&%!", "exitCode": 2}
+
+    def long_paths(self):
+        prefix = self.root
+        while len(str(prefix)) < 280:
+            prefix = prefix / "long-path-component"
+        result = self.install(prefix=prefix, expected=None)
+        if result.returncode == 0:
+            program = prefix / "lib/holycrab/holycrab_cli.py"
+            assert self.run([sys.executable, str(program), "--version"]).stdout.strip() == "holycrab 0.6.0"
+            self.run([sys.executable, str(program), "uninstall", "--yes"])
+            self.wait_missing(program)
+            return {"prefixLength": len(str(prefix)), "supported": True}
+        assert not (prefix / "lib/holycrab/holycrab_cli.py").exists(), "Long-path rejection left a half-installed runtime"
+        assert any(word in (result.stdout + result.stderr).lower() for word in ("path", "directory", "filename"))
+        return {"prefixLength": len(str(prefix)), "supported": False, "cleanFailure": True}
+
+    def rejected_paths(self):
+        candidates = [self.root / "CON", self.root / "trailing.", self.root / ("long" * 65),
+                      Path(r"\\localhost\C$\holycrab-must-not-write")]
+        for prefix in candidates:
+            result = self.install(prefix=prefix, expected=None)
+            assert result.returncode != 0, f"Unsafe/unsupported prefix unexpectedly succeeded: {prefix}"
+            assert "install" in (result.stderr + result.stdout).lower() or "path" in (result.stderr + result.stdout).lower()
+        target = self.root / "junction-target"
+        target.mkdir(exist_ok=True)
+        sentinel = target / "keep.txt"; sentinel.write_text("unchanged")
+        junction = self.root / "junction-prefix"
+        self.run([os.environ["ComSpec"], "/d", "/c", "mklink", "/J", str(junction), str(target)])
+        try:
+            result = self.install(prefix=junction, expected=None)
+            assert result.returncode != 0, "Installer accepted a junction prefix"
+            assert list(target.iterdir()) == [sentinel]
+        finally:
+            junction.rmdir()
+        return {"reserved": True, "trailingDot": True, "tooLong": True, "uncDenied": True, "junctionRejected": True}
+
+    def immutable_ref(self):
+        prefix = self.root / "immutable-ref"
+        log = self.root / "immutable-downloads.jsonl"
+        env = dict(self.env, HOLYCRAB_INSTALL_REF="a" * 40,
+                   HOLYCRAB_INSTALL_PREFIX=str(prefix), HOLYCRAB_TEST_SOURCE=str(self.source),
+                   HOLYCRAB_TEST_DOWNLOAD_LOG=str(log))
+        env.pop("HOLYCRAB_INSTALL_SOURCE_DIR", None)
+        code = r"""
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing,[string]$Uri,[string]$OutFile)
+    $expected='https://raw.githubusercontent.com/AstroxNetwork/skills/' + $env:HOLYCRAB_INSTALL_REF + '/'
+    if (-not $Uri.StartsWith($expected)) { throw 'Installer used a mutable/unexpected download reference' }
+    $relative=$Uri.Substring($expected.Length)
+    Add-Content -LiteralPath $env:HOLYCRAB_TEST_DOWNLOAD_LOG -Value $Uri -Encoding UTF8
+    Copy-Item -LiteralPath (Join-Path $env:HOLYCRAB_TEST_SOURCE $relative) -Destination $OutFile
+}
+""" + "& " + ps_quote(self.source / "install.ps1")
+        self.ps(code, env=env)
+        urls = log.read_text(encoding="utf-8-sig").splitlines()
+        assert len(urls) >= 20 and all("/" + "a" * 40 + "/" in url for url in urls)
+        program = prefix / "lib/holycrab/holycrab_cli.py"
+        assert self.run([sys.executable, str(program), "--version"], env=env).stdout.strip() == "holycrab 0.6.0"
+        self.run([sys.executable, str(program), "uninstall", "--yes"], env=env)
+        self.wait_missing(program)
+        return {"immutableRef": "a" * 40, "verifiedDownloads": len(urls), "version": "0.6.0"}
+
+    def invalid_ref(self):
+        prefix = self.root / "invalid-ref"
+        for ref in ("main", "../main", "v0.6.0-rc1", "a" * 39, "a?token=not-real"):
+            result = self.install(prefix=prefix, env=dict(self.env, HOLYCRAB_INSTALL_REF=ref), expected=None)
+            assert result.returncode != 0 and "HOLYCRAB_INSTALL_REF" in result.stderr
+            assert not prefix.exists(), "Invalid reference wrote installation files"
+        return {"invalidReferencesRejected": 5, "beforeWrites": True}
+
+    def tampered_hash(self):
+        damaged = self.root / "tampered-candidate"
+        shutil.copytree(self.source, damaged, ignore=shutil.ignore_patterns(".git", "build", "__pycache__"))
+        program = damaged / "holycrab/scripts/holycrab_cli.py"
+        program.write_bytes(program.read_bytes() + b"\n# adversarial tampering\n")
+        prefix = self.root / "tampered-install"
+        result = self.install(source=damaged, prefix=prefix, expected=None)
+        assert result.returncode != 0 and "SHA-256 verification failed" in result.stderr
+        assert not prefix.exists(), "Hash failure left an installation"
+        return {"corruptedDownloadRejected": True, "beforeWrites": True}
+
+    def python_discovery(self):
+        # Extract only the PowerShell function via its AST, then exercise real
+        # executable candidates. This avoids modifying a production source file.
+        function_code = (
+            "$ast=[Management.Automation.Language.Parser]::ParseFile(" + ps_quote(self.source / "install.ps1") + ",[ref]$null,[ref]$null);"
+            "$fn=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Find-HolyCrabPython'},$true);"
+            "Invoke-Expression $fn.Extent.Text; $found=Find-HolyCrabPython; $found|ConvertTo-Json -Compress"
+        )
+        fake = self.root / "python-discovery"; fake.mkdir(exist_ok=True)
+        candidates = ("python.cmd", "python3.cmd", "py.cmd")
+        env = dict(self.env, PATH=str(fake))
+        missing = self.ps(function_code, env=env, expected=None)
+        assert missing.returncode != 0 and "Python 3.10" in missing.stderr
+        for name in candidates:
+            (fake / name).write_text("@echo off\r\nexit /b 1\r\n", encoding="ascii")
+        old = self.ps(function_code, env=env, expected=None)
+        assert old.returncode != 0 and "Python 3.10" in old.stderr
+        path = str(Path(sys.executable)).replace("%", "%%")
+        (fake / "python3.cmd").write_text('@echo off\r\nsetlocal DisableDelayedExpansion\r\n"' + path + '" %*\r\n', encoding="utf-8")
+        selected = json.loads(self.ps(function_code, env=env).stdout)
+        assert selected["Executable"].lower().endswith("python3.cmd"), selected
+        return {"missingRejected": True, "oldRejected": True, "usableFallbackSelected": True}
+
+    def credentials(self):
+        stored = json.loads((self.config / "config.json").read_text(encoding="utf-8"))
+        assert "apiKey" not in stored and isinstance(stored.get("apiKeyDpapi"), str)
+        status = json.loads(self.cli_run("doctor", "--json").stdout)
+        assert status["checks"]["config"]["keyConfigured"] is True
+        return {"encrypted": True, "ordinaryUserCanRead": True}
+
+    def credential_recovery(self, *, foreign=False):
+        path = self.config / "config.json"
+        original = path.read_bytes()
+        payload = Path(self.args.foreign_config).read_bytes() if foreign else b'{"apiKeyDpapi":"!!!damaged!!!"}'
+        try:
+            path.write_bytes(payload)
+            failed = self.cli_run("doctor", "--json", expected=None)
+            assert failed.returncode != 0, "Damaged/foreign ciphertext was reported healthy"
+            replacement = "hc_test_repaired_windows_123456789"
+            saved = self.cli_run("setup", "--stdin", "--no-verify", input=replacement + "\n")
+            assert replacement not in saved.stdout + saved.stderr
+            assert replacement.encode() not in path.read_bytes()
+            assert json.loads(self.cli_run("doctor", "--json").stdout)["checks"]["config"]["keyConfigured"] is True
+        finally:
+            path.write_bytes(original)
+        return {"foreignUser" if foreign else "damaged": True, "replacementSucceeded": True}
+
+    def health_rollback(self):
+        before = snapshot(self.prefix)
+        broken = self.root / "broken-candidate"
+        self.run([sys.executable, str(self.source / "tools/native_install_checks.py"), "broken-source", str(broken)])
+        result = self.install(source=broken, expected=None)
+        assert result.returncode != 0
+        assert snapshot(self.prefix) == before, "Failed health verification changed previous installation bytes"
+        assert self.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+        return {"exactPreviousFilesRestored": True}
+
+    def lock_rollback(self):
+        before = snapshot(self.prefix)
+        with read_lock(self.cli):
+            result = self.install(expected=None)
+            assert result.returncode != 0, "Installer ignored native write-denying file handle"
+            assert snapshot(self.prefix) == before
+        assert self.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+        return {"nativeSharingLock": True, "previousInstallationUsable": True}
+
+    def concurrency(self):
+        lock = self.prefix / ".holycrab-install.lock"
+        lock.mkdir()
+        before = snapshot(self.prefix)
+        try:
+            result = self.install(expected=None)
+            assert result.returncode != 0 and "Another lifecycle operation" in result.stderr
+            assert snapshot(self.prefix) == before
+        finally:
+            lock.rmdir()
+        # Existing MCP keeps serving when the same verified installation updates.
+        process = subprocess.Popen([sys.executable, "-X", "utf8", str(self.cli), "mcp", "serve"],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   encoding="utf-8", env=self.env)
+        try:
+            process.stdin.write('{"jsonrpc":"2.0","id":1,"method":"ping"}\n'); process.stdin.flush()
+            # communicate after the reinstall supplies a second request and EOF.
+            self.install()
+            out, err = process.communicate('{"jsonrpc":"2.0","id":2,"method":"ping"}\n', timeout=20)
+            assert process.returncode == 0, err
+            assert [json.loads(line)["id"] for line in out.splitlines()] == [1, 2]
+        finally:
+            if process.poll() is None:
+                process.kill(); process.communicate(timeout=5)
+        return {"lifecycleLock": True, "activeMcpSurvivesUpdate": True}
+
+    def console(self, kind):
+        env = dict(self.env)
+        if kind in {"hidden", "empty", "ctrl_c"}:
+            args, prompt = ["setup", "--no-verify"], "Paste API Key (input hidden):"
+        else:
+            args, prompt = ["uninstall"], "[y/N]"
+        with Console([sys.executable, "-X", "utf8", str(self.cli), *args], env, str(self.root)) as console:
+            console.until(prompt)
+            if kind == "hidden":
+                key = "hc_test_console_hidden_123456789"
+                console.send(key + "\r")
+                assert console.finish() == 0
+                assert key not in console.output, "Console echoed the hidden API Key"
+                assert key.encode() not in (self.config / "config.json").read_bytes()
+            elif kind == "empty":
+                console.send("\r")
+                assert console.finish() != 0
+                assert "empty" in console.output.lower()
+            elif kind == "ctrl_c":
+                console.send("\x03")
+                assert console.finish() == 130
+            elif kind == "eof":
+                console.send("\x1a\r")
+                assert console.finish() == 130
+                assert self.cli.exists()
+            elif kind == "cancel":
+                console.send("n\r")
+                assert console.finish() == 2
+                assert "cancelled" in console.output.lower() and self.cli.exists()
+            else:
+                console.send("y\r")
+                assert console.finish() == 0
+                self.wait_missing(self.cli)
+        return {"ConPTY": True, "input": kind, "noChildProcesses": True}
+
+    @staticmethod
+    def wait_missing(path):
+        deadline = time.monotonic() + 20
+        while path.exists() and time.monotonic() < deadline:
+            time.sleep(.1)
+        assert not path.exists(), f"Deferred cleanup did not finish: {path}"
+
+    def uninstall_user_files(self):
+        self.install(env=dict(self.env, HOLYCRAB_INSTALL_AGENTS="codex"))
+        skill_file = Path(os.environ["USERPROFILE"]) / ".agents/skills/holycrab/SKILL.md"
+        skill_file.write_bytes(skill_file.read_bytes() + b"\nUser-edited guidance: keep this.\n")
+        modified_skill = skill_file.read_bytes()
+        note = self.prefix / "lib/holycrab/user-note.txt"
+        assert note.read_text() == "keep user contents"
+        shared_bin = self.prefix / "bin/user-program.cmd"
+        shared_bin.write_text("@echo user program\n")
+        unknown = self.config / "user-data.txt"; unknown.write_text("keep config note")
+        result = self.cli_run("uninstall", "--yes", "--purge")
+        assert "scheduled" in result.stdout
+        self.wait_missing(self.cli)
+        self.wait_missing(self.launcher)
+        assert note.read_text() == "keep user contents"
+        assert shared_bin.exists() and unknown.read_text() == "keep config note"
+        assert not (self.config / "config.json").exists()
+        skill = Path(os.environ["USERPROFILE"]) / ".agents/skills/holycrab/user-note.txt"
+        assert skill.read_text() == "keep skill note"
+        assert skill_file.read_bytes() == modified_skill
+        path_after = self.ps("[Environment]::GetEnvironmentVariable('Path','User')").stdout.strip()
+        assert str(self.prefix / "bin").casefold() in {part.rstrip('\\').casefold() for part in path_after.split(';')}
+        for identifier in ("uninstall.purge-preserve-unknown", "uninstall.shared-path-preservation", "uninstall.preserve-modified-skill"):
+            self.report["cases"].append({"id": identifier, "status": "passed", "driver": "win.uninstall.user_files"})
+        return {"unknownFilesPreserved": True, "managedFilesGone": True, "asyncCompletionObserved": True,
+                "modifiedSkillPreserved": True, "sharedUserPathPreserved": True}
+
+    def execute(self):
+        self.case("win.environment.non_admin", self.environment)
+        from windows_process_tree import run_case as process_tree_case
+        self.case("win.process_tree.cleanup", lambda: process_tree_case(self))
+        self.case("win.installer.existing", self.existing_native)
+        self.case("win.upgrade.real_v050", self.upgrade)
+        self.case("win.shells.launchers", self.shells)
+        self.case("win.paths.special", self.special_paths)
+        self.case("win.paths.rejected", self.rejected_paths)
+        self.case("win.paths.long", self.long_paths)
+        self.case("win.python.discovery", self.python_discovery)
+        self.case("install.immutable-ref", self.immutable_ref)
+        self.case("install.invalid-ref", self.invalid_ref)
+        self.case("install.tampered-hash", self.tampered_hash)
+        self.case("win.credentials.dpapi", self.credentials)
+        self.case("win.credentials.corrupt_recovery", self.credential_recovery)
+        self.case("win.credentials.foreign_recovery", lambda: self.credential_recovery(foreign=True))
+        self.case("win.rollback.health", self.health_rollback)
+        self.case("win.rollback.lock", self.lock_rollback)
+        self.case("win.lifecycle.concurrent", self.concurrency)
+        self.case("win.mcp.tools", lambda: run_smoke(str(self.cli)))
+        from windows_console_flows import run_cases as console_cases
+        console_cases(self)
+        for kind in ("hidden", "empty", "ctrl_c", "eof", "cancel"):
+            self.case("win.console." + kind, lambda kind=kind: self.console(kind))
+        from windows_ownership_adversarial import run_cases as ownership_cases
+        ownership_cases(self)
+        self.case("win.uninstall.user_files", self.uninstall_user_files)
+        # A fresh install permits explicit interactive acceptance after the purge.
+        self.case("win.console.confirm", lambda: (self.install(), self.console("confirm"))[1])
+        self.case("win.uninstall.delayed", lambda: {"programAbsent": not self.cli.exists(),
+                  "launcherAbsent": not self.launcher.exists()} if not self.cli.exists() and not self.launcher.exists()
+                  else (_ for _ in ()).throw(AssertionError("Deferred cleanup left managed entrypoints")))
+        actual = [row["id"] for row in self.report["cases"]]
+        if sorted(actual) != self.report["expectedCaseIds"] or len(actual) != len(set(actual)):
+            self.report["cases"].append({"id": "native.case-inventory", "status": "failed",
+                "missing": sorted(set(self.report["expectedCaseIds"]) - set(actual)),
+                "unexpected": sorted(set(actual) - set(self.report["expectedCaseIds"]))})
+        self.write_report()
+        return 0 if self.report["ok"] else 1
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    for name in ("source", "baseline", "root", "report", "username", "foreign-config", "source-stamp"):
+        parser.add_argument("--" + name, required=True)
+    args = parser.parse_args()
+    if os.name != "nt":
+        parser.error("Native Windows is required; emulation does not count as acceptance")
+    return Suite(args).execute()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

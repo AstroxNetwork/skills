@@ -9,6 +9,7 @@ import math
 import os
 import platform
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -17,9 +18,14 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-UNIX_ONLY_MODULES = {"test_installer", "test_uninstall"}
-NETWORK_GUARD = '''import sys
+sys.path.insert(0, str(ROOT))
+NETWORK_GUARD = '''import os, sys
 def _holycrab_offline(event, args):
+    if os.environ.get("HOLYCRAB_TEST_LOOPBACK") == "1":
+        if event == "socket.getaddrinfo" and args[0] == "127.0.0.1":
+            return
+        if event in {"socket.connect", "socket.connect_ex"} and args[1][0] == "127.0.0.1":
+            return
     if event in {"socket.connect", "socket.connect_ex", "socket.getaddrinfo", "socket.sendto"}:
         raise RuntimeError("Offline validation blocked an unmocked network operation: " + event)
 sys.addaudithook(_holycrab_offline)
@@ -65,13 +71,40 @@ def run_stage(name: str, command: list[str], *, directory: Path, env: dict[str, 
     log = directory / (name + ".log")
     started = time.monotonic()
     result = {"name": name, "command": command, "log": str(log), "status": "failed"}
+    process = None
+    job = None
     try:
+        if not shutil.which(command[0], path=env.get('PATH')):
+            raise FileNotFoundError('Stage executable is unavailable: ' + command[0])
         with log.open("w", encoding="utf-8") as output:
-            process = subprocess.Popen(command, cwd=cwd, env=env, stdout=output,
+            actual = ([sys.executable, str(ROOT / 'tools/stage_process.py'), json.dumps(command)]
+                      if os.name == 'nt' else command)
+            process = subprocess.Popen(actual, cwd=cwd, env=env, stdout=output,
+                                       stdin=subprocess.PIPE if os.name == 'nt' else subprocess.DEVNULL,
                                        stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
+            if os.name == 'nt':
+                from tools.stage_process import WindowsJob
+                job = WindowsJob(process)
+                process.stdin.write(b'G')
+                process.stdin.close()
             try:
                 result["exitCode"] = process.wait(timeout=timeout)
                 result["status"] = "passed" if result["exitCode"] == 0 else "failed"
+                # A successful parent must not hide a leaked child (or a child's timeout).
+                deadline = time.monotonic() + 1
+                while True:
+                    if job:
+                        active = job.active() > 0
+                    else:
+                        listing = subprocess.check_output(['ps', '-axo', 'pgid=,stat='], text=True, timeout=5)
+                        active = any(parts[0] == str(process.pid) and not parts[1].startswith('Z')
+                                     for line in listing.splitlines() if len(parts := line.split()) >= 2)
+                    if not active:
+                        break
+                    if time.monotonic() >= deadline:
+                        result.update(status='failed', reason='Stage left descendant processes running')
+                        break
+                    time.sleep(.05)
             except subprocess.TimeoutExpired:
                 result["status"] = "timeout"
                 if os.name == "nt":
@@ -92,6 +125,20 @@ def run_stage(name: str, command: list[str], *, directory: Path, env: dict[str, 
     except OSError as error:
         result["status"] = "unavailable"
         result["reason"] = str(error)
+    finally:
+        if job:
+            job.close()
+        elif process:
+            if os.name == 'nt':
+                if process.poll() is None:
+                    process.kill()
+            else:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        if process and process.poll() is None:
+            process.wait(timeout=10)
     result["seconds"] = round(time.monotonic() - started, 3)
     return result
 
@@ -105,9 +152,13 @@ def flatten(suite):
 
 
 def platform_suite(suite, system: str):
+    mapping = json.loads((ROOT / "tests/windows_skip_coverage.json").read_text(encoding="utf-8"))
+    shell_cases = {row["test"]: row for row in mapping["cases"]
+                   if row["source"] == "runner" and row["disposition"] != "run-on-windows"}
     selected = unittest.TestSuite()
     for test in flatten(suite):
-        if system == "Windows" and any(part in UNIX_ONLY_MODULES for part in test.id().split(".")):
+        name = test.id().removeprefix("tests.")
+        if system == "Windows" and name in shell_cases:
             def skip_unix():
                 raise unittest.SkipTest("Unix shell installer integration; native PowerShell installer runs in Windows CI")
             replacement = unittest.FunctionTestCase(skip_unix)
@@ -126,7 +177,7 @@ def unit_worker(report: Path, test_directory: Path, names: list[str]) -> int:
     discovered = [test.id() for test in flatten(suite)]
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     executed = result.testsRun - len(result.skipped)
-    data = {"discovered": len(discovered), "testIds": discovered, "run": result.testsRun,
+    data = {"source": source_fingerprint(), "discovered": len(discovered), "testIds": discovered, "run": result.testsRun,
             "executed": executed,
             "failures": [{"test": test.id(), "traceback": trace} for test, trace in result.failures],
             "errors": [{"test": test.id(), "traceback": trace} for test, trace in result.errors],
@@ -134,16 +185,19 @@ def unit_worker(report: Path, test_directory: Path, names: list[str]) -> int:
             "expectedFailures": [test.id() for test, _ in result.expectedFailures],
             "unexpectedSuccesses": [test.id() for test in result.unexpectedSuccesses]}
     # Empty or entirely skipped discovery cannot count as verified behavior.
-    data["status"] = "passed" if result.wasSuccessful() and executed > 0 else "failed"
+    successful = result.wasSuccessful() and executed > 0 and not result.expectedFailures
+    data["status"] = "passed" if successful else "failed"
     if data["status"] == "passed" and result.skipped:
         data["status"] = "passed_with_skips"
     write_json(report, data)
-    return 0 if result.wasSuccessful() and executed > 0 else 1
+    return 0 if successful else 1
 
 
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description=__doc__)
     value.add_argument("--report", type=Path, default=ROOT / "build/validation/report.json")
+    value.add_argument("--profile", choices=("standard", "adversarial"), default="standard",
+                       help="Include actual loopback HTTP subprocess flows and targeted behavior mutations")
     value.add_argument("--timeout", type=float, default=600, help="Maximum seconds per check (default: 600)")
     value.add_argument("--website-root", type=Path, help="Read-only website checkout with the 50 localized CLI pages")
     value.add_argument("--generate-root", type=Path, help="Read-only Generate checkout for exact capability comparison")
@@ -231,6 +285,20 @@ def main(argv=None) -> int:
               "No --qr-python provided; independent QR decoding was not run")
         check("skill", [str((arguments.skill_python or Path(python)).absolute()), str(arguments.skill_validator.resolve()), "holycrab"]
               if arguments.skill_validator else None, "No --skill-validator provided; official Skill validation was not run")
+        if arguments.profile == "adversarial":
+            http_report, mutation_report = directory / 'http-results.json', directory / 'mutation-results.json'
+            http_report.unlink(missing_ok=True)
+            mutation_report.unlink(missing_ok=True)
+            http_stage = check("adversarial-http", [python, str(Path(__file__).resolve()), "--unit-worker", str(http_report),
+                  "--test-name", "tests.adversarial.check_http_flows"], stage_env={**env, "HOLYCRAB_TEST_LOOPBACK": "1"})
+            mutation_stage = check("adversarial-mutations", [python, "tools/run_mutation_checks.py", "--report", str(mutation_report)])
+            for stage, path, key in ((http_stage, http_report, 'status'), (mutation_stage, mutation_report, 'ok')):
+                try:
+                    data = json.loads(path.read_text(encoding='utf-8'))
+                    if data.get(key) != ('passed' if key == 'status' else True) or data.get('source') != fingerprint:
+                        raise ValueError('Evidence did not pass or its source fingerprint differs')
+                except (OSError, ValueError, TypeError) as error:
+                    stage.update(status='failed', reason='Invalid adversarial evidence: ' + str(error))
     failures = [stage for stage in stages if stage["status"] in {"failed", "timeout", "unavailable"}]
     skipped = any(stage["status"] in {"skipped", "passed_with_skips"} for stage in stages)
     if source_fingerprint() != fingerprint:
@@ -238,7 +306,8 @@ def main(argv=None) -> int:
         failures.append(stages[-1])
     outcome = "failed" if failures else "passed_with_skips" if skipped else "passed"
     write_json(report, {"schemaVersion": 1, "scope": "offline-local-validation", "status": outcome,
-                        "platform": platform.platform(), "python": sys.version.split()[0], "source": fingerprint, "checks": stages,
+                        "platform": platform.platform(), "python": sys.version.split()[0], "profile": arguments.profile,
+                        "source": fingerprint, "checks": stages,
                         "limitations": ["Other operating systems require their native CI jobs.",
                                         "Native PowerShell installation/DPAPI/rollback is checked by the separate install-windows CI job, not this runner.",
                                         "No real authorization, paid generation, account access, upload, or production deployment was performed.",

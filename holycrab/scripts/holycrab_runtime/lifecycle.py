@@ -901,11 +901,26 @@ def remove_managed_skill_files(manifest: dict[str, Any]) -> list[str]:
 
 
 def purge_known_local_state() -> list[str]:
+    try:
+        with _state.operation_lock(exclusive=True, blocking=False):
+            return _purge_known_local_state()
+    except BlockingIOError:
+        return ["Refused to purge local data while a generation or upload is active. Wait for it to finish, then retry the purge."]
+
+
+def _purge_known_local_state() -> list[str]:
     warnings: list[str] = []
     configured_root = _state.config_dir().expanduser().absolute()
     root = _normalized_path(configured_root)
     dangerous = {_normalized_path(Path(root.anchor)), _normalized_path(Path.home())}
-    if configured_root.is_symlink() or root in dangerous:
+    reparse = False
+    if os.name == "nt":
+        for part in (configured_root, *configured_root.parents):
+            try:
+                reparse = reparse or bool(getattr(part.lstat(), "st_file_attributes", 0) & 0x400)
+            except FileNotFoundError:
+                pass
+    if configured_root.is_symlink() or reparse or root in dangerous:
         return [f"Refused to purge unsafe configuration directory: {root}"]
     for name in ("config.json", "attempts.json", "attempts.lock", "update-state.json", "update-state.lock", "health-state.json"):
         try:

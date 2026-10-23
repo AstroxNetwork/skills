@@ -399,6 +399,7 @@ class FeedbackTests(unittest.TestCase):
         output.write_bytes(b"original")
         remote = MagicMock()
         remote.__enter__.return_value.headers = {}
+        remote.__enter__.return_value.status = 200
         remote.__enter__.return_value.read.side_effect = [b"partial", KeyboardInterrupt]
         task = {"uniqId": "task1", "step": 2, "imageUrls": ["https://storage.example/fixture"]}
         with patch.object(cli._owner("send"), "send", return_value=ok(task)), patch.object(cli._owner("validate_download_url"), "validate_download_url", side_effect=lambda value: value), \

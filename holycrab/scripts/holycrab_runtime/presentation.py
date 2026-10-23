@@ -45,7 +45,12 @@ def normalized_name(value: Any) -> str:
 
 
 def is_signed_url(value: str) -> bool:
-    parsed = urllib.parse.urlsplit(html.unescape(value))
+    try:
+        parsed = urllib.parse.urlsplit(html.unescape(value))
+    except ValueError:
+        # Untrusted server text can contain malformed URLs. Redact rather than
+        # losing the original operation result while trying to format it.
+        return True
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname or not parsed.query:
         return False
     return any(

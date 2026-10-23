@@ -351,7 +351,7 @@ class GenerationWorkflowTests(unittest.TestCase):
             "POST", "/api/tasks/image-generation/freeze-credit", payload=payload
         )
 
-    def test_interactive_confirmation_reuses_the_displayed_estimate(self) -> None:
+    def test_interactive_confirmation_revalidates_the_displayed_price_before_submission(self) -> None:
         args = argparse.Namespace(
             kind="image",
             json='{"model":"seedream-5-0-lite-260128","prompt":"draw","size":"2k"}',
@@ -360,13 +360,17 @@ class GenerationWorkflowTests(unittest.TestCase):
         )
         replies = [
             (200, {"code": 0, "data": {"frozenCredit": 5}}),
+            (200, {"code": 0, "data": {"frozenCredit": 5}}),
             (200, {"code": 0, "data": {"uniqId": "task1"}}),
         ]
         with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send, patch.object(
             sys.stdin, "isatty", return_value=True
         ), patch("builtins.input", return_value="y"), redirect_stdout(io.StringIO()):
             self.assertEqual(holycrab.command_generation_create(args), 0)
-        self.assertEqual(send.call_count, 2)
+        self.assertEqual(send.call_count, 3)
+        self.assertEqual([call.args[1] for call in send.call_args_list], [
+            '/api/tasks/image-generation/freeze-credit', '/api/tasks/image-generation/freeze-credit',
+            '/api/tasks/image-generation'])
 
     def test_ambiguous_network_error_is_recorded_without_retry(self) -> None:
         payload = {"model": "seedream-5-0-lite-260128", "prompt": "draw", "size": "2k"}
@@ -386,6 +390,8 @@ class GenerationWorkflowTests(unittest.TestCase):
     def test_download_fetches_a_task_output_without_printing_its_url(self) -> None:
         destination = Path(self.temp.name) / "result.mp4"
         response = MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.headers = {'Content-Length': '11'}
         response.__enter__.return_value.read.side_effect = [b"video-bytes", b""]
         with patch.object(holycrab._owner("send"),
             "send",
@@ -406,6 +412,8 @@ class GenerationWorkflowTests(unittest.TestCase):
         predictable_partial = destination.with_name(f".{destination.name}.part")
         predictable_partial.symlink_to(protected)
         response = MagicMock()
+        response.__enter__.return_value.status = 200
+        response.__enter__.return_value.headers = {'Content-Length': '11'}
         response.__enter__.return_value.read.side_effect = [b"video-bytes", b""]
         with patch.object(holycrab._owner("send"),
             "send",

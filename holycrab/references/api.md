@@ -602,6 +602,7 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 - Agent 仅在安装或首次连接对话中、账号验证成功后介绍业务场景一次，并使用用户当前语言。示例不构成上传、授权、付费或删除许可；费用估算留在实际执行流程，不要求用户在需求中提及。
 - 测试安装通过 `HOLYCRAB_INSTALL_REF` 指定完整提交号，默认下载引用仍为版本标签；下载引用不改变版本号校验。正式更新清除该变量，保留 GitHub Release、SHA-256 和严格版本校验。
 - `estimate` 与 `create` 共用能力校验器；非法模型、分辨率、输出时长和字段结构会在请求前拒绝；素材业务组合由后端校验。
+- 交互确认后再次估算，金额变化则不提交。脚本可用 `--approved-credits`，MCP `generation_create` 可用 `approvedCredits` 传入已确认的 `estimate.frozenCredit`（非负整数，支持 0）；未提供该可选字段的旧接口调用保持兼容。此检查不能原子锁定估算到最终扣费之间的价格，最终扣费仍由后端决定。
 - 生成提交只在收到合法任务 ID 时记为 `created`；明确 4xx 业务拒绝记为 `failed`；408、5xx、断网、异常 2xx 和缺少任务 ID 都记为 `unknown`，不会重试。用 `generate attempts list|get` 或 MCP `generation_attempt_list|get` 查询本地记录。
 - 授权、素材、估算、任务及需要恢复的 attempt 结果包含 `nextAction: {code, instruction, command}`。缺少文件、输出位置或请求时 `command` 为 `null`，Agent 应询问用户，不应拼接占位命令。即时查询无需额外建议。轮询仅在状态变化和结束时输出。
 - CLI 过程提示仅在交互终端写入 stderr；JSON stdout 和 MCP 消息不含过程文本。`Ctrl+C` 返回 130：只读等待停止本机轮询；写入开始后保留已知 ID，生成 attempt 记为 `unknown`，上传计划保留已执行边界和批次记录，不自动重试。下载残片会被清理，已有文件保留。

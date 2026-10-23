@@ -35,10 +35,6 @@ jobs:
             python: "3.10"
           - os: macos-latest
             python: "3.14"
-          - os: windows-latest
-            python: "3.10"
-          - os: windows-latest
-            python: "3.14"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -46,7 +42,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Run the shared offline validation entry point
-        run: python tools/run_checks.py --report build/validation/report.json
+        run: python tools/run_checks.py --profile ${{ matrix.os == 'ubuntu-latest' && matrix.python == '3.14' && 'adversarial' || 'standard' }} --report build/validation/report.json
       - name: Decode offline QR fixtures independently
         if: matrix.python == '3.14' && runner.os == 'Linux'
         run: |
@@ -125,18 +121,53 @@ jobs:
           python3 -c 'import json, os, pathlib; data=json.loads(pathlib.Path(os.environ["RUNNER_TEMP"]).joinpath("mcp.json").read_text()); assert data["result"]["serverInfo"]["name"] == "holycrab-local"'
 
   install-windows:
-    name: Install and MCP (windows-latest)
-    runs-on: windows-latest
+    name: Native Windows (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            python: "3.10"
+            architecture: x64
+          - os: windows-2025
+            python: "3.14"
+            architecture: x64
+          - os: windows-2022
+            python: "3.10"
+            architecture: x64
+          - os: windows-11-arm
+            python: "3.14"
+            architecture: arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
-          python-version: "3.12"
-      - name: Install twice, verify PATH, CLI, and MCP
+          python-version: ${{ matrix.python }}
+          architecture: ${{ matrix.architecture }}
+      - name: Complete portable Windows tests without blanket module skips
+        run: python tools/run_checks.py --report build/validation/report.json
+      - name: Actual installed HTTP workflows
+        if: always()
+        run: python tools/run_checks.py --unit-worker build/validation/http-results.json --test-name tests.adversarial.check_http_flows
+      - name: Ordinary-user native lifecycle and real console validation
+        if: always()
         shell: powershell
-        env:
-          HOLYCRAB_TEST_INSTALL_REF: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: .\tests\test_windows_installer.ps1
+        run: .\tests\test_windows_adversarial.ps1 -Report build/validation/windows-native.json
+      - name: Reject missing native equivalents and stale evidence
+        if: always()
+        run: python tools/verify_windows_coverage.py --unit build/validation/unit-results.json --native build/validation/windows-native.json --report build/validation/windows-coverage.json --expected-architecture ${{ matrix.architecture }} --expected-python ${{ matrix.python }}
+      - name: Upload Windows evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: validation-${{ matrix.os }}-python-${{ matrix.python }}
+          path: build/validation/
+          if-no-files-found: error
+          retention-days: 14
 
   release:
     name: Prepare verified Draft assets

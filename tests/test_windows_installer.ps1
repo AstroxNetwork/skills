@@ -1,3 +1,11 @@
+param([string]$EvidenceReport = "")
+$NativeEvidence = @()
+function Add-NativeEvidence([string]$Id) {
+    $script:NativeEvidence += @{ id=$Id; status="passed"; driver="test_windows_installer.ps1" }
+    if ($EvidenceReport) {
+        [IO.File]::WriteAllText($EvidenceReport, (ConvertTo-Json -InputObject $script:NativeEvidence -Depth 5), [Text.UTF8Encoding]::new($false))
+    }
+}
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -30,6 +38,7 @@ if ($RepeatSummary -notmatch $ExpectedInstallSummary) { throw "Repeat installati
 if ($RepeatSummary -match "Create product listing images|What would you like") { throw "Repeat installation repeated first-use guidance" }
 $RepeatRecord = Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\installation.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 if (@($RepeatRecord.agents).Count -ne 0 -or $RepeatRecord.mcp -ne $false) { throw "Blank old-updater settings changed the saved no-Agent choice" }
+Add-NativeEvidence "upgrade.blank-legacy-settings"
 
 $BinDir = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "bin"
 $Launcher = Join-Path $BinDir "holycrab.cmd"
@@ -70,6 +79,7 @@ $CliPath = Join-Path $env:HOLYCRAB_INSTALL_PREFIX "lib\holycrab\holycrab_cli.py"
 $ProgramDir = Split-Path $CliPath
 & $Python $NativeChecks runtime $ProgramDir
 if ($LASTEXITCODE -ne 0) { throw "Installed runtime inventory or source bytes differ" }
+Add-NativeEvidence "install.inventory"
 
 $SavedKey = "hc_test_windows_dpapi_123456789"
 $SetupOutput = ($SavedKey | & $Launcher setup --stdin --no-verify | Out-String)
@@ -117,6 +127,7 @@ if (-not $FailedAsExpected) { throw "Injected health failure incorrectly reporte
 if ($LASTEXITCODE -ne 0) { throw "Failed update did not restore the exact previous runtime" }
 if ((Get-Content -LiteralPath $ConfigPath -Raw) -ne $ConfigText) { throw "Failed update changed the saved DPAPI credential" }
 if ((& $Launcher --version) -ne "holycrab $ExpectedVersion") { throw "Restored launcher does not work" }
+Add-NativeEvidence "upgrade.failure-byte-rollback"
 Remove-Item -LiteralPath $RollbackNote
 
 $LegacyKey = "hc_test_legacy_plaintext_123456789"
@@ -209,6 +220,9 @@ if ($Manifest.pathRegistration.kind -ne "windows-user-path" -or $Manifest.pathRe
     throw "Windows PATH ownership was not preserved across reinstall: $PathRegistrationJson; expected directory: $BinDir"
 }
 
+Add-NativeEvidence "mcp.repeat-install-ownership"
+Add-NativeEvidence "mcp.new-registration-verified"
+
 & $Python (Join-Path $PSScriptRoot "windows_mcp_smoke.py") $CliPath
 if ($LASTEXITCODE -ne 0) { throw "MCP smoke test failed" }
 
@@ -223,6 +237,7 @@ if ($UninstallOutput.Contains($SavedKey) -or $UninstallOutput.Contains($LegacyKe
 if ($UninstallOutput -match "MCP cleanup pending" -or (Test-Path $env:FAKE_CODEX_STATE)) {
     throw "Recorded Agent path did not clean the MCP registration outside PATH"
 }
+Add-NativeEvidence "mcp.cleanup-recorded-executable"
 for ($Attempt = 0; $Attempt -lt 100 -and ((Test-Path $Launcher) -or (Test-Path $CliPath)); $Attempt++) {
     Start-Sleep -Milliseconds 100
 }
@@ -233,6 +248,7 @@ if ((Test-Path $Launcher) -or (Test-Path $CliPath)) {
     throw "Windows self-uninstall did not finish within 10 seconds: $CleanupDetail"
 }
 if (-not (Test-Path $ConfigPath)) { throw "Default Windows uninstall removed local configuration" }
+Add-NativeEvidence "uninstall.default-state-preservation"
 $UserPathAfterUninstall = [Environment]::GetEnvironmentVariable("Path", "User")
 if (@($UserPathAfterUninstall -split ";" | Where-Object {
     $_ -and $_.TrimEnd([IO.Path]::DirectorySeparatorChar) -ieq $BinDir.TrimEnd([IO.Path]::DirectorySeparatorChar)

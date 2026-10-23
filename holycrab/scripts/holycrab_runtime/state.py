@@ -143,14 +143,14 @@ def write_private_json(path: Path, value: Any) -> None:
             pass
 
 
-def load_config() -> dict[str, Any]:
+def load_config(*, decrypt: bool = True) -> dict[str, Any]:
     value = read_json_file(config_path(), {})
     if not isinstance(value, dict):
         raise SystemExit("HolyCrab config must contain a JSON object")
     path = config_path()
     if path.exists() and os.name != "nt" and stat.S_IMODE(path.stat().st_mode) & 0o077:
         raise SystemExit(f"Unsafe permissions on {path}; run chmod 600 {path}")
-    if os.name == "nt":  # pragma: no cover - exercised on Windows CI
+    if os.name == "nt" and decrypt:  # pragma: no cover - exercised on Windows CI
         encrypted = value.get("apiKeyDpapi")
         if isinstance(encrypted, str) and encrypted:
             try:
@@ -203,32 +203,64 @@ def save_attempts(value: dict[str, Any]) -> None:
 
 
 @contextmanager
-def file_lock(path: Path, *, blocking: bool = True) -> Any:
+def file_lock(path: Path, *, blocking: bool = True, shared: bool = False) -> Any:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     acquired = False
     try:
         os.chmod(path, 0o600)
         if fcntl is not None:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+            fcntl.flock(descriptor, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | (0 if blocking else fcntl.LOCK_NB))
         elif msvcrt is not None:  # pragma: no cover - Windows fallback
-            if os.fstat(descriptor).st_size == 0:
-                os.write(descriptor, b"\0")
-            os.lseek(descriptor, 0, os.SEEK_SET)
-            msvcrt.locking(descriptor, msvcrt.LK_LOCK if blocking else msvcrt.LK_NBLCK, 1)
+            import ctypes
+            import errno
+            from ctypes import wintypes
+            class Overlapped(ctypes.Structure):
+                _fields_ = [("Internal", ctypes.c_size_t), ("InternalHigh", ctypes.c_size_t),
+                            ("Offset", wintypes.DWORD), ("OffsetHigh", wintypes.DWORD), ("hEvent", wintypes.HANDLE)]
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.LockFileEx.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+                                         wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(Overlapped)]
+            kernel.LockFileEx.restype = wintypes.BOOL
+            kernel.UnlockFileEx.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD,
+                                           wintypes.DWORD, ctypes.POINTER(Overlapped)]
+            kernel.UnlockFileEx.restype = wintypes.BOOL
+            handle, overlapped = msvcrt.get_osfhandle(descriptor), Overlapped()
+            if not kernel.LockFileEx(handle, (0 if shared else 2) | (0 if blocking else 1), 0, 1, 0, ctypes.byref(overlapped)):
+                error = ctypes.get_last_error()
+                if error == 33:
+                    raise BlockingIOError(errno.EWOULDBLOCK, "Another HolyCrab operation holds this lock")
+                raise ctypes.WinError(error)
         acquired = True
         yield
     finally:
         if acquired and fcntl is not None:
             fcntl.flock(descriptor, fcntl.LOCK_UN)
         elif acquired and msvcrt is not None:  # pragma: no cover - Windows fallback
-            os.lseek(descriptor, 0, os.SEEK_SET)
-            msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            kernel.UnlockFileEx(handle, 0, 1, 0, ctypes.byref(overlapped))
         os.close(descriptor)
 
 
 def attempts_lock() -> Any:
     return file_lock(attempts_lock_path())
+
+
+def operation_lock(*, exclusive: bool = False, blocking: bool = True) -> Any:
+    """Stable namespace outside purged state: mutations share it; purge excludes them."""
+    import hashlib
+    root = config_dir().expanduser().resolve()
+    identity = hashlib.sha256(os.path.normcase(str(root)).encode("utf-8")).hexdigest()[:24]
+    return file_lock(root.parent / (".holycrab-operations-" + identity + ".lock"),
+                     blocking=blocking, shared=not exclusive)
+
+
+def protect_operation(function):
+    from functools import wraps
+    @wraps(function)
+    def protected(*args, **kwargs):
+        with operation_lock():
+            return function(*args, **kwargs)
+    return protected
 
 
 def credential(explicit: str | None = None) -> tuple[str, str]:
@@ -238,10 +270,17 @@ def credential(explicit: str | None = None) -> tuple[str, str]:
             "HolyCrab API Key is not configured. Run `holycrab setup` and paste a Key from "
             + _settings.PUBLIC_ACCOUNT_URL
         )
-    resolved = value.strip()
+    resolved = validate_api_key(value)
     if len(resolved) >= 8:
         _settings.SENSITIVE_OUTPUT_VALUES.add(resolved)
     return "X-User-Token", resolved
+
+
+def validate_api_key(value: str) -> str:
+    resolved = value.strip()
+    if not resolved or any(ord(character) < 33 or ord(character) > 126 for character in resolved):
+        raise SystemExit("API Key contains invalid characters. Copy one complete Key and configure it again; do not share it in chat.")
+    return resolved
 
 
 def utc_now() -> str:

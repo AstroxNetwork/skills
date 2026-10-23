@@ -560,7 +560,11 @@ fi
             "quick_validate.py",
             "49f948faa9258a0c61caceaf225e179651397431",
             "HOLYCRAB_INSTALL_SOURCE_DIR",
-            "test_windows_installer.ps1",
+            "test_windows_adversarial.ps1",
+            "windows-2025",
+            "windows-2022",
+            "windows-11-arm",
+            "verify_windows_coverage.py",
             "mcp serve",
         ):
             self.assertIn(token, workflow)

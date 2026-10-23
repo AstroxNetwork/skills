@@ -103,6 +103,8 @@ $ref='COMMIT_SHA'; $oldRef=$env:HOLYCRAB_INSTALL_REF; try { $env:HOLYCRAB_INSTAL
 
 积分估算统一使用 `holycrab generate estimate`。`holycrab credits estimate` 仅作为旧脚本的兼容入口保留，不再列入推荐帮助。
 
+脚本在用户确认估算后，用 `generate create ... --yes --approved-credits AMOUNT` 传入已确认的 `estimate.frozenCredit`；MCP 对应 `approvedCredits`。提交前估算金额改变时停止，要求重新确认。交互命令自动执行此检查。该检查不锁定后端最终扣费金额。请求文件 `--json @FILE` 支持 UTF-8、UTF-8 BOM 及带 BOM 的 UTF-16；输出仍为 UTF-8。
+
 ```bash
 holycrab models list
 holycrab models show dreamina-seedance-2-5-260628

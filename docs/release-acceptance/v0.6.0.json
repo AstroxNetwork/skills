@@ -1,6 +1,6 @@
 {
   "version": "v0.6.0",
-  "candidateSha256": "750ee7dd20cce5bb76746c582b6080d639ab6e2168dd5a71e0449222f8af2523",
+  "candidateSha256": "43598dbc437ed3ecad38a792e1afd513c15e1f66e8b813fb41caddf2c0eb3416",
   "realHumanCoreFlow": {
     "status": "pending",
     "operator": null,
@@ -11,8 +11,8 @@
     "status": "passed",
     "mode": "local-immutable-main",
     "verifiedMainCommit": "569aa948d5ea70c15ce719783e71935d02309743",
-    "verifiedAt": "2026-10-23T09:09:22.263116+00:00",
-    "candidateSha256": "750ee7dd20cce5bb76746c582b6080d639ab6e2168dd5a71e0449222f8af2523",
+    "verifiedAt": "2026-10-23T10:11:31.352789+00:00",
+    "candidateSha256": "43598dbc437ed3ecad38a792e1afd513c15e1f66e8b813fb41caddf2c0eb3416",
     "sourceFiles": {
       "client/user-front/src/api/tasks.ts": "dc8b22deb52982fb1fb3da12dfc7b646de2bba3bf07be4bcef84bd147e2560de",
       "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
@@ -42,7 +42,7 @@
       "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
     },
     "validatorSha256": "d2ff5717da5fe2cd14c48a76ff4469d975dc9700b2e7ee181ff030b6d4b6cb00",
-    "evidenceSha256": "5a5c68003f4f465132b820d383dd654565cdcea2b3ec6926fb20d25109d9a85f"
+    "evidenceSha256": "f75d8d831bdf260ac8afa43a5c22aa5b36b529047bce8dc6425caca1c1040a57"
   },
   "publication": {
     "status": "awaiting-user-confirmation",

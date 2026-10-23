@@ -6,6 +6,7 @@ import io
 import json
 import os
 import stat
+import subprocess
 import tempfile
 import unittest
 import urllib.error
@@ -210,6 +211,7 @@ class V041Tests(unittest.TestCase):
         destination = Path(self.temp.name) / "result.mp4"
         response = MagicMock()
         response.__enter__.return_value.headers = {}
+        response.__enter__.return_value.status = 200
         response.__enter__.return_value.read.side_effect = [b"12345", b"67890"]
         backend = (200, {"code": 200, "data": {"uniqId": "task", "videoUrl": "https://cdn.example/result.mp4"}})
         with patch.object(cli._owner("send"), "send", return_value=backend), patch.object(cli._owner("open_download"), "open_download", return_value=response), \
@@ -406,7 +408,8 @@ class V041Tests(unittest.TestCase):
         remote = MagicMock()
         remote.__enter__.return_value.read.side_effect = [body, b""]
         with patch.object(cli._owner("load_installation"), "load_installation", return_value=self.update_manifest), \
-                patch.object(cli._owner("open_download"), "open_download", return_value=remote), patch.object(cli.subprocess, "run") as run:
+                patch.object(cli._owner("open_download"), "open_download", return_value=remote), \
+                patch.object(cli.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"", b"")) as run:
             with self.assertRaisesRegex(SystemExit, "digest mismatch"):
                 cli.run_update(bad_release)
         run.assert_not_called()
