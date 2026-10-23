@@ -77,7 +77,7 @@ class InstallerTests(unittest.TestCase):
         self.assertNotIn('options: [v0.4.4]', workflow)
         self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true", workflow)
         self.assertIn('default: false', workflow)
-        self.assertIn('git rev-parse "$release_version^{commit}"', workflow)
+        self.assertIn('git rev-parse "refs/holycrab-release/$release_version^{commit}"', workflow)
         self.assertIn('Existing Draft assets will only be verified, never overwritten', workflow)
         self.assertIn('needs: [quality, official-skill-validation, generate-contract, install-and-mcp, install-windows]', workflow)
         self.assertIn('needs: [release, verify-draft-install]', workflow)
