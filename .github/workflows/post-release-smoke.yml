@@ -3,6 +3,12 @@ name: Deployed CLI entry point smoke test
 on:
   workflow_dispatch:
     inputs:
+      upgrade_method:
+        description: Test the update command or the official installer upgrade path
+        required: true
+        type: choice
+        options: [update, installer]
+        default: update
       platform:
         description: Target one platform while diagnosing a platform-specific failure
         required: true
@@ -20,7 +26,7 @@ permissions:
 
 jobs:
   public-install-and-upgrade:
-    name: Public install and v0.5.0 update (${{ matrix.os }})
+    name: Public install and v0.5.0 ${{ inputs.upgrade_method }} (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -35,7 +41,7 @@ jobs:
         with:
           python-version: "3.10"
       - name: Verify actual stable installers and update without business requests
-        run: python tests/post_release_upgrade.py --source . --report build/post-release/public-upgrade.json
+        run: python tests/post_release_upgrade.py --source . --report build/post-release/public-upgrade.json --upgrade-method ${{ inputs.upgrade_method }}
       - name: Retain reports and isolated execution logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
