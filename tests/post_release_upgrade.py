@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import urllib.request
 from datetime import datetime, timezone
 
@@ -143,12 +144,13 @@ sys.addaudithook(check)
         self.cli('isolated-key',old,'auth','set-key','--stdin','--no-verify',input='hc-isolated-release-test-not-a-real-key\n')
         config=Path(old['HOLYCRAB_CONFIG_DIR']);plans=config/'upload-plans';plans.mkdir(exist_ok=True)
         (config/'attempts.json').write_text(json.dumps({'retainedAttempt':{'state':'unknown','taskId':'known-task'}}))
-        (plans/'retainedPlan.json').write_text(json.dumps({'uploadPlanId':'retainedPlan','state':'unknown','uploaded':[]}))
+        (plans/'retainedPlan.json').write_text(json.dumps({'uploadPlanId':'retainedPlan','state':'unknown','createdAt':datetime.now(timezone.utc).isoformat(),'expiresAtEpoch':time.time()+3600,'files':[],'uploaded':[]}))
         user_file=Path(old['HOLYCRAB_INSTALL_PREFIX'])/'user-notes.txt';user_file.write_text('keep user data\n')
         watched=[config/'config.json',config/'attempts.json',plans/'retainedPlan.json',user_file]
         before={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}
         check=json.loads(self.cli('v050-detects-v060',old,'update','--check'))
         assert check['updateAvailable'] is True and check['latestVersion']=='0.6.0'
+        assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}, 'Baseline records changed before update'
         self.record('Actual v0.5.0 discovers v0.6.0 via public Latest')
         self.cli('actual-update',old,'update','--yes',timeout=600)
         assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}
@@ -181,7 +183,7 @@ def main():
         run.execute()
         run.data['status']='passed'
     except BaseException as error:
-        run.data.update(status='failed',error=type(error).__name__+': '+str(error))
+        run.data.update(status='failed',error=type(error).__name__+': '+str(error),traceback=traceback.format_exc())
     finally:
         try: run.cleanup()
         except BaseException as error: run.data.update(status='failed',cleanupError=type(error).__name__+': '+str(error))

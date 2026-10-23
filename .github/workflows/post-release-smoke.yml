@@ -2,6 +2,12 @@ name: Deployed CLI entry point smoke test
 
 on:
   workflow_dispatch:
+    inputs:
+      verify_website:
+        description: Also verify deployed website entry points after website publication
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -33,6 +39,7 @@ jobs:
           if-no-files-found: error
 
   deployed-install:
+    if: inputs.verify_website
     name: Website install (${{ matrix.os }})
     strategy:
       fail-fast: false
