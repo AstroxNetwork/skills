@@ -150,6 +150,8 @@ jobs:
           architecture: ${{ matrix.architecture }}
       - name: Complete portable Windows tests without blanket module skips
         run: python tools/run_checks.py --report build/validation/report.json
+      - name: Verify recorded contract fingerprint on native Windows
+        run: python tools/verify_release_acceptance.py v0.6.0 --contract-only
       - name: Actual installed HTTP workflows
         if: always()
         run: python tools/run_checks.py --unit-worker build/validation/http-results.json --test-name tests.adversarial.check_http_flows
