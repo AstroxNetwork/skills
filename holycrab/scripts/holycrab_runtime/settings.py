@@ -97,6 +97,10 @@ GENERATION_ROUTES = {
         "/api/tasks/audio-generation/freeze-credit",
         "/api/tasks/audio-generation",
     ),
+    "mulerouterVideo": (
+        "/api/tasks/mulerouter-generation/freeze-credit",
+        "/api/tasks/mulerouter-generation",
+    ),
     "agnesGeneration": (
         "/api/tasks/agnes-generation/freeze-credit",
         "/api/tasks/agnes-generation",
@@ -105,6 +109,10 @@ GENERATION_ROUTES = {
 
 
 MODEL_GENERATION_ROUTES = {
+    "berry-1.0": "mulerouterVideo",
+    "berry-1.0-pro": "mulerouterVideo",
+    "berry-1.0-turbo": "mulerouterVideo",
+    "berry-1.0-pro-turbo": "mulerouterVideo",
     "seedance-2-0": "seedanceVideo",
     "seedance-2-0-fast": "seedanceVideo",
     "seedance-2-0-mini": "seedanceVideo",

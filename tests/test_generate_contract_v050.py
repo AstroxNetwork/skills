@@ -50,10 +50,10 @@ class SnapshotDriftTests(unittest.TestCase):
 
     def test_reference_limit_and_cross_field_rule_drift_fail_closed(self):
         mutations = (
-            lambda m: m["requestSchemas"]["agnesImage"]["properties"]["imageAssetIds"].update(maxItems=15),
+            lambda m: next(r for r in m["imageModels"] if r["id"] == "agnes-image-2.5-flash")["referenceLimits"].update(images=15),
             lambda m: next(r for r in m["videoModels"] if r["id"] == "agnes-video-2.5")["rules"].update(size1KRequiresSquareRatio=False),
             lambda m: next(r for r in m["videoModels"] if r["id"] == "agnes-video-2.5")["rules"].update(framesAndReferencesMutuallyExclusive=False),
-            lambda m: m["requestSchemas"]["agnesVideo"]["properties"]["audioAssetIds"].update(maxItems=4),
+            lambda m: next(r for r in m["videoModels"] if r["id"] == "agnes-video-2.5")["referenceLimits"].update(audio=4),
             lambda m: m["requestSchemas"]["agnesImage"]["properties"].update(outputFormat={"type": "string"}),
             lambda m: m["requestSchemas"]["agnesVideo"]["properties"]["seconds"].update(type="number"),
             lambda m: next(r for r in m["videoModels"] if r["id"] == "MiniMax-H3-Max")["rules"].update(audioOnlyReference=True),

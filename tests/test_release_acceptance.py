@@ -167,6 +167,8 @@ class CandidateAcceptanceTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         record = {'version': 'v0.6.0', 'candidateSha256': candidate_fingerprint(root), 'realHumanCoreFlow': {
             'status': 'passed', 'operator': 'offline fixture only', 'testedAt': '2026-10-23T00:00:00Z', 'notes': 'Not actual acceptance'}}
+        from tests.test_material_contract_evidence import evidence_for
+        record['generateContractCheck'] = evidence_for(root)
         validate(record, 'v0.6.0', root=root)
         for status in ('pending', 'previously-accepted'):
             changed = copy.deepcopy(record)

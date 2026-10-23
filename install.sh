@@ -27,9 +27,9 @@ PATH_REG_ADDED=0
 PATH_REG_ADDED_THIS_RUN=0
 PREVIOUS_PATH_PROFILE=
 SHA256_HOLYCRAB_CLI=ce732cda8548c77b53b513321fad5a52d5c695a02b04a9d5f45b240f302ab2fb
-SHA256_CAPABILITIES=7070c245eae8b022f0dfd678acb660a61a58c65644f3c0076edae8e4eec65eb4
+SHA256_CAPABILITIES=9a3b05927bfbc75a13f44bd7ee5483d5f4dc3447b65b6d3b8a5ce477a61bcdee
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
-SHA256_SKILL=307c29ea603719485b21cc5e45087dd23417d56455cf121ef8b0236016d30a37
+SHA256_SKILL=74da670b4d524283439ecc1ff6e59895b0ad3c4288aa57c746ed29cfd51234ff
 SHA256_OPENAI_YAML=64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7
 SHA256_SEGNO=28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7
 SHA256_SEGNO_LICENSE=de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935
@@ -193,23 +193,23 @@ fetch "holycrab/agents/openai.yaml" "$TEMP_DIR/openai.yaml" "$SHA256_OPENAI_YAML
 fetch "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl" "$TEMP_DIR/segno.whl" "$SHA256_SEGNO"
 fetch "holycrab/scripts/vendor/LICENSE.segno" "$TEMP_DIR/LICENSE.segno" "$SHA256_SEGNO_LICENSE"
 # BEGIN GENERATED RUNTIME DOWNLOADS
-fetch "runtime-files.json" "$TEMP_DIR/runtime-files.json" "46fb2b09a7cb8d606895b739e5ee977c36b1be7a4f7b455996800a88e4954e58"
+fetch "runtime-files.json" "$TEMP_DIR/runtime-files.json" "bb9d78d608eb861e2a3663d9afc22e92d530d52e3cbbeeb140e06398bb006d8c"
 mkdir -p "$TEMP_DIR/holycrab_runtime"
 fetch "holycrab/scripts/holycrab_runtime/__init__.py" "$TEMP_DIR/holycrab_runtime/__init__.py" "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe"
-fetch "holycrab/scripts/holycrab_runtime/capabilities.py" "$TEMP_DIR/holycrab_runtime/capabilities.py" "0719040a1572e640980d6d216023f6060be5d2887f9001d3a5762f9f792372f7"
-fetch "holycrab/scripts/holycrab_runtime/cli.py" "$TEMP_DIR/holycrab_runtime/cli.py" "05796328dcf726f22ea3bdab3242864d92ed6c4dbcf3d92822ce9d0b277c9200"
-fetch "holycrab/scripts/holycrab_runtime/exports.py" "$TEMP_DIR/holycrab_runtime/exports.py" "28d6cdade7d99b88267f320488b1393a7881066b4d8bef5bc99bc36644336e5e"
-fetch "holycrab/scripts/holycrab_runtime/generation.py" "$TEMP_DIR/holycrab_runtime/generation.py" "404a1e109a68d11a584340b4c6ef53401239e6322d5dc77fd0996b81569824d4"
+fetch "holycrab/scripts/holycrab_runtime/capabilities.py" "$TEMP_DIR/holycrab_runtime/capabilities.py" "43585789f09a5d1e5f3d215c75f1fc888e6aa9fead3b09d4244f667301fd0f64"
+fetch "holycrab/scripts/holycrab_runtime/cli.py" "$TEMP_DIR/holycrab_runtime/cli.py" "e555a90b552139c44b1e3b04ccc7e2a20f3d228d542c37435b2475cc02344444"
+fetch "holycrab/scripts/holycrab_runtime/exports.py" "$TEMP_DIR/holycrab_runtime/exports.py" "d0dcf10cb10a719b2d8a5d32510c3a20608d5dd88fb14a4225d2d51d23c4a7c6"
+fetch "holycrab/scripts/holycrab_runtime/generation.py" "$TEMP_DIR/holycrab_runtime/generation.py" "7cc81fe0b9a1a9bee24f66aa4edac8be0b9fe242848b0a9513b1d665ba512a75"
 fetch "holycrab/scripts/holycrab_runtime/lifecycle.py" "$TEMP_DIR/holycrab_runtime/lifecycle.py" "712895cc2ba5e1ee49cf64d04447e2ffc81684c2b8ec636399b06a814bf10a33"
-fetch "holycrab/scripts/holycrab_runtime/mcp.py" "$TEMP_DIR/holycrab_runtime/mcp.py" "a40c9712251bcb0b61c4ecb972b3f8f6f2f527ed5f1ab2f53da9dee1ae87914c"
-fetch "holycrab/scripts/holycrab_runtime/presentation.py" "$TEMP_DIR/holycrab_runtime/presentation.py" "e9f8c81062f3c1c3c7a116157958a070f546643582a7680d9c81876c1ff5c504"
-fetch "holycrab/scripts/holycrab_runtime/real_human.py" "$TEMP_DIR/holycrab_runtime/real_human.py" "7ef4f7bef0cc2100e007f1a88ef0371c8c03c31c33eb7c2692b0fb228618cb9f"
-fetch "holycrab/scripts/holycrab_runtime/results.py" "$TEMP_DIR/holycrab_runtime/results.py" "5d57e9c895f100f5e867f27a8662bfef05e8b1b4db7ae47218700860e7926853"
-fetch "holycrab/scripts/holycrab_runtime/settings.py" "$TEMP_DIR/holycrab_runtime/settings.py" "80fce97557e6349f360b4e51c96f540c9f5a464310d5415e436cf3bdbb3aa309"
+fetch "holycrab/scripts/holycrab_runtime/mcp.py" "$TEMP_DIR/holycrab_runtime/mcp.py" "f63de2169d0f37bb8bcf35790eae56fcb993ea0edef53cbb54bad91152b8f579"
+fetch "holycrab/scripts/holycrab_runtime/presentation.py" "$TEMP_DIR/holycrab_runtime/presentation.py" "f335323ce4b1bf8ee698497e3b2c77c34fc20e3fdb20580840efe2b07e1138a6"
+fetch "holycrab/scripts/holycrab_runtime/real_human.py" "$TEMP_DIR/holycrab_runtime/real_human.py" "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74"
+fetch "holycrab/scripts/holycrab_runtime/results.py" "$TEMP_DIR/holycrab_runtime/results.py" "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2"
+fetch "holycrab/scripts/holycrab_runtime/settings.py" "$TEMP_DIR/holycrab_runtime/settings.py" "88327a0c0c4f3b4a204de07858de6ba0ec74fb0c464370b8746e6681259e5fb1"
 fetch "holycrab/scripts/holycrab_runtime/state.py" "$TEMP_DIR/holycrab_runtime/state.py" "3c12482ef7192ac7212f422b078ce0eecc0764130593f2e28b2dab0283c52dd1"
 fetch "holycrab/scripts/holycrab_runtime/tasks.py" "$TEMP_DIR/holycrab_runtime/tasks.py" "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27"
-fetch "holycrab/scripts/holycrab_runtime/transport.py" "$TEMP_DIR/holycrab_runtime/transport.py" "72c1c69d9dfd2de9c0d699f08ba43f5b59fcac8ae370490f7390704d55a5dd16"
-fetch "holycrab/scripts/holycrab_runtime/uploads.py" "$TEMP_DIR/holycrab_runtime/uploads.py" "6d5a3edfff505c0501403d8d2e6e5f8c56847291b0a0673a33fbf9d98f6f4b10"
+fetch "holycrab/scripts/holycrab_runtime/transport.py" "$TEMP_DIR/holycrab_runtime/transport.py" "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432"
+fetch "holycrab/scripts/holycrab_runtime/uploads.py" "$TEMP_DIR/holycrab_runtime/uploads.py" "7d5e2d47c0ca901f05a7dead363490bfc17a512fda9d271c75807e4f6d6852d2"
 # END GENERATED RUNTIME DOWNLOADS
 mkdir -p "$PREFIX"
 if ! mkdir "$INSTALL_LOCK_DIR" 2>/dev/null; then

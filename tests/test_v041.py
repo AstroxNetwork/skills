@@ -135,30 +135,16 @@ class V041Tests(unittest.TestCase):
                                                         "prompt": "x", "size": "1201x800"})
         h3 = {"model": "MiniMax-H3", "prompt": "x", "duration": 5, "resolution": "768P",
               "imageAssetIds": ["asset1"]}
-        self.assertEqual(cli.normalize_generation_request("video", h3)["ratio"], "adaptive")
-        with self.assertRaisesRegex(SystemExit, "concrete ratio"):
-            cli.normalize_generation_request("video", {"model": "MiniMax-H3", "prompt": "x",
-                                                        "duration": 5, "resolution": "768P", "ratio": "adaptive"})
-        h3_frame = cli.normalize_generation_request("video", {
-            "model": "MiniMax-H3", "prompt": "x", "duration": 5, "resolution": "768P",
-            "ratio": "16:9", "firstFrameAssetId": "frame1",
-        })
-        self.assertEqual(h3_frame["ratio"], "adaptive")
-        h3_last_frame = cli.normalize_generation_request("video", {
-            "model": "MiniMax-H3", "prompt": "x", "duration": 5, "resolution": "768P",
-            "ratio": "16:9", "lastFrameAssetId": "frame2",
-        })
-        self.assertEqual(h3_last_frame["ratio"], "adaptive")
-        with self.assertRaisesRegex(SystemExit, "require firstFrameAssetId"):
-            cli.normalize_generation_request("video", {
-                "model": "seedance-2-0", "prompt": "x", "duration": 5,
-                "resolution": "720p", "videoTaskType": "frames",
-            })
-        with self.assertRaisesRegex(SystemExit, "require videoTaskType"):
-            cli.normalize_generation_request("video", {
-                "model": "dreamina-seedance-2-5-260628", "prompt": "x", "duration": 5,
-                "resolution": "720p", "videoAssetIds": ["video1"],
-            })
+        self.assertEqual(cli.normalize_generation_request("video", h3), h3)
+        # Preserve caller parameters; the backend owns input-dependent combinations and normalization.
+        for references in ({"ratio": "adaptive"}, {"ratio": "16:9", "firstFrameAssetId": "frame1"},
+                           {"ratio": "16:9", "lastFrameAssetId": "frame2"}):
+            request = {"model": "MiniMax-H3", "prompt": "x", "duration": 5, "resolution": "768P", **references}
+            self.assertEqual(cli.normalize_generation_request("video", request), request)
+        for model, refs in (("seedance-2-0", {"videoTaskType": "frames"}),
+                            ("dreamina-seedance-2-5-260628", {"videoAssetIds": ["video1"]})):
+            request = {"model": model, "prompt": "x", "duration": 5, "resolution": "720p", **refs}
+            self.assertEqual(cli.normalize_generation_request("video", request), {**request, "generateAudio": True})
         image = cli.normalize_generation_request("image", {
             "model": "seedream-5-0-lite-260128", "prompt": "x", "size": "2K",
             "aspectRatio": "16:9", "resolution": "2k", "outputFormat": "png",
@@ -180,26 +166,14 @@ class V041Tests(unittest.TestCase):
             "audioConfig": {"format": "ogg_opus", "sample_rate": 48000},
         })
         self.assertEqual(valid["audioConfig"]["format"], "ogg_opus")
-        for references in (
-            [{"audio_url": "https://cdn.example/a.wav", "image_url": "https://cdn.example/a.png"}],
-            [{"audio_url": "https://cdn.example/a.wav"}, {"image_url": "https://cdn.example/a.png"}],
-            [{"image_url": "https://cdn.example/a.png"}, {"image_url": "https://cdn.example/b.png"}],
-        ):
-            with self.subTest(references=references), self.assertRaises(SystemExit):
-                cli.normalize_generation_request("audio", {"textPrompt": "hello", "references": references})
-        with self.assertRaisesRegex(SystemExit, "mention every audio reference"):
-            cli.normalize_generation_request("audio", {
-                "textPrompt": "@Audio1 only",
-                "references": [{"audio_url": "https://cdn.example/a.wav"},
-                               {"audio_url": "https://cdn.example/b.wav"}],
-            })
-        with self.assertRaisesRegex(SystemExit, "without audio references"):
-            cli.normalize_generation_request("audio", {"textPrompt": "imitate @Audio1"})
-        with self.assertRaisesRegex(SystemExit, "Image mentions"):
-            cli.normalize_generation_request("audio", {
-                "textPrompt": "describe @Image1",
-                "references": [{"image_url": "https://cdn.example/a.png"}],
-            })
+        # Multiple sources inside one item are malformed; collection combinations and mentions are online policy.
+        with self.assertRaises(SystemExit):
+            cli.normalize_generation_request("audio", {"textPrompt": "hello", "references": [
+                {"audio_url": "https://cdn.example/a.wav", "image_url": "https://cdn.example/a.png"}]})
+        for references in ([{"audio_url": "https://cdn.example/a.wav"}, {"image_url": "https://cdn.example/a.png"}],
+                           [{"image_url": "https://cdn.example/a.png"}, {"image_url": "https://cdn.example/b.png"}]):
+            request = {"textPrompt": "hello @Image1 @Audio9", "references": references}
+            self.assertEqual(cli.normalize_generation_request("audio", request), request)
 
     def test_task_filters_are_forwarded_and_dates_are_paired(self) -> None:
         args = argparse.Namespace(page=1, page_size=20, start_date="2026-09-01",
@@ -277,7 +251,7 @@ class V041Tests(unittest.TestCase):
         send.assert_not_called()
         put.assert_not_called()
 
-    def test_upload_rejects_special_forged_and_oversized_files_before_network(self) -> None:
+    def test_upload_preserves_file_integrity_and_defers_size_policy_to_backend(self) -> None:
         forged = Path(self.temp.name) / "forged.jpg"
         forged.write_bytes(b"not-a-jpeg")
         with self.assertRaisesRegex(SystemExit, "Unsupported or unrecognized"):
@@ -290,8 +264,7 @@ class V041Tests(unittest.TestCase):
         jpeg(oversized)
         with oversized.open("r+b") as stream:
             stream.truncate(cli.MAX_IMAGE_UPLOAD_BYTES)
-        with self.assertRaisesRegex(SystemExit, "too large"):
-            cli.inspect_upload_file(str(oversized), real_human=True)
+        self.assertEqual(cli.inspect_upload_file(str(oversized), real_human=True)["size"], cli.MAX_IMAGE_UPLOAD_BYTES)
         if hasattr(os, "mkfifo"):
             fifo = Path(self.temp.name) / "pipe.jpg"
             os.mkfifo(fifo)

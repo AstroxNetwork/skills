@@ -130,7 +130,8 @@ def _validate_schema_value(name: str, value: Any, rule: dict[str, Any]) -> None:
     if "const" in rule and value != rule["const"]:
         raise SystemExit(f"Generation field {name} must be {rule['const']}")
     if isinstance(value, str):
-        if len(value) < rule.get("minLength", 0) or len(value) > rule.get("maxLength", math.inf):
+        length = len(value.encode("utf-16-le", errors="surrogatepass")) // 2 if rule.get("lengthUnit") == "utf16" else len(value)
+        if length < rule.get("minLength", 0) or length > rule.get("maxLength", math.inf):
             raise SystemExit(f"Generation field {name} has an invalid length")
     if type(value) is int and (value < rule.get("minimum", -math.inf) or value > rule.get("maximum", math.inf)):
         raise SystemExit(f"Generation field {name} is out of range")
@@ -179,48 +180,25 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
     missing = [name for name in schema.get("required", []) if name not in payload]
     if missing:
         raise SystemExit(f"Missing required generation field: {missing[0]}")
+    if kind == "audio" and isinstance(payload.get("references"), list):
+        if any(isinstance(item, dict) and set(item) & {"speaker", "audio_data", "image_data"} for item in payload["references"]):
+            raise SystemExit("Legacy audio sources are no longer supported; upload the reference and use {assetId, type}, or provide an audio_url/image_url URL")
     for name, value in payload.items():
         rule = allowed.get(name)
         if isinstance(rule, dict):
             _validate_schema_value(name, value, rule)
 
     if kind == "audio":
-        audio_fields = {"speaker", "audio_data", "audio_url"}
-        image_fields = {"image_data", "image_url"}
-        audio_count = 0
-        image_count = 0
         for reference in payload.get("references", []) or []:
-            active = {
-                key for key, value in reference.items()
-                if key in audio_fields | image_fields and isinstance(value, str) and value.strip()
-            }
-            if len(active) != 1:
-                raise SystemExit("Each audio generation reference must contain exactly one supported source")
-            if active & audio_fields:
-                audio_count += 1
-            else:
-                image_count += 1
-        limits = model.get("referenceLimits", {})
-        if audio_count and image_count:
-            raise SystemExit("Audio generation cannot mix image and audio references")
-        if audio_count > limits.get("audio", 0) or image_count > limits.get("images", 0):
-            raise SystemExit("Too many references for audio generation")
-        prompt = payload.get("textPrompt", "")
-        if re.search(r"(?:@图片[1-9]\d*|@Image[1-9]\d*(?![A-Za-z0-9_]))", prompt):
-            raise SystemExit("Image mentions are not supported in audio generation prompts")
-        mentions = [
-            int(match.group(1) or match.group(2))
-            for match in re.finditer(r"(?:@音频([1-9]\d*)|@Audio([1-9]\d*)(?![A-Za-z0-9_]))", prompt)
-        ]
-        if not audio_count and mentions:
-            raise SystemExit("Audio generation prompts cannot mention audio without audio references")
-        if audio_count and set(mentions) != set(range(1, audio_count + 1)):
-            raise SystemExit("Audio generation prompts must mention every audio reference and no out-of-range reference")
+            sources = [name for name in ("assetId", "audio_url", "image_url") if name in reference]
+            if len(sources) != 1 or not isinstance(reference[sources[0]], str) or not reference[sources[0]].strip():
+                raise SystemExit("Each audio reference must provide exactly one nonempty assetId or URL")
+            if sources[0] == "assetId" and reference.get("type") not in {"audio", "image"}:
+                raise SystemExit("Audio assetId references require type audio or image")
+            if sources[0] != "assetId" and "type" in reference:
+                raise SystemExit("Use type only with an audio reference assetId")
 
     if kind == "image":
-        image_urls = payload.get("imageUrls", [])
-        if isinstance(image_urls, list) and len(image_urls) > model.get("referenceLimits", {}).get("images", 0):
-            raise SystemExit("Too many reference images for the selected model")
         size = payload.get("size")
         if isinstance(size, str) and size:
             named = {str(item).lower() for item in model.get("sizes", [])}
@@ -260,56 +238,10 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
             limits = model.get("durationSeconds", {})
             if type(duration) is not int or duration < limits.get("min", 0) or duration > limits.get("max", 0):
                 raise SystemExit("Video duration is outside the selected model limit")
-        images = payload.get("imageAssetIds", []) or []
-        videos = payload.get("videoAssetIds", []) or []
-        audios = payload.get("audioAssetIds", []) or []
-        first_frame = bool(payload.get("firstFrameAssetId"))
-        last_frame = bool(payload.get("lastFrameAssetId"))
-        frame_mode = first_frame or last_frame
-        references = bool(images or videos or audios)
-        rules = model.get("rules", {})
-        if last_frame and not first_frame and not rules.get("lastFrameWithoutFirstFrame", False):
-            raise SystemExit("lastFrameAssetId requires firstFrameAssetId")
-        if frame_mode and references:
-            raise SystemExit("Frame assets and reference assets cannot be combined")
-        if task_type == "frames" and not first_frame and not rules.get("lastFrameWithoutFirstFrame", False):
-            raise SystemExit("Video frame requests require firstFrameAssetId")
-        limits = model.get("referenceLimits", {})
-        for label, values, key in (("image", images, "images"), ("video", videos, "videos"), ("audio", audios, "audio")):
-            maximum = limits.get(key)
-            if type(maximum) is int and len(set(values)) > maximum:
-                raise SystemExit(f"Too many {label} references for {model['id']}")
-        if rules.get("textOnlyRequiresConcreteRatio", False):
-            ratio = payload.get("ratio")
-            if frame_mode:
-                payload["ratio"] = "adaptive"
-            if not frame_mode and not references and (ratio is None or ratio == "adaptive"):
-                raise SystemExit(f"{model['label']} text-only requests require a concrete ratio")
-            if references and ratio is None:
-                payload["ratio"] = "adaptive"
-            if audios and not images and not videos:
-                raise SystemExit(f"{model['label']} cannot use audio-only references")
-        elif audios and not images and not videos and not rules.get("audioOnlyReference", False) and model["id"] != "dreamina-seedance-2-5-260628":
-            raise SystemExit("Audio references require at least one visual reference")
-        if rules.get("size1KRequiresSquareRatio") and resolution == "1K" and payload.get("ratio") != "1:1":
+        if model.get("rules", {}).get("size1KRequiresSquareRatio") and resolution == "1K" and payload.get("ratio") != "1:1":
             raise SystemExit("Agnes Video 2.5 size 1K requires ratio 1:1")
-        source = bool(payload.get("sourceVideoAssetId"))
-        if (task_type in {"edit", "extend"}) != source:
-            raise SystemExit("Seedance edit/extend requests require sourceVideoAssetId")
-        if source and (first_frame or last_frame):
-            raise SystemExit("Seedance edit/extend requests cannot include frame assets")
-        if model["id"] == "dreamina-seedance-2-5-260628":
-            if videos and explicit_task_type is None:
-                raise SystemExit("Seedance 2.5 video references require videoTaskType")
-            video_ids = set(videos)
-            if source:
-                video_ids.add(payload["sourceVideoAssetId"])
-            if len(video_ids) > limits.get("videos", math.inf):
-                raise SystemExit("Too many video references for Seedance 2.5")
-            if len(set(images)) + len(video_ids) + len(set(audios)) > limits.get("total", math.inf):
-                raise SystemExit("Too many total references for Seedance 2.5")
-            if task_type in {"frames", "edit", "extend"}:
-                payload["ratio"] = "adaptive"
+        if model["id"].startswith("berry-") and not payload.get("prompt", "").strip():
+            raise SystemExit("Berry prompt must not be blank")
 
 
 def normalize_generation_request(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -318,9 +250,16 @@ def normalize_generation_request(kind: str, payload: dict[str, Any]) -> dict[str
     normalized = dict(payload)
     if kind == "video":
         model_id = normalized.get("model")
+        if isinstance(model_id, str) and model_id.strip().lower().startswith("berry-"):
+            model_id = normalized["model"] = model_id.strip().lower()
+            if isinstance(normalized.get("resolution"), str):
+                normalized["resolution"] = normalized["resolution"].strip().lower()
         if not isinstance(model_id, str):
             raise SystemExit("Generation request must include model")
         model = find_model(model_id)
+        if model_id.startswith("berry-"):
+            for name, default in {"duration": 5, "resolution": "1080p", "ratio": "adaptive", "audio": True}.items():
+                normalized.setdefault(name, default)
         if model.get("generateAudioSupported") is True and model.get("generateAudioDefault") is True:
             normalized.setdefault("generateAudio", True)
     validate_generation_request(kind, normalized)

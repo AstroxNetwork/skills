@@ -415,6 +415,44 @@ def get_asset(asset_id: str) -> dict[str, Any]:
     return data
 
 
+def retry_asset_metadata(asset_id: str) -> dict[str, Any]:
+    identifier = _presentation.public_id(asset_id, "assetId")
+    query_command = f"holycrab assets get {identifier}"
+
+    def unknown(message: str, status: int | None = None, response: Any = None) -> dict[str, Any]:
+        safe = _presentation.public_api_error(status, response) if status is not None else {}
+        # A retry can be queued successfully before reading the response fails.
+        # Neither a server error nor malformed response proves the write failed.
+        safe.pop("message", None)
+        return _results.OperationResult({
+            **safe, "state": "unknown", "assetId": identifier, "message": message,
+            "nextAction": _results.next_action("QUERY_ASSET_METADATA",
+                "Metadata processing may have been requested. Query this same asset to check its state. Do not retry automatically.", query_command),
+        }, "unknown")
+
+    try:
+        status, response = _transport.send("POST", f"/api/user-assets/{identifier}/metadata/retry")
+    except KeyboardInterrupt:
+        raise _results.interrupted_mutation("Query the same asset's metadata status.", command=query_command, assetId=identifier) from None
+    except (OSError, http.client.HTTPException):
+        return unknown("Metadata retry outcome is uncertain after a network interruption. Query this same asset; do not retry automatically.")
+    code = response.get("code") if isinstance(response, dict) else None
+    uncertain = status == 408 or status >= 500 or (type(code) is int and (code == 408 or code >= 500))
+    explicit_rejection = (400 <= status < 500 and status != 408) or (
+        200 <= status < 300 and type(code) is int and 400 <= code < 500 and code != 408)
+    if explicit_rejection and not uncertain:
+        _transport.response_data(status, response)
+    if uncertain or not 200 <= status < 300 or type(code) is not int or code not in (0, 200):
+        return unknown("The service response could not confirm the metadata retry outcome. Query this same asset; do not retry automatically.", status, response)
+    raw_data = response.get("data")
+    if (not isinstance(raw_data, dict) or raw_data.get("uniqId") != identifier
+            or not isinstance(raw_data.get("metadataStatus"), str) or not raw_data["metadataStatus"].strip()):
+        return unknown("The service returned an incomplete or unexpected asset state after metadata retry. Query this same asset; do not retry automatically.", status, response)
+    data = _presentation.public_asset(raw_data)
+    data["nextAction"] = _results.next_action("QUERY_ASSET_METADATA", "Metadata processing was requested once. Review its returned state; query this same asset later. Do not retry automatically.", query_command)
+    return data
+
+
 def poll_resource(identifier: str, timeout: float, interval: float, *, authorization: bool) -> int:
     _tasks.validate_wait_limits(timeout, interval)
     deadline = time.monotonic() + timeout

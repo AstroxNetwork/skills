@@ -19,14 +19,14 @@ class CapabilityManifestTests(unittest.TestCase):
     def test_records_verified_platform_revision(self) -> None:
         self.assertEqual(self.manifest["schemaVersion"], 1)
         self.assertEqual(self.manifest["source"]["name"], "HolyCrab Public Capability Registry")
-        self.assertEqual(self.manifest["source"]["version"], "2026-10-09")
-        self.assertEqual(self.manifest["source"]["publishedAt"], "2026-10-09")
+        self.assertEqual(self.manifest["source"]["version"], "2026-10-23")
+        self.assertEqual(self.manifest["source"]["publishedAt"], "2026-10-23")
 
     def test_exposes_complete_public_request_schemas(self) -> None:
         schemas = self.manifest["requestSchemas"]
         self.assertEqual(
             set(schemas),
-            {"seedanceVideo", "minimaxVideo", "minimaxMaxVideo", "agnesVideo", "agnesImage", "imageGeneration", "audioGeneration"},
+            {"seedanceVideo", "minimaxVideo", "minimaxMaxVideo", "agnesVideo", "agnesImage", "imageGeneration", "audioGeneration", "mulerouterVideo"},
         )
         for name, schema in schemas.items():
             with self.subTest(name=name):
@@ -46,6 +46,7 @@ class CapabilityManifestTests(unittest.TestCase):
                 "MiniMax-H3",
                 "MiniMax-H3-Max",
                 "agnes-video-2.5",
+                "berry-1.0", "berry-1.0-pro", "berry-1.0-turbo", "berry-1.0-pro-turbo",
             },
         )
 

@@ -332,6 +332,12 @@ def command_real_human_asset_delete(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_asset_metadata_retry(args: argparse.Namespace) -> int:
+    result = _real_human.retry_asset_metadata(args.uniq_id)
+    _presentation.print_result(result)
+    return int(isinstance(result, _results.OperationResult) and result.outcome != "success")
+
+
 def command_asset_get(args: argparse.Namespace) -> int:
     _presentation.command_progress("Checking the existing asset...")
     _presentation.print_result(_real_human.get_asset(args.uniq_id))
@@ -581,6 +587,11 @@ def build_parser() -> argparse.ArgumentParser:
     asset_get = assets_sub.add_parser("get", help="Query one asset and receive its next action")
     asset_get.add_argument("uniq_id", help="Public asset ID")
     asset_get.set_defaults(func=command_asset_get)
+    metadata = assets_sub.add_parser("metadata", help="Read and retry backend metadata processing")
+    metadata_sub = metadata.add_subparsers(dest="metadata_command", required=True)
+    retry = metadata_sub.add_parser("retry", help="Request metadata processing once; no automatic retries")
+    retry.add_argument("uniq_id", help="Public asset ID")
+    retry.set_defaults(func=command_asset_metadata_retry)
     asset_wait = assets_sub.add_parser("wait", help="Wait for one or more assets; default timeout 600 seconds each")
     asset_wait.add_argument("uniq_id", nargs="+", help="One or more public asset IDs")
     add_wait_arguments(asset_wait)
@@ -664,6 +675,9 @@ def main() -> int:
     except _results.CommandUsageError as error:
         print(f"Invalid argument: {_presentation.sanitize_text_for_output(str(error))}", file=sys.stderr)
         return 2
+    except _results.ApiError as error:
+        _presentation.print_result(error.result)
+        return 1
     except SystemExit as error:
         if isinstance(error.code, int):
             return error.code

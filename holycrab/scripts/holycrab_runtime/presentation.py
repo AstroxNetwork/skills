@@ -85,6 +85,53 @@ def sanitize_for_output(value: Any) -> Any:
     return value
 
 
+def public_api_error(status: int, response: Any) -> dict[str, Any]:
+    """Project the public error contract; never expose arbitrary response data."""
+    remember_private_fields(response)
+    response = response if isinstance(response, dict) else {}
+    raw_message = response.get("message")
+    message = f"HolyCrab API request failed with HTTP {status}"
+    if isinstance(raw_message, str) and raw_message:
+        message += ": " + raw_message
+    output: dict[str, Any] = {"state": "failed", "httpStatus": status, "message": message}
+    output.update(public_fields(response, ("code", "errorCode", "requestId")))
+    issues = []
+    for item in response.get("errors", []) if isinstance(response.get("errors"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        issue = public_fields(item, ("code", "scope", "assetId", "role", "requestPath", "field", "message", "retryable", "actual"))
+        if isinstance(item.get("assetIds"), list):
+            issue["assetIds"] = [value for value in item["assetIds"] if isinstance(value, str)]
+        rule = item.get("rule")
+        if isinstance(rule, dict):
+            issue["rule"] = public_fields(rule, ("min", "max", "minInclusive", "maxInclusive", "unit", "constraint", "required"))
+            if isinstance(rule.get("allowedValues"), list):
+                issue["rule"]["allowedValues"] = [value for value in rule["allowedValues"] if value is None or type(value) in (str, int, float, bool)]
+        issues.append(issue)
+    if "errors" in response and isinstance(response["errors"], list):
+        output["errors"] = issues
+    return sanitize_for_output(output)
+
+
+def terminal_api_errors(value: dict[str, Any]) -> list[str]:
+    lines = []
+    for issue in value.get("errors", []):
+        if not isinstance(issue, dict):
+            continue
+        identity = issue.get("assetId") or ", ".join(issue.get("assetIds", [])) or issue.get("scope", "request")
+        location = issue.get("requestPath", "request")
+        lines += ["", terminal_scalar(identity) + " | " + terminal_scalar(location) + " | " + terminal_scalar(issue.get("field"))]
+        if issue.get("message"):
+            lines += terminal_paragraph(issue["message"]).splitlines()
+        if "actual" in issue:
+            lines += ["Actual: " + ("null (unknown)" if issue["actual"] is None else terminal_scalar(issue["actual"]))]
+        if "rule" in issue:
+            lines += ["Required: " + json.dumps(issue["rule"], ensure_ascii=False)]
+        if "retryable" in issue:
+            lines += ["Retryable: " + terminal_scalar(issue["retryable"]) + " (no automatic retry)"]
+    return lines
+
+
 def public_envelope(response: Any, projector: Any) -> Any:
     if not isinstance(response, dict):
         return response
@@ -93,6 +140,8 @@ def public_envelope(response: Any, projector: Any) -> Any:
         for key in ("code", "message", "errorCode", "requestId")
         if key in response
     }
+    if isinstance(response.get("errors"), list):
+        output["errors"] = public_api_error(400, response)["errors"]
     if "data" in response:
         output["data"] = projector(response.get("data"))
     return output
@@ -322,6 +371,11 @@ def terminal_record_list(value: dict[str, Any], view: str) -> list[str]:
              terminal_status(item.get("state", item.get("step", item.get("status")))),
              item.get("taskId") if view == "attempts" else item.get("taskType", item.get("assetType"))]
             for item in records])
+    if view == "materials":
+        for item in records:
+            metadata = {key: item[key] for key in ("durationSeconds", "mediaFormat", "width", "height", "sizeBytes", "frameRate", "videoCodec", "audioCodec", "metadataStatus", "metadataErrorCode", "metadataUpdatedAt") if key in item}
+            if metadata:
+                lines += ["", "Material " + terminal_scalar(item.get("uniqId")), *terminal_fields(metadata)]
     if unreadable:
         lines += [f"Unreadable records: {unreadable}"]
     if value.get("current") is not None and value.get("pages") is not None:
@@ -359,8 +413,9 @@ def terminal_upload_result(value: dict[str, Any]) -> list[str]:
         lines += ["", title + ":"]
         for item in items:
             lines += terminal_fields({key: item[key] for key in
-                                     ("file", "assetUniqId", "groupUniqId", "state", "phase", "error", "warning")
+                                     ("file", "assetUniqId", "groupUniqId", "state", "phase", "error", "message", "httpStatus", "errorCode", "requestId", "warning")
                                      if key in item}, indent="  ")
+            lines += terminal_api_errors(item)
     if value.get("warning"):
         lines += terminal_paragraph("Warning: " + str(value["warning"])).splitlines()
     return lines + terminal_next_action(value.get("nextAction"))
@@ -470,6 +525,10 @@ def format_terminal_result(value: Any, *, introduce_onboarding: bool = False, vi
         if value.get("h5Link"):
             lines += ["Keep the verification link and QR private."]
         return "\n".join(lines + terminal_next_action(value.get("nextAction")))
+    if value.get("state") == "failed" and "httpStatus" in value and "attemptId" not in value:
+        lines = ["API request rejected", *terminal_fields({key: value[key] for key in ("httpStatus", "errorCode", "requestId") if key in value})]
+        lines += terminal_paragraph(value.get("message", "Request failed")).splitlines()
+        return "\n".join(lines + terminal_api_errors(value))
     if "attemptId" in value and "state" in value:
         titles = {"created": "Task created", "failed": "Submission rejected", "unknown": "Submission outcome unknown",
                   "submitting": "Submission not yet confirmed", "prepared": "Submission not yet confirmed"}
@@ -478,7 +537,7 @@ def format_terminal_result(value: Any, *, introduce_onboarding: bool = False, vi
                                  ("attemptId", "taskId", "kind", "httpStatus", "note", "warning") if key in value})
         if value["state"] == "failed" and value.get("message"):
             lines += terminal_paragraph("Error: " + value["message"]).splitlines()
-        return "\n".join(lines + terminal_next_action(value.get("nextAction")))
+        return "\n".join(lines + terminal_api_errors(value) + terminal_next_action(value.get("nextAction")))
     if "kind" in value and "estimate" in value:
         return "\n".join(["Credit estimate (no task created)", *terminal_fields({"kind": value["kind"]}),
                           *terminal_fields(value["estimate"]), *terminal_next_action(value.get("nextAction"))])
@@ -486,7 +545,9 @@ def format_terminal_result(value: Any, *, introduce_onboarding: bool = False, vi
         lines = ["Material status" if "ready" in value else "Task status"]
         details = {key: value[key] for key in
                    ("uniqId", "name", "taskType", "assetType", "model", "progress", "duration", "resolution",
-                    "ratio", "generateAudio", "frozenCredit", "textResult", "error") if key in value}
+                    "ratio", "generateAudio", "frozenCredit", "textResult", "error", "durationSeconds",
+                    "mediaFormat", "width", "height", "sizeBytes", "frameRate", "videoCodec", "audioCodec",
+                    "metadataStatus", "metadataErrorCode", "metadataUpdatedAt") if key in value}
         details["step"] = terminal_status(value["step"])
         lines += terminal_fields(details)
         if "ready" not in value:
@@ -510,8 +571,11 @@ def print_result(value: Any, *, force_json: bool = False, introduce_onboarding: 
 
 
 def print_response(status: int, response: Any, *, view: str | None = None) -> int:
+    if not _results.response_ok(status, response):
+        print_result(public_api_error(status, response))
+        return 1
     print_result({"httpStatus": status, "response": response}, view=view)
-    return 0 if _results.response_ok(status, response) else 1
+    return 0
 
 
 def remember_private_fields(value: Any) -> None:
@@ -546,7 +610,9 @@ def public_group(value: Any) -> dict[str, Any]:
 
 def public_asset(value: Any) -> dict[str, Any]:
     output = public_fields(value, ("uniqId", "name", "assetType", "error", "step", "status",
-                                  "duration", "url", "createTime", "updateTime"))
+                                  "duration", "durationSeconds", "mediaFormat", "width", "height", "sizeBytes",
+                                  "frameRate", "videoCodec", "audioCodec", "metadataStatus",
+                                  "metadataErrorCode", "metadataUpdatedAt", "url", "createTime", "updateTime"))
     output["ready"] = output.get("step") == "UPLOADED_TO_ARK"
     return output
 

@@ -14,6 +14,14 @@ class CommandInterrupted(Exception):
         self.result = result
 
 
+class ApiError(SystemExit):
+    """A definite API error with a projected, safe machine-readable response."""
+
+    def __init__(self, result: dict[str, Any]) -> None:
+        self.result = OperationResult(result, "failed")
+        super().__init__(result["message"])
+
+
 class CommandUsageError(ValueError):
     """A locally rejected argument, before any operation was attempted."""
 

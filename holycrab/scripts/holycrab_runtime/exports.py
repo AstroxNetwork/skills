@@ -1,5 +1,10 @@
 """Compatibility exports for installers and offline tools; not a public SDK."""
-OWNERS = {'ATTEMPT_ID_SCHEMA': 'settings',
+OWNERS = {'ApiError': 'results',
+ 'public_api_error': 'presentation',
+ 'retry_asset_metadata': 'real_human',
+ 'command_asset_metadata_retry': 'cli',
+ 'terminal_api_errors': 'presentation',
+ 'ATTEMPT_ID_SCHEMA': 'settings',
  'ATTEMPT_STATES': 'settings',
  'AUTHORIZATION_TERMINAL': 'settings',
  'Any': 'cli',

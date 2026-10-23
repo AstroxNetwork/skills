@@ -7,7 +7,7 @@ import ast
 import hashlib
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 LOCAL_EVIDENCE_TAG = "v0.4.4"
@@ -72,6 +72,43 @@ def validate_contract(record, root):
             raise ValueError("Local contract evidence is stale for " + relative + "; rerun the local check")
 
 
+
+def evidence_digest(proof):
+    value = {key: item for key, item in proof.items() if key != "evidenceSha256"}
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def validate_candidate_contract(record, root):
+    """Verify recorded local evidence, not a live read of private remote main."""
+    proof = record.get("generateContractCheck")
+    if not isinstance(proof, dict) or proof.get("status") != "passed" or proof.get("mode") != "local-immutable-main":
+        raise ValueError("A passed immutable local Generate contract record is required")
+    if proof.get("evidenceSha256") != evidence_digest(proof):
+        raise ValueError("Generate contract evidence content changed; rerun the strict check")
+    commit = proof.get("verifiedMainCommit")
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise ValueError("Generate evidence requires an immutable main commit")
+    verified = datetime.fromisoformat(proof["verifiedAt"].replace("Z", "+00:00"))
+    now = datetime.now(timezone.utc)
+    if verified.tzinfo is None or verified > now + timedelta(minutes=5) or now - verified > timedelta(days=7):
+        raise ValueError("Generate contract evidence is expired or future-dated; rerun within seven days")
+    if proof.get("candidateSha256") != candidate_fingerprint(root) or record.get("candidateSha256") != proof["candidateSha256"]:
+        raise ValueError("Generate evidence does not match this exact candidate")
+    validator = Path(root) / "tools/validate_generate_contract.py"
+    if proof.get("validatorSha256") != hashlib.sha256(validator.read_bytes()).hexdigest():
+        raise ValueError("Generate validator changed since the recorded check")
+    # Import only for the v0.6.0 contract path; legacy evidence keeps its historical rules.
+    try:
+        from tools.validate_generate_contract import source_paths
+    except ModuleNotFoundError:
+        from validate_generate_contract import source_paths
+    files = proof.get("sourceFiles")
+    required = set(source_paths()) - {"client/user-front/src/utils/assetUploadValidation.ts"}
+    if not isinstance(files, dict) or not required <= set(files) or set(files) - set(source_paths()):
+        raise ValueError("Generate evidence must identify every validated backend source")
+    if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None for value in files.values()):
+        raise ValueError("Generate evidence has invalid source hashes")
+
 def candidate_fingerprint(root):
     """Bind acceptance to all shipped sources and the release/validation machinery."""
     root = Path(root)
@@ -104,8 +141,10 @@ def validate(record, tag, *, root=None, contract_only=False):
         raise ValueError("Manual acceptance version must match the release tag")
     if tag in LOCAL_EVIDENCE_TAGS and root is not None:
         validate_contract(record, root)
+    if tag == "v0.6.0" and root is not None:
+        validate_candidate_contract(record, root)
     if contract_only:
-        if tag not in LOCAL_EVIDENCE_TAGS or root is None:
+        if (tag not in LOCAL_EVIDENCE_TAGS and tag != "v0.6.0") or root is None:
             raise ValueError("Local contract mode requires an explicitly authorized release version")
         return
     if tag not in LOCAL_EVIDENCE_TAGS:

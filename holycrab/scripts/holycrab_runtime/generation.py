@@ -85,7 +85,7 @@ def validate_estimate_data(data: Any) -> dict[str, Any]:
 def estimate_generation(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
     normalized = _capabilities.normalize_generation_request(kind, payload)
     freeze_endpoint, _ = generation_endpoints(kind, normalized)
-    status, response = _transport.send("POST", freeze_endpoint, payload=None if kind == "audio" else normalized)
+    status, response = _transport.send("POST", freeze_endpoint, payload=normalized)
     if not _results.response_ok(status, response):
         _transport.response_data(status, response)
     if not isinstance(response, dict) or type(response.get("code")) is not int or response["code"] not in (0, 200):
@@ -183,21 +183,19 @@ def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, a
                 http_status=status,
                 note="The service response was ambiguous; do not resubmit.",
             )
-        saved = persist_outcome(selected_attempt, state="failed", httpStatus=status)
-        try:
-            _transport.response_data(status, response)
-        except SystemExit as error:
-            return {
-                "attemptId": selected_attempt,
-                "state": "failed",
-                **({} if saved else {"localStateSaved": False, "warning": "The rejection could not be saved. Keep the attempt ID."}),
-                "message": str(error),
-                "nextAction": {
-                    "code": "FIX_REQUEST",
-                    "instruction": "Correct the rejected request and create a new attempt only after confirmation.",
-                    "command": None,
-                },
-            }
+        error_result = _presentation.public_api_error(status, response)
+        saved = persist_outcome(selected_attempt, **error_result)
+        return {
+            **error_result,
+            "attemptId": selected_attempt,
+            **({} if saved else {"localStateSaved": False, "warning": "The rejection could not be saved. Keep the attempt ID."}),
+            "nextAction": {
+                "code": "FIX_REQUEST",
+                "instruction": "Correct the rejected request and create a new attempt only after confirmation. Do not retry automatically.",
+                "command": None,
+            },
+        }
+
     task_id = extract_task_id(response)
     if task_id is None:
         return generation_unknown(

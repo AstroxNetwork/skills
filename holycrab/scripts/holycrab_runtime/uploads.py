@@ -76,15 +76,6 @@ def inspect_upload_file(value: str, *, real_human: bool, duration_seconds: int |
     if duration_seconds is not None and (type(duration_seconds) is not int or duration_seconds <= 0):
         raise SystemExit("Known media duration must be a positive whole number of seconds")
     resolved_duration = duration_seconds if media_type in {"video", "audio"} else None
-    if real_human and extension not in _settings.REAL_HUMAN_EXTENSIONS:
-        raise SystemExit(f"Real-human uploads do not support {extension or 'this format'}")
-    maximum = _settings.MAX_IMAGE_UPLOAD_BYTES if media_type == "image" else (
-        _settings.MAX_REAL_HUMAN_VIDEO_UPLOAD_BYTES if real_human and media_type == "video" else
-        _settings.MAX_VIDEO_UPLOAD_BYTES if media_type == "video" else _settings.MAX_AUDIO_UPLOAD_BYTES
-    )
-    exceeds = info.st_size > maximum if real_human and media_type == "video" else info.st_size >= maximum
-    if exceeds:
-        raise SystemExit(f"Upload file is too large: {path.name}")
     return {
         "path": str(path), "name": path.name, "extension": extension, "mediaType": media_type,
         "contentType": mime, "size": info.st_size, "durationSeconds": resolved_duration,
@@ -123,8 +114,10 @@ def cleanup_upload_plans() -> None:
 
 def prepare_upload_plan(files: list[str], *, group_uniq_id: str | None = None,
                         duration_seconds: int | None = None) -> dict[str, Any]:
-    if not files or len(files) > _settings.MAX_UPLOAD_FILES:
+    if not isinstance(files, list) or not files or len(files) > _settings.MAX_UPLOAD_FILES:
         raise SystemExit(f"Choose between 1 and {_settings.MAX_UPLOAD_FILES} files")
+    if not all(isinstance(value, str) and value for value in files):
+        raise SystemExit("Upload file paths must be nonempty strings")
     group = _real_human.find_real_human_group(_presentation.public_id(group_uniq_id, "groupUniqId")) if group_uniq_id else None
     inspected = [inspect_upload_file(value, real_human=group is not None,
                                      duration_seconds=duration_seconds) for value in files]
@@ -163,8 +156,7 @@ def upload_prepared_file(item: dict[str, Any], group_id: str | None,
         explicit = (400 <= status < 500 and status != 408) or (
             200 <= status < 300 and type(code) is int and 400 <= code < 500 and code != 408
         )
-        return {"state": "failed" if explicit else "unknown", "phase": "presign",
-                "httpStatus": status}
+        return {**_presentation.public_api_error(status, response), "state": "failed" if explicit else "unknown", "phase": "presign"}
     try:
         data = _transport.response_data(status, response)
     except SystemExit as error:
@@ -217,7 +209,7 @@ def upload_prepared_file(item: dict[str, Any], group_id: str | None,
         explicit = (400 <= register_status < 500 and register_status != 408) or (
             200 <= register_status < 300 and type(code) is int and 400 <= code < 500 and code != 408
         )
-        return {"assetUniqId": asset_id, "state": "failed" if explicit else "unknown", "httpStatus": register_status}
+        return {**_presentation.public_api_error(register_status, register_response), "assetUniqId": asset_id, "state": "failed" if explicit else "unknown"}
     if not isinstance(register_response, dict) or code is None:
         return {"assetUniqId": asset_id, "state": "unknown", "httpStatus": register_status}
     return {

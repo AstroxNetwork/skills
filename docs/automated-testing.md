@@ -26,6 +26,7 @@ CI 保留 Linux/macOS/Windows × Python 3.10/3.14 的六组基础检查，以及
 python3 tools/run_checks.py \
   --website-root /absolute/path/to/website \
   --generate-root /absolute/path/to/Generate-checkout \
+  --generate-ref VERIFIED_MAIN_SHA \
   --baseline-source /absolute/path/to/previous-cli-checkout \
   --qr-python /absolute/path/to/qr-venv/bin/python \
   --skill-validator /absolute/path/to/quick_validate.py \
@@ -62,3 +63,23 @@ python3 tools/run_checks.py \
 Windows 旧版号 fixture 仅验证版本识别和重装分支，不冒充执行过对应历史发行包。真实历史版本升级使用 `--baseline-source`，并在报告里记录实际版本。
 
 需要真人授权、真实提供商生成结果或生产部署后的链路，仍属于另一个验收层次；离线 fixture 不会被标成真实业务通过。现有受限 live smoke 和发布后 smoke 保留为显式触发工具，不由这个默认入口执行。
+
+
+## 本地不可变 Generate 验证与 CI 证据
+
+先通过 GitHub 或 `git ls-remote` 核对远端 main 的完整 SHA，再只读验证本地 Git 对象：
+
+```sh
+python3 tools/validate_generate_contract.py /absolute/path/to/Generate \
+  --ref VERIFIED_MAIN_SHA \
+  --expected-main-sha VERIFIED_MAIN_SHA \
+  --write-evidence docs/release-acceptance/v0.6.0.json
+```
+
+`--ref` 不切换后端分支，不读取未提交源码；所有输入从该提交提取到临时目录并逐个记录 SHA-256。严格校验失败不更新证据。必须等运行时、测试、文档、安装器哈希和工作流均稳定后再生成证据。
+
+CI 的 Recorded Generate contract (offline) 检查证据的通过状态、完整输入清单、后端提交、验证器哈希、候选源码/测试/安装器指纹和内容摘要；证据有效期为 7 天，不允许超过 5 分钟的未来时间。缺失、被修改或过期时失败。它验证的是被记录的不可变主干合同，不会实时读取私有仓库；后端 main 更新后需重新核对并生成证据。内容摘要用于识别意外改动，并非独立签名或对执行过程的远程证明。
+
+契约证据不批准真人验收或正式发布。真实业务门禁保持独立，旧版本豁免不适用于 v0.6.0 改动后的核心。
+
+素材规则另外绑定已审计的四个后端规则源文件与全部模型说明摘要；源码或说明任一变化都要求重新核对并显式更新审计基线，不能仅重签一份通过记录。此方式保守地拒绝未审计变化，不在 Python 中再实现一份后端素材判定。

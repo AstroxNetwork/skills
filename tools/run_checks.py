@@ -147,6 +147,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--timeout", type=float, default=600, help="Maximum seconds per check (default: 600)")
     value.add_argument("--website-root", type=Path, help="Read-only website checkout with the 50 localized CLI pages")
     value.add_argument("--generate-root", type=Path, help="Read-only Generate checkout for exact capability comparison")
+    value.add_argument("--generate-ref", help="Read committed source at this ref instead of the backend worktree")
     value.add_argument("--baseline-source", type=Path, help="Previous CLI checkout for an additional isolated real-version upgrade/rollback check")
     value.add_argument("--qr-python", type=Path, help="Existing Python with tests/requirements-qr-test.txt installed")
     value.add_argument("--skill-validator", type=Path, help="Existing official quick_validate.py")
@@ -221,7 +222,7 @@ def main(argv=None) -> int:
                   stage_env=website_env)
         else:
             check("website", reason="No --website-root provided; website examples were not verified")
-        check("generate-contract", [python, "tools/validate_generate_contract.py", str(arguments.generate_root.resolve())]
+        check("generate-contract", [python, "tools/validate_generate_contract.py", str(arguments.generate_root.resolve()), *(["--ref", arguments.generate_ref] if arguments.generate_ref else [])]
               if arguments.generate_root else None, "No --generate-root provided; current backend contract was not verified")
         check("baseline-upgrade", [python, "tests/local_lifecycle_smoke.py", "--baseline-source", str(arguments.baseline_source.resolve())]
               if arguments.baseline_source else None, "No --baseline-source provided; an actual previous release was not exercised")

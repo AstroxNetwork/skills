@@ -101,13 +101,15 @@ REAL_HUMAN_TOOLS = [
     real_human_tool("real_human_group_delete", "Permanently delete an authorized person, every asset in the group, and upstream records. Set confirmed=true only after the user explicitly approves this exact deletion.",
                     {"groupUniqId": _settings.ID_SCHEMA, "confirmed": {"type": "boolean"}},
                     ("groupUniqId", "confirmed"), read_only=False, destructive=True),
-    real_human_tool("real_human_assets_list", "List assets in one authorized person's group. Only ready assets can be used for generation.",
+    real_human_tool("real_human_assets_list", "List assets in one authorized person's group. Processing readiness is independent of metadata and model material validation.",
                     {"groupUniqId": _settings.ID_SCHEMA, **PAGE_PROPERTIES}, ("groupUniqId",)),
     real_human_tool("real_human_asset_delete", "Permanently delete one real-human asset from storage, upstream records, and the database. Set confirmed=true only after the user explicitly approves this exact deletion.",
                     {"groupUniqId": _settings.ID_SCHEMA, "assetId": _settings.ID_SCHEMA, "confirmed": {"type": "boolean"}},
                     ("groupUniqId", "assetId", "confirmed"), read_only=False, destructive=True),
     real_human_tool("asset_get", "Query one public asset ID. Only UPLOADED_TO_ARK yields ready=true; report failures and do not reupload automatically.",
                     {"assetId": _settings.ID_SCHEMA}, ("assetId",)),
+    real_human_tool("asset_metadata_retry", "Explicitly request metadata processing once for an existing asset. Return the real backend state or cooldown error; do not loop or reupload.",
+                    {"assetId": _settings.ID_SCHEMA}, ("assetId",), read_only=False),
     real_human_tool("asset_upload_prepare", "Inspect 1-10 local files and return a short-lived complete preview. This does not upload bytes.",
                     {"files": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string"}},
                      "groupUniqId": _settings.ID_SCHEMA, "durationSeconds": {"type": "integer", "minimum": 1}},
@@ -179,6 +181,8 @@ def _mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
         return _real_human.delete_real_human_asset(arguments["groupUniqId"], arguments["assetId"], arguments["confirmed"])
     if name == "asset_get":
         return _real_human.get_asset(arguments["assetId"])
+    if name == "asset_metadata_retry":
+        return _real_human.retry_asset_metadata(arguments["assetId"])
     if name == "asset_upload_prepare":
         return _uploads.prepare_upload_plan(arguments["files"], group_uniq_id=arguments.get("groupUniqId"),
                                    duration_seconds=arguments.get("durationSeconds"))
@@ -291,6 +295,8 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
             if warning and isinstance(value, dict):
                 value.setdefault("warning", warning)
             response = mcp_result(identifier, value)
+        except _results.ApiError as error:
+            response = mcp_result(identifier, error.result)
         except _results.CommandInterrupted as error:
             response = mcp_result(identifier, error.result)
             response["result"]["isError"] = True

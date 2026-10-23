@@ -16,8 +16,8 @@ IMAGE = {'model': 'agnes-image-2.5-flash', 'prompt': 'A red crab on a beach', 's
 class NewModelsTests(unittest.TestCase):
     def test_directory_is_complete_and_excludes_retired_models(self):
         models = cli.all_models()
-        self.assertEqual(len(models), 12)
-        self.assertEqual([sum(m['kind'] == k for m in models) for k in ('video', 'image', 'audio')], [7, 4, 1])
+        self.assertEqual(len(models), 16)
+        self.assertEqual([sum(m['kind'] == k for m in models) for k in ('video', 'image', 'audio')], [11, 4, 1])
         self.assertFalse({'agnes-video-v2.0', 'agnes-video-2.5-flash'} & {m['id'] for m in models})
 
     def test_correct_kind_and_exact_routes(self):
@@ -46,27 +46,21 @@ class NewModelsTests(unittest.TestCase):
         with self.assertRaisesRegex(SystemExit, '1K requires ratio 1:1'):
             cli.normalize_generation_request('video', {**VIDEO, 'size': '1K'})
 
-    def test_frames_references_and_audio_rules(self):
+    def test_frames_references_and_audio_rules_are_described_but_backend_owned(self):
         for base in (MAX, VIDEO):
             last = cli.normalize_generation_request('video', {**base, 'lastFrameAssetId': 'tail'})
-            self.assertEqual(last['ratio'], 'adaptive' if base is MAX else '16:9')
+            self.assertEqual(last['ratio'], '16:9')
             for field in ('imageAssetIds', 'videoAssetIds', 'audioAssetIds'):
-                with self.subTest(model=base['model'], field=field), self.assertRaises(SystemExit):
-                    cli.normalize_generation_request('video', {**base, 'lastFrameAssetId': 'tail', field: ['ref']})
-        with self.assertRaises(SystemExit):
-            cli.normalize_generation_request('video', {**MAX, 'audioAssetIds': ['audio']})
-        cli.normalize_generation_request('video', {**VIDEO, 'audioAssetIds': ['audio']})
-        mixed = {**MAX, 'audioAssetIds': ['audio'], 'imageAssetIds': ['image']}
-        mixed.pop('ratio')
-        self.assertEqual(cli.normalize_generation_request('video', mixed)['ratio'], 'adaptive')
+                request = {**base, 'lastFrameAssetId': 'tail', field: ['ref']}
+                self.assertEqual(cli.normalize_generation_request('video', request), request)
+            self.assertTrue(cli.find_model(base['model'])['rules']['framesAndReferencesMutuallyExclusive'])
+        request = {**MAX, 'audioAssetIds': ['audio']}
+        self.assertEqual(cli.normalize_generation_request('video', request), request)
         for ratio in (None, 'adaptive'):
             request = dict(MAX)
-            if ratio is None:
-                request.pop('ratio')
-            else:
-                request['ratio'] = ratio
-            with self.assertRaises(SystemExit):
-                cli.normalize_generation_request('video', request)
+            if ratio is None: request.pop('ratio')
+            else: request['ratio'] = ratio
+            self.assertEqual(cli.normalize_generation_request('video', request), request)
 
     def test_reference_counts_and_unsupported_fields(self):
         for kind, base, limits in [('video', MAX, {'imageAssetIds':9, 'videoAssetIds':3, 'audioAssetIds':3}), ('video', VIDEO, {'imageAssetIds':8, 'videoAssetIds':1, 'audioAssetIds':3}), ('image', IMAGE, {'imageAssetIds':14})]:
@@ -75,8 +69,9 @@ class NewModelsTests(unittest.TestCase):
                 if base is MAX and field == 'audioAssetIds':
                     request['imageAssetIds'] = ['image']
                 cli.normalize_generation_request(kind, request)
-                with self.assertRaises(SystemExit):
-                    cli.normalize_generation_request(kind, {**request, field:[f'a{i}' for i in range(maximum + 1)]})
+                over_limit = {**request, field: [f'a{i}' for i in range(maximum + 1)]}
+                self.assertEqual(cli.normalize_generation_request(kind, over_limit), over_limit)
+                self.assertEqual(cli.find_model(base['model'])['referenceLimits'][{'imageAssetIds': 'images', 'videoAssetIds': 'videos', 'audioAssetIds': 'audio'}[field]], maximum)
             for field in ('generateAudio', 'outputFormat', 'imageUrls', 'videoTaskType'):
                 with self.subTest(model=base['model'], field=field), self.assertRaises(SystemExit):
                     cli.normalize_generation_request(kind, {**base, field: True})
@@ -98,7 +93,7 @@ class NewModelsTests(unittest.TestCase):
 
     def test_mcp_discovery_and_account_share_cli_projection(self):
         result = cli.mcp_tool_call('capabilities_list', {})
-        self.assertEqual(len(result['models']), 12)
+        self.assertEqual(len(result['models']), 16)
         self.assertEqual(cli.mcp_tool_call('capability_get', {'model':MAX['model']})['id'], MAX['model'])
         with patch.object(cli._owner('send'), 'send', return_value=(200, {'code':200, 'data':{'credit':10,'disabled_models':[MAX['model']]}})):
             self.assertEqual(cli.mcp_tool_call('account_get', {})['disabled_models'], [MAX['model']])

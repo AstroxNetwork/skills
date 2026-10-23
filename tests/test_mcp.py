@@ -73,7 +73,7 @@ class McpProtocolTests(unittest.TestCase):
                                 "real_human_groups_list", "real_human_group_rename",
                                 "real_human_group_delete", "real_human_assets_list",
                                 "real_human_asset_delete", "asset_upload_prepare", "asset_upload_execute",
-                                "asset_get", "asset_upload_plan_get"})
+                                "asset_get", "asset_upload_plan_get", "asset_metadata_retry"})
 
     def test_delete_tools_require_confirmation_and_are_destructive(self) -> None:
         response = holycrab.mcp_dispatch(
@@ -125,13 +125,13 @@ class McpProtocolTests(unittest.TestCase):
         content = json.loads(result["content"][0]["text"])
         self.assertNotIn("endpoints", content)
         self.assertIn("requestSchema", content)
-        self.assertEqual(content["capabilitySnapshotVersion"], "2026-10-09")
+        self.assertEqual(content["capabilitySnapshotVersion"], "2026-10-23")
         self.assertIn("1K", content["sizes"])
 
     def test_capabilities_list_identifies_the_versioned_snapshot(self) -> None:
         result = holycrab.mcp_tool_call("capabilities_list", {})
-        self.assertEqual(result["snapshotVersion"], "2026-10-09")
-        self.assertEqual(result["publishedAt"], "2026-10-09")
+        self.assertEqual(result["snapshotVersion"], "2026-10-23")
+        self.assertEqual(result["publishedAt"], "2026-10-23")
         self.assertGreater(len(result["models"]), 0)
 
     def test_generation_create_without_confirmation_only_returns_estimate(self) -> None:

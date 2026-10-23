@@ -126,7 +126,7 @@ holycrab models show dreamina-seedance-2-5-260628
 holycrab models show MiniMax-H3
 ```
 
-先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.5.0` 的模型快照版本为 `2026-10-09`。`estimate` 和 `create` 共用同一套本地校验，已知非法组合不会发到服务端。
+先查再用，不要凭记忆猜时长、清晰度或素材数量。CLI 和 MCP 读取随本版本发布的公开能力快照，并在 JSON 结果中标明快照版本；`v0.6.0` 的模型快照版本为 `2026-10-23`，合计 16 个模型。`estimate` 和 `create` 检查请求结构与生成输出参数；素材业务规则由服务端统一判断，错误会具体指出素材、字段、实际值和要求。
 
 ## 4. 第一次生成图片
 
@@ -267,9 +267,9 @@ holycrab real-human groups delete GROUP_ID
 
 脚本或 Agent 只有在用户明确要求删除该具体对象后才能加 `--yes`。MCP 的 `real_human_group_delete` 和 `real_human_asset_delete` 同样要求 `confirmed: true`。授权成功、素材上传成功或确认生成都不能替代删除确认。删除结果遇到超时、断线、5xx 或异常响应时不要再次提交，先重新查询人物或素材列表确认实际状态。
 
-只有 `step: UPLOADED_TO_ARK`、`ready: true` 才能生成。素材返回 `FAILED` 时先看 `error`，不要自动重传。上传登记遇到连接中断、502/504 或无效响应时，保存提示里的素材 ID、分组 ID，先查单个素材或分组列表，不能把它当作“肯定没上传”。
+`ready` 表示处理状态，不保证满足所选模型要求；估算接口执行最终素材校验。元数据缺失、处理中或失败不构成 CLI 额外阻断。素材返回 `FAILED` 时先看 `error`，不要自动重传。上传登记遇到连接中断、502/504 或无效响应时，保存提示里的素材 ID、分组 ID，先查单个素材或分组列表，不能把它当作“肯定没上传”。
 
-真人素材只接受 JPG/JPEG、PNG、WEBP、GIF、HEIC、MP4、MOV；图片必须小于 30 MiB，视频不得超过 50 MiB，音频直接拒绝。尺寸、比例、帧率、2–15 秒时长及 H.264/H.265、AAC/MP3 等编码限制仍由线上处理确认；本地预检通过不是“保证可用”。批量执行遇到首个失败或结果不明确就停止，并分别列出 `uploaded`、`failedOrUnknown`、`notAttempted`。
+本地文件格式识别范围沿用现有支持。真人素材的格式、大小和类型合规由后端判断，例如真人视频不得超过 50 MiB；本地不重复执行这些模型业务门槛。尺寸、比例、帧率、2–15 秒时长及 H.264/H.265、AAC/MP3 等编码限制仍由线上处理确认；本地预检通过不是“保证可用”。批量执行遇到首个失败或结果不明确就停止，并分别列出 `uploaded`、`failedOrUnknown`、`notAttempted`。
 
 素材就绪后，将公开 ID 放入原有视频请求，不传人物分组 ID或上游素材 ID：
 
@@ -423,3 +423,12 @@ holycrab assets uploads get PLAN_ID
 若显示本地记录保存失败，请保留输出中的任务 ID、素材 ID 和未执行文件清单，按下一步提示查询。CLI 会在网络提交前冻结整批已确认文件，需要足够的临时磁盘空间；源文件之后变化不会改变本次上传内容。
 
 `doctor` 会将损坏的任务记录报告为异常，但重装程序不会删除这些记录。重装能修复程序，无法证明不明确的线上任务是否创建成功。
+
+
+## v0.6.0 素材信息和 Berry 模型
+
+`holycrab assets get ASSET_ID` 现在显示服务端返回的精确时长、格式、宽高、大小、帧率、编码和元数据状态。需要重新读取时运行 `holycrab assets metadata retry ASSET_ID`，MCP 对应 `asset_metadata_retry`。这项请求只执行一次；服务端冷却期内可能仍返回原状态，不代表重试已经完成。
+
+图片请求可使用 `imageAssetIds`，同时存在非空 ID 和 `imageUrls` 时以 ID 为准。音频参考支持 `{assetId,type:"audio"}`、`{assetId,type:"image"}`、`audio_url` 或 `image_url`；旧 Base64/speaker 写法先显式上传，再改用 ID 或 URL。音频估算会发送完整请求，提前获取后端错误。
+
+新增 `berry-1.0`、`berry-1.0-turbo`、`berry-1.0-pro`、`berry-1.0-pro-turbo`。普通版/Turbo 支持 480p/720p/1080p，Pro/Pro Turbo 支持 1080p/2k/4k；均为 2–30 整数秒，默认 5 秒、1080p、adaptive、输出音频开启。先用 `holycrab models show berry-1.0` 获取参数，再估算和确认生成。

@@ -153,12 +153,7 @@ def send(
 def response_data(status: int, response: Any) -> Any:
     _presentation.remember_private_fields(response)
     if not _results.response_ok(status, response):
-        message = response.get("message") if isinstance(response, dict) else None
-        request_id = response.get("requestId") if isinstance(response, dict) else None
-        detail = f": {_presentation.sanitize_text_for_output(str(message))}" if message else ""
-        if request_id:
-            detail += f" (requestId: {_presentation.sanitize_text_for_output(str(request_id))})"
-        raise SystemExit(f"HolyCrab API request failed with HTTP {status}{detail}")
+        raise _results.ApiError(_presentation.public_api_error(status, response))
     return response.get("data") if isinstance(response, dict) and "data" in response else response
 
 

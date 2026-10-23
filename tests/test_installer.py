@@ -601,15 +601,20 @@ fi
         self.assertIn("verify_release_acceptance.py", workflow)
         self.assertIn('gh release edit "$RELEASE_VERSION" --draft=false --latest', workflow)
 
-    def test_local_generate_exception_is_scoped_to_user_approved_v043(self) -> None:
+    def test_local_generate_gate_requires_verified_record_without_private_checkout(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("steps.contract-version.outputs.version == 'v0.4.4'", workflow)
-        self.assertIn("steps.contract-version.outputs.version != 'v0.4.4'", workflow)
-        self.assertIn("secrets.GENERATE_CONTRACT_SSH_KEY", workflow)
-        self.assertIn("repository: AstroxNetwork/seedance-2.0", workflow)
-        self.assertIn('verify_release_acceptance.py "${{ steps.contract-version.outputs.version }}" --contract-only', workflow)
-        self.assertIn("steps.contract-version.outputs.version == 'v0.5.0'", workflow)
-        self.assertNotIn("steps.contract-version.outputs.version == 'v0.6.0'", workflow)
+        contract_job = workflow.split("  generate-contract:", 1)[1].split("  install-and-mcp:", 1)[0]
+        self.assertIn('verify_release_acceptance.py "${{ steps.contract-version.outputs.version }}" --contract-only', contract_job)
+        self.assertNotIn("continue-on-error", contract_job)
+        self.assertNotIn("GENERATE_CONTRACT_SSH_KEY", contract_job)
+        self.assertNotIn("repository: AstroxNetwork/seedance-2.0", contract_job)
+        # No version-specific skip may bypass validation of the current record.
+        self.assertNotIn("        if:", contract_job)
+        from tools.verify_release_acceptance import validate
+        for tag in ("v0.6.0", "v0.6.1", "v0.7.0"):
+            with self.subTest(tag=tag), self.assertRaises(ValueError):
+                validate({"version": tag}, tag, root=REPO_ROOT, contract_only=True)
+
 
 
 if __name__ == "__main__":

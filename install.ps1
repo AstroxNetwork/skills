@@ -58,28 +58,28 @@ else:
 
 $ReleaseFiles = @(
     @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "ce732cda8548c77b53b513321fad5a52d5c695a02b04a9d5f45b240f302ab2fb" },
-    @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "7070c245eae8b022f0dfd678acb660a61a58c65644f3c0076edae8e4eec65eb4" },
-    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "307c29ea603719485b21cc5e45087dd23417d56455cf121ef8b0236016d30a37" },
+    @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "9a3b05927bfbc75a13f44bd7ee5483d5f4dc3447b65b6d3b8a5ce477a61bcdee" },
+    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "74da670b4d524283439ecc1ff6e59895b0ad3c4288aa57c746ed29cfd51234ff" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7" },
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
     @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" },
 # BEGIN GENERATED RUNTIME DOWNLOADS
-    @{ Relative = "runtime-files.json"; Name = "runtime-files.json"; Sha256 = "46fb2b09a7cb8d606895b739e5ee977c36b1be7a4f7b455996800a88e4954e58" },
+    @{ Relative = "runtime-files.json"; Name = "runtime-files.json"; Sha256 = "bb9d78d608eb861e2a3663d9afc22e92d530d52e3cbbeeb140e06398bb006d8c" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/__init__.py"; Name = "holycrab_runtime/__init__.py"; Sha256 = "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/capabilities.py"; Name = "holycrab_runtime/capabilities.py"; Sha256 = "0719040a1572e640980d6d216023f6060be5d2887f9001d3a5762f9f792372f7" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/cli.py"; Name = "holycrab_runtime/cli.py"; Sha256 = "05796328dcf726f22ea3bdab3242864d92ed6c4dbcf3d92822ce9d0b277c9200" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/exports.py"; Name = "holycrab_runtime/exports.py"; Sha256 = "28d6cdade7d99b88267f320488b1393a7881066b4d8bef5bc99bc36644336e5e" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/generation.py"; Name = "holycrab_runtime/generation.py"; Sha256 = "404a1e109a68d11a584340b4c6ef53401239e6322d5dc77fd0996b81569824d4" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/capabilities.py"; Name = "holycrab_runtime/capabilities.py"; Sha256 = "43585789f09a5d1e5f3d215c75f1fc888e6aa9fead3b09d4244f667301fd0f64" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/cli.py"; Name = "holycrab_runtime/cli.py"; Sha256 = "e555a90b552139c44b1e3b04ccc7e2a20f3d228d542c37435b2475cc02344444" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/exports.py"; Name = "holycrab_runtime/exports.py"; Sha256 = "d0dcf10cb10a719b2d8a5d32510c3a20608d5dd88fb14a4225d2d51d23c4a7c6" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/generation.py"; Name = "holycrab_runtime/generation.py"; Sha256 = "7cc81fe0b9a1a9bee24f66aa4edac8be0b9fe242848b0a9513b1d665ba512a75" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/lifecycle.py"; Name = "holycrab_runtime/lifecycle.py"; Sha256 = "712895cc2ba5e1ee49cf64d04447e2ffc81684c2b8ec636399b06a814bf10a33" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/mcp.py"; Name = "holycrab_runtime/mcp.py"; Sha256 = "a40c9712251bcb0b61c4ecb972b3f8f6f2f527ed5f1ab2f53da9dee1ae87914c" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/presentation.py"; Name = "holycrab_runtime/presentation.py"; Sha256 = "e9f8c81062f3c1c3c7a116157958a070f546643582a7680d9c81876c1ff5c504" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/real_human.py"; Name = "holycrab_runtime/real_human.py"; Sha256 = "7ef4f7bef0cc2100e007f1a88ef0371c8c03c31c33eb7c2692b0fb228618cb9f" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/results.py"; Name = "holycrab_runtime/results.py"; Sha256 = "5d57e9c895f100f5e867f27a8662bfef05e8b1b4db7ae47218700860e7926853" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/settings.py"; Name = "holycrab_runtime/settings.py"; Sha256 = "80fce97557e6349f360b4e51c96f540c9f5a464310d5415e436cf3bdbb3aa309" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/mcp.py"; Name = "holycrab_runtime/mcp.py"; Sha256 = "f63de2169d0f37bb8bcf35790eae56fcb993ea0edef53cbb54bad91152b8f579" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/presentation.py"; Name = "holycrab_runtime/presentation.py"; Sha256 = "f335323ce4b1bf8ee698497e3b2c77c34fc20e3fdb20580840efe2b07e1138a6" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/real_human.py"; Name = "holycrab_runtime/real_human.py"; Sha256 = "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/results.py"; Name = "holycrab_runtime/results.py"; Sha256 = "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/settings.py"; Name = "holycrab_runtime/settings.py"; Sha256 = "88327a0c0c4f3b4a204de07858de6ba0ec74fb0c464370b8746e6681259e5fb1" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/state.py"; Name = "holycrab_runtime/state.py"; Sha256 = "3c12482ef7192ac7212f422b078ce0eecc0764130593f2e28b2dab0283c52dd1" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/tasks.py"; Name = "holycrab_runtime/tasks.py"; Sha256 = "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/transport.py"; Name = "holycrab_runtime/transport.py"; Sha256 = "72c1c69d9dfd2de9c0d699f08ba43f5b59fcac8ae370490f7390704d55a5dd16" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/uploads.py"; Name = "holycrab_runtime/uploads.py"; Sha256 = "6d5a3edfff505c0501403d8d2e6e5f8c56847291b0a0673a33fbf9d98f6f4b10" }
+    @{ Relative = "holycrab/scripts/holycrab_runtime/transport.py"; Name = "holycrab_runtime/transport.py"; Sha256 = "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/uploads.py"; Name = "holycrab_runtime/uploads.py"; Sha256 = "7d5e2d47c0ca901f05a7dead363490bfc17a512fda9d271c75807e4f6d6852d2" }
 # END GENERATED RUNTIME DOWNLOADS
 )
 

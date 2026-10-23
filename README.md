@@ -6,9 +6,9 @@
 - 本地 MCP：由同一个命令通过 `holycrab mcp serve` 启动，供 Codex、Claude Code 等 Agent 调用。
 - 薄 Skill：教 Agent 先查能力、先估积分、获得确认后只提交一次。
 
-它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.6.0` 候选版本沿用 `2026-10-09` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
+它们共用同一份公开能力快照和同一套安全请求代码，直接调用 HolyCrab 现有正式 API，不需要新增 OAuth 或远程 MCP 后端。`v0.6.0` 候选版本使用 `2026-10-23` 能力快照；这是随版本发布的静态合同，不冒充实时模型目录。
 
-`v0.6.0` 是尚未发布的可靠性重构候选版：严格校验积分预估、保留磁盘故障时已知任务和素材 ID、跨进程限制同一上传计划只执行一次，并增加上传记录查询。官方稳定入口暂不切换；只有验收和发布批准后才同步。
+`v0.6.0` 是尚未发布的候选版，新增四个 Berry 视频模型，合计 16 个模型，并同步服务端素材规则。CLI 检查请求结构与本地文件完整性，素材合规统一由后端判断。该版本还包括可靠性重构：严格校验积分预估、保留磁盘故障时已知任务和素材 ID、跨进程限制同一上传计划只执行一次，并增加上传记录查询。官方稳定入口暂不切换；只有验收和发布批准后才同步。
 
 `v0.5.0` 新增 MiniMax H3 Max、Agnes Video 2.5 和 Agnes Image 2.5 Flash，CLI 与本地 MCP 共用 12 个模型的能力与参数校验。账户查询返回有效的 `disabled_models`；缺失或异常表示权限未知，最终权限和积分以预估接口为准。保留既有安装、更新回滚与重复提交保护。官方稳定入口仅在对应 Release 发布并验证后同步，不安装 Draft 或测试分支。
 
@@ -198,3 +198,21 @@ python3 -m venv /tmp/holycrab-qr-validator
 默认自动化入口会隔离用户配置并禁止 Python 网络请求，不会调用正式生成接口或产生费用。报告区分通过、跳过、失败和未具备环境的项目；离线通过不等于正式发布获批。可选的网站示例、后端源码契约、独立二维码解码与旧版升级验收参数见 [自动化测试说明](docs/automated-testing.md)。历史 `live_release_smoke.py` 不在默认测试中，真实上传和付费生成需要明确的专用账号、素材及执行授权。实际使用 `holycrab generate create` 时，用户确认后会提交真实付费任务。安全问题请按 [SECURITY.md](SECURITY.md) 联系我们。
 
 候选版架构和验证范围见 [v0.6.0 实施记录](docs/v0.6.0-implementation.md)。Release 只允许复用同版本、同提交、同字节的 Draft；公开发布须手动启用 `publish_release`，且仍受当前候选版本验收门禁约束。
+
+
+## 素材校验与 Berry
+
+能力快照描述模型规则；实际素材归属、格式、大小、数量、组合、时长、帧率和编码由后端统一判断。估算与提交返回的 `errors[]` 会在终端、JSON 和 MCP 中保留具体素材、字段、实际值及要求；`retryable` 不代表自动重试生成。
+
+素材查询保留 `durationSeconds`、宽高、大小、格式、帧率、编码和 `metadataStatus`；未知值不补成 0。元数据缺失、处理中或探测失败不构成 CLI 的额外阻断。`ready` 仅表示现有处理状态，不保证满足任意模型条件。需要重新采集信息时显式运行 `holycrab assets metadata retry ASSET_ID`，或调用 MCP `asset_metadata_retry`；成功响应可能仍处于原状态或冷却期。
+
+Berry 普通版及 Turbo 支持 480p / 720p / 1080p，Pro 及 Pro Turbo 支持 1080p / 2k / 4k，时长为 2–30 整数秒。默认时长 5 秒、1080p、adaptive、输出音频开启。使用 `audio` 控制音轨；不使用 Seedance 的 `generateAudio`。
+
+```sh
+holycrab models show berry-1.0
+holycrab generate estimate --kind video --json '{"model":"berry-1.0","prompt":"A red crab on the beach"}'
+holycrab generate estimate --kind image --json '{"model":"seedream-5-0-lite-260128","prompt":"A red crab","imageAssetIds":["ASSET_ID"]}'
+holycrab generate estimate --kind audio --json '{"textPrompt":"@Audio1 speaks gently","references":[{"assetId":"ASSET_ID","type":"audio"}]}'
+```
+
+图片的 `imageAssetIds` 非空时优先于 `imageUrls`；音频使用素材 ID 或 `audio_url` / `image_url`。旧 Base64／speaker 引用请先显式上传，再改用素材 ID 或 URL；CLI 不隐式上传或转换。
