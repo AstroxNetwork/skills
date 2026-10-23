@@ -160,7 +160,14 @@ sys.addaudithook(check)
         assert check['updateAvailable'] is True and check['latestVersion']=='0.6.0'
         assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}, 'Baseline records changed before update'
         self.record('Actual v0.5.0 discovers v0.6.0 via public Latest')
-        self.cli('actual-update',old,'update','--yes',timeout=600)
+        try:
+            self.cli('actual-update',old,'update','--yes',timeout=600)
+        except RuntimeError:
+            self.data['failedUpdateDiagnostics']={}
+            for label,args in [('version',['--version']),('doctor',['doctor','--json'])]:
+                probe=subprocess.run([str(self.launcher(old)),*args],env=old,text=True,encoding='utf-8',capture_output=True,timeout=30)
+                self.data['failedUpdateDiagnostics'][label]={'exitCode':probe.returncode,'stdout':probe.stdout,'stderr':probe.stderr}
+            raise
         assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}
         self.record('Actual v0.5.0 update preserves credential bytes, recovery records and user files')
         self.verify_new('upgraded',old)
