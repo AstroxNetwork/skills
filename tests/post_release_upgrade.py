@@ -57,7 +57,7 @@ class Run:
         self.report.parent.mkdir(parents=True,exist_ok=True)
         self.root=Path(tempfile.mkdtemp(prefix='holycrab-public-upgrade-',dir=self.report.parent))
         self.data={'status':'running','platform':platform.platform(),'python':sys.version.split()[0],
-                   'version':VERSION,'checks':[],'businessRequests':0,'runnerSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+                   'version':VERSION,'upgradeMethod':args.upgrade_method,'checks':[],'businessRequests':0,'runnerSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
         self.environments=[]
         guard=self.root/'guard';guard.mkdir()
         (guard/'sitecustomize.py').write_text('''import sys, urllib.parse
@@ -161,7 +161,10 @@ sys.addaudithook(check)
         assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}, 'Baseline records changed before update'
         self.record('Actual v0.5.0 discovers v0.6.0 via public Latest')
         try:
-            self.cli('actual-update',old,'update','--yes',timeout=600)
+            if self.args.upgrade_method=='installer':
+                self.install('official-installer-over-v050',VERSION,old)
+            else:
+                self.cli('actual-update',old,'update','--yes',timeout=600)
         except RuntimeError:
             self.data['failedUpdateDiagnostics']={}
             for label,args in [('version',['--version']),('doctor',['doctor','--json'])]:
@@ -169,7 +172,7 @@ sys.addaudithook(check)
                 self.data['failedUpdateDiagnostics'][label]={'exitCode':probe.returncode,'stdout':probe.stdout,'stderr':probe.stderr}
             raise
         assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}
-        self.record('Actual v0.5.0 update preserves credential bytes, recovery records and user files')
+        self.record('Actual v0.5.0 '+self.args.upgrade_method+' preserves credential bytes, recovery records and user files')
         self.verify_new('upgraded',old)
 
     def cleanup(self):
@@ -192,6 +195,7 @@ sys.addaudithook(check)
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source',type=Path,required=True);p.add_argument('--report',type=Path,required=True)
+    p.add_argument('--upgrade-method',choices=('update','installer'),default='update')
     args=p.parse_args();args.source=args.source.resolve();run=Run(args)
     if sys.flags.optimize: raise RuntimeError('Assertions must be enabled for release verification')
     try:
