@@ -123,7 +123,7 @@ sys.addaudithook(check)
         assert len(names)==len(set(names))==22
         assert replies[2]['result']['isError'] is False
         caps=replies[2]['result']['structuredContent']
-        assert sum(len(caps[key]) for key in ('videoModels','imageModels','audioModels'))==16
+        assert len(caps['models'])==len({model['id'] for model in caps['models']})==16
         latest=json.loads(self.cli(label+'-latest',env,'update','--check'))
         assert latest['updateAvailable'] is False
         self.record(label+' health, immutable runtime, 22 MCP tools, 16 models, current stable version')

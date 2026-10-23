@@ -1,6 +1,6 @@
 {
   "version": "v0.6.0",
-  "candidateSha256": "e9d0ce7523b80e454dd230c6b2c0f4461b317ead40eded39ec35e1a67bbf89fd",
+  "candidateSha256": "ee97fda11c8512bb2a48bd2a74200e6ef473dcdffbc383244fa23f8398b92f62",
   "realHumanCoreFlow": {
     "status": "passed",
     "mode": "existing-authorization-live-upload-query",
@@ -30,7 +30,7 @@
       "baselineTag": "v0.6.0",
       "baselineCommit": "6b53ef79fd11344f85652a1e7f4a91480a70a687",
       "baselineCandidateSha256": "166c866bd575406364cfc45339bb9041025b56a7131b45ebbf92306b0f16db12",
-      "candidateSha256": "e9d0ce7523b80e454dd230c6b2c0f4461b317ead40eded39ec35e1a67bbf89fd",
+      "candidateSha256": "ee97fda11c8512bb2a48bd2a74200e6ef473dcdffbc383244fa23f8398b92f62",
       "shippedFilesUnchanged": {
         "bin/holycrab": "e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1",
         "holycrab/SKILL.md": "69032d13a515fdba63ac79b4bd66a94df131eeec7420c0f2f661fdef724926e8",
@@ -65,8 +65,8 @@
     "status": "passed",
     "mode": "local-immutable-main",
     "verifiedMainCommit": "569aa948d5ea70c15ce719783e71935d02309743",
-    "verifiedAt": "2026-10-23T14:41:09.735327+00:00",
-    "candidateSha256": "e9d0ce7523b80e454dd230c6b2c0f4461b317ead40eded39ec35e1a67bbf89fd",
+    "verifiedAt": "2026-10-23T14:43:05.639990+00:00",
+    "candidateSha256": "ee97fda11c8512bb2a48bd2a74200e6ef473dcdffbc383244fa23f8398b92f62",
     "sourceFiles": {
       "client/user-front/src/api/tasks.ts": "dc8b22deb52982fb1fb3da12dfc7b646de2bba3bf07be4bcef84bd147e2560de",
       "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
@@ -96,7 +96,7 @@
       "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
     },
     "validatorSha256": "d2ff5717da5fe2cd14c48a76ff4469d975dc9700b2e7ee181ff030b6d4b6cb00",
-    "evidenceSha256": "649511351bbed333b3fbc47bc5d4403666f55be0677fe21298b120ccc76f74a3"
+    "evidenceSha256": "e2ec9baefeed7266cd971b1382c7857fb19e01aa800b5eedc5ddb2efa112d112"
   },
   "publication": {
     "status": "authorized",
