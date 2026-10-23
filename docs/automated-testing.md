@@ -156,3 +156,7 @@ Linux、macOS、Windows Server 2025 分别全新安装 v0.6.0，再实际安装�
 官网已部署后，额外在 macOS、Windows 从 `holycrab.ai/cli/` 下载，先比对正式 Release 摘要再安装。若官网尚待部署授权，可显式设 `verify_website=false` 仅验证公开 GitHub 包；官网步骤会显示跳过，不能宣称官网验收通过。
 
 本机执行入口为 `python3 tests/post_release_upgrade.py --source . --report build/post-release/public-upgrade.json`。必须联网访问公开 GitHub 资产，但在隔离 HOME、配置和安装目录运行，不读取真实账号、不调用业务 API、不付费生成。结果和逐命令日志保存在指定目录，失败保留原始记录。脚本只适用于当前 v0.6.0 为 Latest 且本地发布文件与其完全一致时；后续版本须显式更新验收目标。
+
+### v0.6.0 发布后发现的 Windows 限制
+
+公开 v0.5.0 的 `update --yes` 在原生 Windows 上会完成安装，却由旧 CMD 启动器返回 `123`；后续版本为 0.6.0 且 doctor 正常。该路径仍判失败，不因安装结果正常而吞掉退出码。`--upgrade-method installer` 单独验证正式安装器覆盖旧版的替代路径；工作流对应 `upgrade_method=installer`、`platform=windows`。默认仍测试原始 `update` 命令并如实失败，不把替代路径改成默认来掩盖问题。所有失败的报告保留版本、健康结果与原始退出码。正式 v0.6.0 文件和标签不可替换。
