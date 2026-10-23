@@ -1,6 +1,6 @@
 {
   "version": "v0.6.0",
-  "candidateSha256": "166c866bd575406364cfc45339bb9041025b56a7131b45ebbf92306b0f16db12",
+  "candidateSha256": "fcbb71495d41fa53b2c9a9296cfcb63cea8e36cdbffb7d957601d48cac8f6691",
   "realHumanCoreFlow": {
     "status": "passed",
     "mode": "existing-authorization-live-upload-query",
@@ -25,14 +25,48 @@
     "desktopWindowsValidation": {
       "status": "excluded-by-user",
       "scope": "Windows 10/11 x64 desktop; existing native Windows CI evidence is retained"
+    },
+    "pipelineOnlyChange": {
+      "baselineTag": "v0.6.0",
+      "baselineCommit": "6b53ef79fd11344f85652a1e7f4a91480a70a687",
+      "baselineCandidateSha256": "166c866bd575406364cfc45339bb9041025b56a7131b45ebbf92306b0f16db12",
+      "candidateSha256": "fcbb71495d41fa53b2c9a9296cfcb63cea8e36cdbffb7d957601d48cac8f6691",
+      "shippedFilesUnchanged": {
+        "bin/holycrab": "e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1",
+        "holycrab/SKILL.md": "69032d13a515fdba63ac79b4bd66a94df131eeec7420c0f2f661fdef724926e8",
+        "holycrab/agents/openai.yaml": "64bd549cd32e989324d5a17c2550cd54dfecccf70b4637b05b062a2fb709c1a7",
+        "holycrab/references/capabilities.json": "9a3b05927bfbc75a13f44bd7ee5483d5f4dc3447b65b6d3b8a5ce477a61bcdee",
+        "holycrab/scripts/holycrab_cli.py": "ce732cda8548c77b53b513321fad5a52d5c695a02b04a9d5f45b240f302ab2fb",
+        "holycrab/scripts/holycrab_runtime/__init__.py": "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe",
+        "holycrab/scripts/holycrab_runtime/capabilities.py": "43585789f09a5d1e5f3d215c75f1fc888e6aa9fead3b09d4244f667301fd0f64",
+        "holycrab/scripts/holycrab_runtime/cli.py": "c9a50861d2b56ccb691ded00639f6b5d72bdb2b1d9bbfa262cd672d4ba229d90",
+        "holycrab/scripts/holycrab_runtime/exports.py": "d0dcf10cb10a719b2d8a5d32510c3a20608d5dd88fb14a4225d2d51d23c4a7c6",
+        "holycrab/scripts/holycrab_runtime/generation.py": "578ab3976e6fe04dd66cf2bf542b64989dfbfe3994445c3a98c0f24e60d1c2a1",
+        "holycrab/scripts/holycrab_runtime/lifecycle.py": "6f3898140d2e86a6dbc90574814e7a3fa32b5a09dade3ea909f8bae0787f475a",
+        "holycrab/scripts/holycrab_runtime/mcp.py": "c72c8a50aa5a4419dcc2f0c45f46f8cf7dbe6afdddf3a5c31d8b93d06dbb08d9",
+        "holycrab/scripts/holycrab_runtime/presentation.py": "0925e46fbf4ec01d156ab1071c43a8a6e227c22adfed9804316fd32b9b8ee530",
+        "holycrab/scripts/holycrab_runtime/real_human.py": "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74",
+        "holycrab/scripts/holycrab_runtime/results.py": "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2",
+        "holycrab/scripts/holycrab_runtime/settings.py": "88327a0c0c4f3b4a204de07858de6ba0ec74fb0c464370b8746e6681259e5fb1",
+        "holycrab/scripts/holycrab_runtime/state.py": "c87236d05ecdcefa64249aa3cf3fa4003918a887751f5469386531fefa330946",
+        "holycrab/scripts/holycrab_runtime/tasks.py": "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27",
+        "holycrab/scripts/holycrab_runtime/transport.py": "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432",
+        "holycrab/scripts/holycrab_runtime/uploads.py": "4a1c21aa5df008841d1e0425991800ff36ed219ca82284f05deaadf8b0b79cc5",
+        "holycrab/scripts/vendor/LICENSE.segno": "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935",
+        "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl": "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7",
+        "install.ps1": "eea70ae3d0bb2ea8372beed299b19b1fc460cd442571bbd1fb4e4a8782fa160f",
+        "install.sh": "5df998bee448196b4bcb42a68cf73881e006bbb440ec9dda3dfcdbc94182510e",
+        "runtime-files.json": "a23da16d43f8a692cbbfe5f5d116e1ebb88fc2852137e8d6ebeb7d2918e16b08"
+      },
+      "notes": "Existing live-upload result is reused only because every shipped runtime, manifest and installer byte is unchanged. Workflow and regression tests changed; no new live upload is claimed. The official release continues to use the immutable v0.6.0 tag and its original evidence."
     }
   },
   "generateContractCheck": {
     "status": "passed",
     "mode": "local-immutable-main",
     "verifiedMainCommit": "569aa948d5ea70c15ce719783e71935d02309743",
-    "verifiedAt": "2026-10-23T11:18:37.505326+00:00",
-    "candidateSha256": "166c866bd575406364cfc45339bb9041025b56a7131b45ebbf92306b0f16db12",
+    "verifiedAt": "2026-10-23T14:38:47.341751+00:00",
+    "candidateSha256": "fcbb71495d41fa53b2c9a9296cfcb63cea8e36cdbffb7d957601d48cac8f6691",
     "sourceFiles": {
       "client/user-front/src/api/tasks.ts": "dc8b22deb52982fb1fb3da12dfc7b646de2bba3bf07be4bcef84bd147e2560de",
       "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
@@ -62,7 +96,7 @@
       "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
     },
     "validatorSha256": "d2ff5717da5fe2cd14c48a76ff4469d975dc9700b2e7ee181ff030b6d4b6cb00",
-    "evidenceSha256": "2cc36e200bef75332a14aeb0856f93407e9e7a3100716c3cbee15073f65be264"
+    "evidenceSha256": "cb89dd632a47f1e563dc70c5bb52f7d4c2cb0f00fbd4a0113f52ef17c6b510aa"
   },
   "publication": {
     "status": "authorized",
