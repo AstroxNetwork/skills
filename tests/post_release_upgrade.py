@@ -87,7 +87,8 @@ sys.addaudithook(check)
                     'PYTHONDONTWRITEBYTECODE':'1','PYTHONUTF8':'1','PYTHONPATH':str(self.guard)})
         # The CI host is PowerShell 7. Launch legacy 5.1 with its native module
         # search path, as tests/test_windows_adversarial.ps1 already does.
-        if os.name=='nt' and label=='upgrade': env.pop('PSModulePath',None)
+        if os.name=='nt' and label=='upgrade':
+            env={key:value for key,value in env.items() if key.upper()!='PSMODULEPATH'}
         self.environments.append((label,env))
         return env
 
@@ -143,6 +144,8 @@ sys.addaudithook(check)
         fresh=self.environment('fresh')
         self.install('fresh-install',VERSION,fresh);self.verify_new('fresh',fresh)
         old=self.environment('upgrade')
+        if os.name=='nt':
+            self.command('legacy-shell-prerequisites',['powershell','-NoProfile','-Command', '$ErrorActionPreference = "Stop"; if ($PSVersionTable.PSVersion.Major -ne 5) { throw "Expected Windows PowerShell 5.1" }; Get-Command Get-FileHash | Select-Object Name,Source | ConvertTo-Json'],old)
         self.install('actual-v050-install','v0.5.0',old)
         self.cli('isolated-key',old,'auth','set-key','--stdin','--no-verify',input='hc-isolated-release-test-not-a-real-key\n')
         config=Path(old['HOLYCRAB_CONFIG_DIR']);plans=config/'upload-plans';plans.mkdir(exist_ok=True)
