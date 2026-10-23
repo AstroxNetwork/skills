@@ -65,7 +65,9 @@
     "evidenceSha256": "2cc36e200bef75332a14aeb0856f93407e9e7a3100716c3cbee15073f65be264"
   },
   "publication": {
-    "status": "awaiting-user-confirmation",
-    "notes": "No tag push, remote Draft, published Release or website deployment has been performed."
+    "status": "authorized",
+    "approvedBy": "user",
+    "approvedAt": "2026-10-23T14:16:10.438343+00:00",
+    "notes": "User explicitly approved formal v0.6.0 publication, existing release-note updates and automated post-release installation/update checks. Publication is performed only after the existing immutable Draft, native install and release gates pass; this pre-publication record does not claim publication has completed."
   }
 }
