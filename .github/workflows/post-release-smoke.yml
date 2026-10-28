@@ -150,7 +150,7 @@ jobs:
           for directory in ('.agents', '.claude'):
               skill = pathlib.Path.home() / directory / 'skills/holycrab'
               manifest = json.loads(pathlib.Path('runtime-files.json').read_text())
-              expected = {row['target'] for row in manifest['files'] if row['kind'] == 'skill'}
+              expected = {row['target'] for row in manifest['files'] if row['kind'] == 'skill' or row['target'].startswith('references/')}
               assert {p.relative_to(skill).as_posix() for p in skill.rglob('*') if p.is_file()} == expected
           messages = [
               {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'website-smoke', 'version': '1'}}},

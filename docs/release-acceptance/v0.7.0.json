@@ -44,13 +44,13 @@
     "approvedAt": "2026-10-28T06:52:15.720871+00:00",
     "notes": "User explicitly requested formal 0.7.0 publication in this chat."
   },
-  "candidateSha256": "2c72f21ed3e6e41124d194a53037465dbf7a81e64784a86da7f1d720b3c40a9d",
+  "candidateSha256": "0c7f856b6ea3e3b7a90ccc43f755e1c37c12c21535a555ea31d539c0387c911e",
   "generateContractCheck": {
     "status": "passed",
     "mode": "local-immutable-main",
     "verifiedMainCommit": "1c235b67b7ca1a184b0ed20e943dcb406be34490",
-    "verifiedAt": "2026-10-28T07:15:46.329764+00:00",
-    "candidateSha256": "2c72f21ed3e6e41124d194a53037465dbf7a81e64784a86da7f1d720b3c40a9d",
+    "verifiedAt": "2026-10-28T07:22:42.828905+00:00",
+    "candidateSha256": "0c7f856b6ea3e3b7a90ccc43f755e1c37c12c21535a555ea31d539c0387c911e",
     "sourceFiles": {
       "client/user-front/src/api/tasks.ts": "24fa99779e5bef1f73342469649a3f9886c7198dc4a35344ee71856fb65cab25",
       "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
@@ -78,6 +78,6 @@
       "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
     },
     "validatorSha256": "eac178a6e6cab9f42258da731b7c734956ea65a58753a12fafedb9cb3218a89a",
-    "evidenceSha256": "0a41d1949a8da34d9dd72ab470af8ecdb7f74fcb3100a9d6aee6a08c035c7c06"
+    "evidenceSha256": "c2e9631795658ed479e789ecea6f077c7c8faa727c7ec01803a324b40b7d3468"
   }
 }

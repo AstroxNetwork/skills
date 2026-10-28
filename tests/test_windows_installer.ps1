@@ -191,7 +191,7 @@ $SkillFiles = @(Get-ChildItem -LiteralPath $SkillDirectory -Recurse -File | ForE
     $_.FullName.Substring($SkillDirectory.Length + 1).Replace("\", "/")
 } | Sort-Object)
 $SkillInventory = Get-Content -LiteralPath (Join-Path $RepoRoot "runtime-files.json") -Raw -Encoding UTF8 | ConvertFrom-Json
-$ExpectedSkillFiles = @($SkillInventory.files | Where-Object { $_.kind -eq "skill" } | ForEach-Object { $_.target }) | Sort-Object
+$ExpectedSkillFiles = @($SkillInventory.files | Where-Object { $_.kind -eq "skill" -or $_.target -like "references/*" } | ForEach-Object { $_.target }) | Sort-Object
 if (@(Compare-Object $SkillFiles $ExpectedSkillFiles).Count -ne 0) {
     throw "Installed Skill contains unexpected or missing files: $($SkillFiles -join ', ')"
 }
