@@ -149,7 +149,7 @@ def installer_summary(suite):
         output = console.output
         for i in range(1, 6):
             assert output.count(f"[{i}/5]") == 1, output
-        assert output.count("HolyCrab 0.6.0 installed") == 1
+        assert output.count(f"HolyCrab {suite.version} installed") == 1
         assert "Next: connect your account" in output
         assert "For Agents:" not in output and "agentInstruction" not in output
     program = prefix / "lib/holycrab/holycrab_cli.py"
@@ -212,12 +212,12 @@ def interrupt_installer(suite):
                         console.until("INSTALLER_HOST_CODE=130")
                         assert console.finish(timeout=10) == 0, console.output
                         code = 130  # observed installer LASTEXITCODE, not the later host exit
-                    assert "HolyCrab 0.6.0 installed" not in console.output
+                    assert f"HolyCrab {suite.version} installed" not in console.output
                 after = {p.relative_to(suite.prefix).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                          for p in suite.prefix.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
                 assert after == before, "Interrupted installer did not restore previous runtime/launcher exactly"
                 assert managed.read_bytes() == clean_bytes + marker, "Rollback did not restore the pre-update marker"
-                assert suite.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+                assert suite.cli_run("--version").stdout.strip() == "holycrab " + suite.version
                 scenarios.append({"shell": shell_label, "mode": mode, "installerExitCode": code,
                                   "interactiveHostPreserved": mode != "script-file", "previousBytesRestored": True})
             finally:
