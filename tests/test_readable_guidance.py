@@ -98,6 +98,36 @@ class ReadableGuidanceTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("agentInstruction", json.loads(output)["onboarding"])
 
+    def test_workflow_progress_is_concise_and_full_details_are_available(self):
+        from holycrab_runtime import workflows
+        result = {"workflowId": "flow1", "title": "Cup ad", "state": "waiting", "revision": 1,
+                  "steps": [{"id": "video", "state": "submitted", "request": {"prompt": "Full private draft"},
+                             "attemptId": "attempt1", "taskId": "task1", "outputs": {}}],
+                  "history": [{"revision": 0, "notes": "old details"}],
+                  "nextAction": {"code": "QUERY_WORKFLOW", "instruction": "Check the running tasks.",
+                                 "command": "holycrab workflows get flow1 --refresh"}}
+        with patch.object(workflows, "get", return_value=result):
+            _, human, _ = self.invoke(["workflows", "get", "flow1"])
+            _, full, _ = self.invoke(["workflows", "get", "flow1", "--json-output"])
+            _, piped, _ = self.invoke(["workflows", "get", "flow1"], terminal=False)
+        self.assertIn("Cup ad · In progress", human)
+        self.assertIn("holycrab workflows get flow1 --refresh", human)
+        self.assertNotIn("Full private draft", human)
+        self.assertNotIn("old details", human)
+        self.assertEqual(json.loads(full), result)
+        self.assertEqual(json.loads(piped), result)
+
+    def test_workflow_estimate_preserves_exact_request_and_duplicate_cost_warning(self):
+        from holycrab_runtime import presentation
+        result = {"workflowId": "flow1", "approvalId": "approval1", "readyCredits": 46,
+                  "steps": [{"stepId": "video", "kind": "video", "duplicateRisk": True, "credits": 46,
+                             "request": {"model": "seedance-2-0-mini", "prompt": "A white ceramic cup", "duration": 10},
+                             "requestHash": "internalhash"}], "deferredSteps": ["finish"]}
+        shown = presentation.format_terminal_result(result, view="workflow-estimate")
+        for text in ("46 credits", "A white ceramic cup", "Duration: 10", "charge twice", "not included", "finish", "--approval-id approval1"):
+            self.assertIn(text, shown)
+        self.assertNotIn("internalhash", shown)
+
     def test_doctor_without_json_has_compact_checks_not_internal_guidance(self):
         code, output, _ = self.invoke(["doctor"])
         self.assertEqual(code, 0)
@@ -139,7 +169,7 @@ class ReadableGuidanceTests(unittest.TestCase):
         with patch.object(cli._owner("send"), "send") as transport:
             guidance = cli.local_health_report()["onboarding"]
         text = cli.format_onboarding(guidance, installed=True)
-        self.assertIn("HolyCrab 0.6.0 installed", text)
+        self.assertIn("HolyCrab 0.7.0 installed", text)
         self.assertIn("Next: verify your account", text)
         self.assertIn("holycrab auth status", text)
         self.assertNotIn("account connected", text)
@@ -233,7 +263,7 @@ class ReadableGuidanceTests(unittest.TestCase):
             with self.subTest(configured=configured):
                 guidance = cli.onboarding_guidance(configured=configured)
                 text = cli.format_onboarding(guidance, installed=True)
-                self.assertIn("HolyCrab 0.6.0 installed", text)
+                self.assertIn("HolyCrab 0.7.0 installed", text)
                 self.assertIn(guidance["command"], text)
                 self.assertIn("Create product listing images", text)
                 self.assertNotIn("For Agents", text)
@@ -392,7 +422,7 @@ class ReadableGuidanceTests(unittest.TestCase):
 
     def test_upgrade_summary_does_not_repeat_first_use_introduction(self):
         output = cli.format_onboarding(cli.onboarding_guidance(configured=True), installed=True, upgrading=True)
-        self.assertIn("HolyCrab 0.6.0 installed", output)
+        self.assertIn("HolyCrab 0.7.0 installed", output)
         self.assertIn("holycrab auth status", output)
         self.assertNotIn("Create product listing images", output)
         self.assertNotIn("What would you like", output)

@@ -154,9 +154,9 @@ class OnboardingTests(unittest.TestCase):
     def test_mcp_initialize_contains_conditional_agent_onboarding_not_a_popup(self) -> None:
         reply = cli.mcp_dispatch({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
         instructions = reply["result"]["instructions"]
-        self.assertIn("installation", instructions)
-        self.assertIn("business", instructions)
-        self.assertIn("once", instructions)
+        self.assertIn("continue the existing task", instructions)
+        self.assertIn("Only if no task was given", instructions)
+        self.assertIn("do not ask again for a covered action", instructions)
 
 
 if __name__ == "__main__":

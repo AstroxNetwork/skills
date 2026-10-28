@@ -214,73 +214,11 @@ def command_poll_task(args: argparse.Namespace) -> int:
 
 
 def command_download(args: argparse.Namespace) -> int:
-    _presentation.command_progress(f"Checking downloadable results for task {args.uniq_id}...")
-    status, response = _transport.send("GET", f"/api/tasks/{urllib.parse.quote(args.uniq_id, safe='')}")
-    data = _transport.response_data(status, response)
-    urls = _results.task_output_urls(data)
-    if not urls:
-        raise SystemExit("This task has no downloadable URL yet")
-    if args.index < 0 or args.index >= len(urls):
-        raise SystemExit(f"Output index must be between 0 and {len(urls) - 1}")
-    url = _transport.validate_download_url(urls[args.index])
-    destination = Path(args.output).expanduser().resolve()
-    force = bool(getattr(args, "force", False))
-    if destination.exists() and not force:
-        raise SystemExit(f"Output already exists: {destination}. Use --force to replace it")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, partial_name = tempfile.mkstemp(
-        prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
-    )
-    partial = Path(partial_name)
-    total = 0
-    last_progress = time.monotonic()
-    try:
-        _presentation.command_progress(f"Downloading output {args.index + 1}...\nPath: {destination}")
-        with _transport.open_download(url) as remote, os.fdopen(descriptor, "wb") as local:
-            descriptor = -1
-            if getattr(remote, "status", 200) != 200 or remote.headers.get("Content-Range"):
-                raise SystemExit("Download did not return a complete file; partial responses are not accepted. The output was not replaced")
-            content_length = remote.headers.get("Content-Length") if getattr(remote, "headers", None) else None
-            expected_length = int(content_length) if isinstance(content_length, str) and content_length.isascii() and content_length.isdigit() else None
-            if expected_length is not None and expected_length > _settings.MAX_DOWNLOAD_RESPONSE_BYTES:
-                raise SystemExit("Download response is larger than the allowed limit")
-            while True:
-                chunk = remote.read(1024 * 1024)
-                if not chunk:
-                    break
-                local.write(chunk)
-                total += len(chunk)
-                if total > _settings.MAX_DOWNLOAD_BYTES:
-                    raise SystemExit("Download exceeded the allowed size limit")
-                now = time.monotonic()
-                if now - last_progress >= 2:
-                    _presentation.command_progress(f"Downloaded {total} bytes...")
-                    last_progress = now
-            if expected_length is not None and total != expected_length:
-                raise SystemExit(f"Download was incomplete: expected {expected_length} bytes, received {total}. The output was not replaced")
-        if force:
-            os.replace(partial, destination)
-        else:
-            try:
-                if os.name == "nt":
-                    # Windows rename is atomic and refuses an existing destination,
-                    # including filesystems without hard-link support (e.g. exFAT).
-                    os.rename(partial, destination)
-                else:
-                    os.link(partial, destination)
-            except FileExistsError as error:
-                raise SystemExit(f"Output already exists: {destination}. Use --force to replace it") from error
-            partial.unlink(missing_ok=True)
-    finally:
-        if descriptor >= 0:
-            os.close(descriptor)
-        try:
-            partial.unlink()
-        except FileNotFoundError:
-            pass
-    _presentation.print_result({"taskId": args.uniq_id, "output": str(destination), "bytes": total})
+    from .downloads import download_task
+    result = download_task(args.uniq_id, args.output, index=args.index, force=bool(getattr(args, "force", False)), progress=_presentation.command_progress)
+    _presentation.print_result(result)
     if not sys.stdout.isatty():
-        _presentation.command_progress(f"Download completed: {destination} ({total} bytes).")
+        _presentation.command_progress(f"Download completed: {result['output']} ({result['bytes']} bytes).")
     return 0
 
 
@@ -473,6 +411,36 @@ def add_page_arguments(parser: argparse.ArgumentParser, page_size: int = 20) -> 
     parser.add_argument("--page-size", type=int, default=page_size)
 
 
+def command_creative(args: argparse.Namespace) -> int:
+    from . import skills, workflows, media
+    action = args.creative_action
+    if action == "skills-list":
+        result = skills.list_skills()
+    elif action == "skills-get":
+        result = skills.get_skill(args.name, args.resource)
+    elif action == "skills-doctor":
+        result = skills.health()
+    elif action == "media-doctor":
+        result = media.doctor()
+    elif action == "media-compose":
+        if args.yes:
+            _presentation.command_progress("Rendering video...")
+        result = media.compose(parse_json_argument(args.json), confirmed=args.yes, approval_hash=args.approval_hash)
+    elif action == "workflow-prepare":
+        result = workflows.prepare(parse_json_argument(args.json), workflow_id=args.workflow_id, expected_revision=args.expected_revision)
+    elif action == "workflow-list":
+        result = workflows.list_workflows(limit=args.limit, offset=args.offset)
+    elif action == "workflow-get":
+        result = workflows.get(args.workflow_id, refresh=args.refresh)
+    elif action == "workflow-estimate":
+        result = workflows.estimate(args.workflow_id)
+    else:
+        result = workflows.run_next(args.workflow_id, approval_id=args.approval_id, confirmed=args.yes,
+                                    progress=_presentation.command_progress)
+    _presentation.print_result(result, view=action, force_json=args.json_output)
+    return 1 if result.get("ok") is False or getattr(result, "outcome", None) in {"failed", "unknown"} else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="holycrab", description="HolyCrab local CLI and MCP server")
     parser.add_argument("--version", action="version", version=f"%(prog)s {_settings.VERSION}")
@@ -630,6 +598,44 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall.add_argument("--purge", action="store_true", help="Also remove known local credentials and records")
     uninstall.add_argument("--yes", action="store_true", help="Confirm the complete uninstall preview")
     uninstall.set_defaults(func=command_uninstall)
+    creative_output = argparse.ArgumentParser(add_help=False)
+    creative_output.add_argument("--json-output", action="store_true", help="Show full structured details")
+    skills = sub.add_parser("skills", help="Discover bundled creative guidance")
+    skill_sub = skills.add_subparsers(required=True)
+    skill_sub.add_parser("list", parents=[creative_output]).set_defaults(func=command_creative, creative_action="skills-list")
+    skill_sub.add_parser("doctor", parents=[creative_output]).set_defaults(func=command_creative, creative_action="skills-doctor")
+    skill_get = skill_sub.add_parser("get", parents=[creative_output])
+    skill_get.add_argument("name")
+    skill_get.add_argument("--resource")
+    skill_get.set_defaults(func=command_creative, creative_action="skills-get")
+    media = sub.add_parser("media", help="Preview and compose local clips into a finished MP4")
+    media_sub = media.add_subparsers(required=True)
+    media_sub.add_parser("doctor", parents=[creative_output]).set_defaults(func=command_creative, creative_action="media-doctor")
+    compose = media_sub.add_parser("compose", parents=[creative_output])
+    compose.add_argument("--json", required=True)
+    compose.add_argument("--yes", action="store_true")
+    compose.add_argument("--approval-hash")
+    compose.set_defaults(func=command_creative, creative_action="media-compose")
+    workflows = sub.add_parser("workflows", help="Prepare, revise and resume a local production plan")
+    workflow_sub = workflows.add_subparsers(required=True)
+    listing = workflow_sub.add_parser("list", parents=[creative_output])
+    listing.add_argument("--limit", type=int, default=20)
+    listing.add_argument("--offset", type=int, default=0)
+    listing.set_defaults(func=command_creative, creative_action="workflow-list")
+    prepare = workflow_sub.add_parser("prepare", parents=[creative_output])
+    prepare.add_argument("--json", required=True)
+    prepare.add_argument("--workflow-id")
+    prepare.add_argument("--expected-revision", type=int)
+    prepare.set_defaults(func=command_creative, creative_action="workflow-prepare")
+    for action in ("get", "estimate", "run-next"):
+        item = workflow_sub.add_parser(action, parents=[creative_output])
+        item.add_argument("workflow_id")
+        item.set_defaults(func=command_creative, creative_action="workflow-" + action)
+        if action == "get":
+            item.add_argument("--refresh", action="store_true")
+        if action == "run-next":
+            item.add_argument("--approval-id", required=True)
+            item.add_argument("--yes", action="store_true")
     return parser
 
 

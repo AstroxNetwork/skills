@@ -13,7 +13,7 @@ SOURCE_FILES = tuple(SERVER + name for name in (
     "serialization/AssetSerializer.java", "vo/AssetVO.java", "vo/MulerouterGenerationRequest.java",
     "service/MulerouterGenerationRequestValidator.java", "service/TaskAssetValidator.java",
     "service/AssetRuleValidator.java", "service/TaskAssetResolver.java", "service/TaskAssetParameterValidator.java",
-    "service/ImageGenerationRequestValidator.java", "service/AudioGenerationRequestValidator.java",
+    "service/SeedanceGenerationRequestValidator.java",
     "service/UserAssetService.java", "controller/UserAssetController.java",
 )) + ("client/user-front/src/config/wan3Models.ts",)
 BERRY = {"berry-1.0", "berry-1.0-pro", "berry-1.0-turbo", "berry-1.0-pro-turbo"}
@@ -25,7 +25,7 @@ METADATA_FIELDS = ("durationSeconds", "mediaFormat", "metadataStatus", "metadata
 # Independently audited source/description pair. These are deliberately conservative:
 # ANY source-rule change requires re-audit, not automatic acceptance of a changed bound.
 # This gate does not execute a second copy of the server's material policy.
-AUDITED_RULE_SOURCES = {'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java': 'cc6f1efe8398b6dc83041b39603bf17a525dd98e0a9205ecfa4f72386bc7a659', 'server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java': '3e9bb56da7dceb77b910b797512af8e5fb64747e0846e2b758b97a46820bdc2f', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java': '501cf7989a1bcb785837399617cc2c1717e1ec1dd64c3c01d9406f328a16888c', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java': 'ca82e618aedab57c0b6a1a16d27bc458dea62b11fb5f764cce5aaf3e13708b2d'}
+AUDITED_RULE_SOURCES = {'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java': '473ac3d96abc2f5b3c73f2874c6f00e768686a227e7faa0332facdc729f1ad73', 'server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java': '3e9bb56da7dceb77b910b797512af8e5fb64747e0846e2b758b97a46820bdc2f', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java': '5de7de1b23af11e61c37ce30ba3db632a027fb8d426471f6021f01220a22e361', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java': '10372ad0623fac7b6b77fe25641c000e912c04fae8d7223360e86f8e5f7b17ae'}
 AUDITED_DESCRIPTION_SHA256 = "a64ff2be235c78e0af333f02da7b1e8ca813c8e64f88872b5fcd121a0fa6a482"
 
 
@@ -65,9 +65,9 @@ def validate_material_contract(root: Path, cli_root: Path, manifest: dict) -> li
     require(server("service/TaskAssetParameterValidator.java"), r'item.get\("assetId"\)', "audio material IDs")
     require(server("service/TaskAssetParameterValidator.java"), r'item.get\("type"\)', "audio material type")
     for field in ("imageAssetIds", "imageUrls"):
-        require(server("service/ImageGenerationRequestValidator.java"), r'body.get\("' + field + r'"\)', "image field " + field)
+        require(server("service/SeedanceGenerationRequestValidator.java"), r'body.get\("' + field + r'"\)', "image field " + field)
     for field in ("audio_url", "image_url"):
-        require(server("service/AudioGenerationRequestValidator.java"), r'entry.get\("' + field + r'"\)', "audio field " + field)
+        require(server("service/SeedanceGenerationRequestValidator.java"), r'entry.get\("' + field + r'"\)', "audio field " + field)
 
     berry = server("service/MulerouterGenerationRequestValidator.java")
     models = re.search(r'List.of\(([^;]+?)\).contains\(request.getModel\(\)\)', berry, re.S)

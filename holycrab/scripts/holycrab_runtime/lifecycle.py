@@ -400,6 +400,10 @@ def runtime_package_files(manifest_path: Path | None = None) -> list[str]:
             if not re.fullmatch(r"holycrab_runtime/[A-Za-z_][A-Za-z0-9_]*\.py", target):
                 raise ValueError("Invalid runtime module path")
             output.append(target)
+        elif row.get("kind") == "runtime" and target.startswith("references/creative/"):
+            if ".." in Path(target).parts or not re.fullmatch(r"references/creative/[A-Za-z0-9_./-]+\.(md|json|txt)", target):
+                raise ValueError("Invalid creative resource path")
+            output.append(target)
     return output
 
 
@@ -430,7 +434,7 @@ def finalize_installation(previous_path: str, journal_path: str) -> None:
                 else:
                     pending.append(f"Modified or unmanaged {agent} Skill kept: {path}")
                     owned_agents.add(agent)
-            for directory in (root / "references", root / "agents", root):
+            for directory in _managed_skill_directories(root):
                 try: directory.rmdir()
                 except OSError: pass
         if agent in selected and enabled_mcp: continue
@@ -547,7 +551,7 @@ def restore_installer_files(backup: Path, prefix: Path, agents: list[str]) -> No
         if agent not in agents and not (backup / (agent + "-skill")).exists():
             continue
         directory = ".agents" if agent == "codex" else ".claude"
-        for name in ("SKILL.md", "references/capabilities.json", "agents/openai.yaml"):
+        for name in _settings.MANAGED_SKILL_FILES:
             pairs.append((backup / (agent + "-skill") / name,
                           Path.home() / directory / "skills/holycrab" / name))
     for source, target in pairs:
@@ -869,6 +873,14 @@ def _skill_root(agent: str) -> Path:
     return Path.home() / parent / "skills" / "holycrab"
 
 
+def _managed_skill_directories(root):
+    directories = {root}
+    for name in _settings.MANAGED_SKILL_FILES:
+        path = root / name
+        directories.update(parent for parent in path.parents if parent.is_relative_to(root))
+    return sorted(directories, key=lambda path: len(path.parts), reverse=True)
+
+
 def remove_managed_skill_files(manifest: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
     expected_hashes = _manifest_hashes(manifest)
@@ -892,7 +904,7 @@ def remove_managed_skill_files(manifest: dict[str, Any]) -> list[str]:
                 target.unlink()
             except OSError as error:
                 warnings.append(f"Could not remove Skill file {target}: {_presentation.sanitize_text_for_output(str(error))}")
-        for directory in (root / "references", root / "agents", root):
+        for directory in _managed_skill_directories(root):
             try:
                 directory.rmdir()
             except (FileNotFoundError, OSError):
@@ -929,6 +941,31 @@ def _purge_known_local_state() -> list[str]:
             pass
         except OSError as error:
             warnings.append(f"Could not remove {root / name}: {_presentation.sanitize_text_for_output(str(error))}")
+    workflows = root / "workflows"
+    try:
+        if workflows.is_symlink():
+            workflows.unlink()
+        elif workflows.is_dir():
+            for path in workflows.glob("*.json"):
+                if path.is_symlink() or not re.fullmatch(r"[A-Za-z0-9_-]{1,80}\.json", path.name):
+                    continue
+                try:
+                    value = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if isinstance(value, dict) and value.get("schemaVersion") == 1 and value.get("workflowId") == path.stem:
+                    path.unlink()
+                    lock = path.with_suffix(".lock")
+                    if lock.is_file() and not lock.is_symlink():
+                        lock.unlink()
+            try:
+                workflows.rmdir()
+            except OSError as error:
+                if error.errno != errno.ENOTEMPTY:
+                    raise
+                warnings.append(f"Unknown workflow files were kept in {workflows}")
+    except OSError as error:
+        warnings.append(f"Could not remove workflow records: {_presentation.sanitize_text_for_output(str(error))}")
     plans = root / "upload-plans"
     try:
         if plans.is_symlink():
@@ -1326,7 +1363,8 @@ def file_check(path: Path, expected: str | None = None,
 
 
 def local_health_report(*, online: bool = False) -> dict[str, Any]:
-    checks: dict[str, Any] = {}
+    from . import skills
+    checks: dict[str, Any] = {"skills": skills.health()}
     repairs: list[str] = []
     checks["python"] = {"version": platform.python_version(), "ok": sys.version_info >= (3, 10)}
     try:
@@ -1464,6 +1502,7 @@ def local_health_report(*, online: bool = False) -> dict[str, Any]:
         ok = ok and checks["installation"].get("formatValid") is True
         ok = ok and checks["installation"].get("versionMatches") is True
         ok = ok and all(row.get("exists") and row.get("hashMatches") is not False for row in checks["installation"]["coreFiles"].values())
+    ok = ok and checks["skills"].get("ok") is True
     runtime_ok = ok
     ok = ok and checks["attempts"].get("readable") is True and checks.get("config", {}).get("readable") is True
     if online:
@@ -1546,3 +1585,21 @@ def installation_lock(prefix: Path):
         yield
     finally:
         directory.rmdir()
+
+
+def check_skill_conflicts(previous, agents, source_manifest):
+    expected = _manifest_hashes(previous)
+    release = json.loads(Path(source_manifest).read_text(encoding="utf-8"))
+    hashes = {r["target"]: r["sha256"] for r in release["files"] if r["target"] in _settings.MANAGED_SKILL_FILES}
+    for agent in agents.split(","):
+        if agent not in {"codex", "claude"}:
+            continue
+        root = _skill_root(agent)
+        for name in _settings.MANAGED_SKILL_FILES:
+            path = root / name
+            if any(p.is_symlink() for p in (path, *path.parents[:len(path.parts) - len(Path.home().parts)])):
+                raise ValueError("Skill installation refuses symbolic-link paths: " + str(path))
+            if path.exists():
+                actual = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+                if actual not in {expected.get(_normalized_path(path)), hashes.get(name)} or actual is None:
+                    raise ValueError("Customized Skill file kept; move it to a separately named Skill before updating: " + str(path))

@@ -14,6 +14,10 @@
 
 `v0.4.1` 增加启动自检、每日更新提示、付费提交防重、严格下载防护和真人素材两阶段批量上传。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
+## v0.7.0 创作流程
+
+直接在 Codex 描述视频、图片、配音或剪辑需求，HolyCrab 会读取对应指南、整理方案、预估积分，再按已有授权执行。多步骤任务可保存和恢复，支持局部修改；本地 FFmpeg 可完成拼接、音乐和字幕。终端默认简洁，详细记录可用 `--json-output` 查看。详见 [创作指南](CREATIVE-SKILLS.md)和 [0.7.0 发布说明](.github/releases/v0.7.0.md)。本轮创作 Agent 已验证 Codex。
+
 ## 系统要求与一键安装
 
 支持 macOS、Linux 和 Windows，需要 Python 3.10+；macOS/Linux 还需要 `curl`。不需要 `sudo` 或管理员权限。
@@ -79,7 +83,7 @@ holycrab auth status
 
 ## 连接后开始创作
 
-账号验证成功后，Agent 会介绍可用的业务场景。你可以直接告诉 Codex 或 Claude Code：
+账号验证成功后，Agent 会继续你已描述的任务；尚未给出任务时提供简短示例。你可以直接告诉 Codex 或 Claude Code：
 
 > 帮我把这些产品照片制作成电商商品主图，突出产品卖点，风格简洁。
 >

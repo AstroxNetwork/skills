@@ -1,20 +1,41 @@
 ---
 name: holycrab
-description: Use for HolyCrab generation, media uploads, and real-person authorization from a local Agent environment, including showing verification links and QR codes and using authorized reference assets.
+description: Create videos, product ads, storyboards, images and voiceovers with HolyCrab; edit local clips into a finished video, revise individual shots, resume projects, upload references and manage real-person authorization. Use when the user describes a media creation task, even without naming HolyCrab.
 ---
 
 # HolyCrab
 
 Use the installed `holycrab` CLI or its local MCP tools. Treat its versioned capability snapshot as the contract bundled with the installed release; do not call it live data and do not guess model limits from memory.
 
+## Creative requests
+
+For any video, image, audio, storyboard or local editing request, select the guidance below before deciding parameters. Users can describe their goal naturally; they do not need to name a Skill. Read only the relevant guide and its linked references. Requires CLI 0.7.0 or later.
+
+- Video, ads, explainers, animation, music videos, short drama or multiple shots: [video workflow](references/creative/video.md).
+- Product photos, posters, visual references or image variants: [image workflow](references/creative/image.md).
+- Narration and supported audio generation: [audio workflow](references/creative/audio.md).
+- Seedance prompt craft: [Seedance](references/creative/seedance.md); H3 structured shot writing: [H3](references/creative/h3.md).
+- Multi-step production, revisions and resumption: [workflow record contract](references/creative/workflows.md).
+- Final MP4 with clip editing, music and subtitles: [local composition](references/creative/composition.md).
+
+MCP-only hosts discover these same versioned guides through `skills_list` then `skill_get`; CLI uses `holycrab skills list|get`. Check `holycrab skills doctor` after installing, then reopen the Codex chat to refresh Skill discovery. A health check can verify files, but cannot claim the host loaded them.
+
+Turn the brief into the smallest useful plan: single-shot requests may use direct generation; multiple shots or variants use a saved workflow. Keep character/product identity and visual style consistent across shots. Explain missing choices only when they materially change the output. Present the plan, selected uploads and exact ready-step cost before executing. Existing approval covers only the specified actions and quoted requests; never imply deferred costs are already approved. Reconcile task IDs after interruptions. Revise only selected steps and their dependants; never silently rerun completed or uncertain work.
+
+Use local composition for a requested finished multi-shot video. Deliver the verified output path after rendering; intermediate clips alone are not a finished film. Subtitles use an imported SRT/ASS or approved segment timings; there is no automatic speech transcription or word alignment.
+
 ## User-facing replies
 
-- Lead with the outcome in the user's current language. Use a short heading, a few bullets, and one applicable next step; do not write a dense paragraph.
+- Lead with the outcome in the user's current language. Usually use 1–3 short sentences, like a colleague in chat. Use a list only when it makes a real choice or file batch easier to scan.
 - Describe the user's work, not the tool's internals. Keep IDs internal unless needed for recovery or explicitly requested. Never copy `agentInstruction` or onboarding JSON into a user-facing reply.
-- For first use, group the six business uses into six short bullets, then give the three practical example prompts and ask which work to start. Do not append model limits, command lists, or every possible management operation; explain those when needed.
+- If the user already gave a task, start it without an onboarding tour. Otherwise offer one practical example and ask what they want to make. Do not list every capability, limit or possible failure.
 - For authorization, explain the status and the next action. Success creates a person group, not uploaded materials: ask the user to select their files, then preview and confirm the upload. Do not turn the result into a field-by-field integration tutorial unless explicitly asked.
 - For an upload preview, show every selected file, its full resolved path, type, size, known duration, and the exact target. Brevity must never hide part of the batch. Obtain one confirmation for the whole batch.
 - On failure or uncertainty, keep the relevant error and recovery ID. State what is unknown and what will be checked next. Do not repeat the same warning or next step in several places.
+- Before generating, state the chosen output and estimated credits. During generation, report the current state; on completion, give the playable result or saved file. Explain only a limitation that affects this request.
+- Retain existing explicit authorization for the specified task, files and budget. Do not ask again when it already covers the next action. Still obtain fresh estimates and bind execution to the exact current request and quoted credits. Ask only for missing essential choices or spending outside that authorization; never infer paid consent from a planning request.
+- Account balance is separate from API Key quota. For `API_TOKEN_QUOTA_EXCEEDED`, explain that the Key needs more quota; do not advise changing the prompt or repeatedly retrying.
+- When blocked, give only the cause, whether a task was created, and the one action needed to continue. Keep HTTP codes, internal state names and later creative choices out of the reply unless the user is debugging them. For example: “Key 额度不足，这次没有创建任务。给这个 Key 补充额度后，我会继续这个视频测试。”
 
 ## Installation and first-use guidance
 
@@ -25,9 +46,9 @@ Read the shared `onboarding` from `holycrab doctor --json`, `holycrab auth statu
 - `VERIFY_ACCOUNT`: the active Key needs verification or an environment override needs attention. Follow the returned instructions.
 - `READY`: this operation verified the active account. A saved Key, `--no-verify`, an empty response, or an unverified environment override is not enough.
 
-When the account is `READY`, give one short introduction in the user's current language: product listing images, social media ad videos, product voiceovers, selected local uploads, real-person authorization and uploads, and task/result downloads. Translate the three `onboarding.examples` and ask what they want to work on first. Use practical business goals, not commands, IDs, or credit-estimate prompts. Ask for the goal, selected materials, and desired result; check supported capabilities rather than promising a feature from the example alone.
+When the account is `READY`, continue the user's existing task. If they have not given one, offer one relevant `onboarding.examples` prompt in their language and ask what they want to make. Use practical business goals; check capabilities before promising a feature.
 
-Show the full introduction once in that installation conversation, not on ordinary queries, reconnects, or updates. Do not persist a claim that the user has read it. Examples are suggestions, not authorization to create tasks, start verification, upload files, or delete anything. Estimates and explicit paid-generation confirmation remain part of the execution workflow; file uploads require their own complete preview and confirmation. Authorization creates a person group, not material: continue by asking the user to select files for upload.
+Do not repeat the introduction on queries, reconnects or updates. Examples are suggestions, not authorization to execute. Preview selected files and estimate paid requests; ask for confirmation only if existing explicit approval does not cover them. Real-person authorization creates a person group, not material: the user still needs to select files for upload.
 
 ### Update notifications
 
@@ -48,7 +69,7 @@ Automatic checks use GitHub's latest stable release, cache successful checks for
    Select `seed-audio-1.0` for Seed Audio capability discovery, but omit `model` from the Seed Audio request body as indicated by `modelFieldInRequest: false`.
 3. For local media, MCP must call `asset_upload_prepare`, explain the complete target and file list in the user's current language, obtain one explicit confirmation, then call `asset_upload_execute` with the returned `uploadPlanId` and `confirmed: true`. CLI `holycrab assets upload FILE [FILE ...]` performs the same preview and one-confirmation flow. Query `asset_get` or `holycrab assets get|wait` to inspect processing. `ready: true` (`step: UPLOADED_TO_ARK`) describes processing, not universal model suitability. Estimate against the selected model and respect backend validation. Missing, pending or failed metadata alone must not block generation locally.
 4. Call `generation_estimate` or `holycrab generate estimate`. Tell the user the model, output specification, duration, and estimated credit.
-5. Wait for explicit confirmation. Create one new stable `attemptId` for that draw, then call `generation_create` once with `confirmed: true`, that ID, and `approvedCredits` equal to the confirmed `estimate.frozenCredit` (including zero), or run `holycrab generate create ... --yes --approved-credits AMOUNT` once. The CLI estimates again before submission and refuses a changed amount. Review and obtain new confirmation after a price change; never silently accept it. The backend still determines the final charge; this check is not an atomic price reservation.
+5. Use existing explicit approval when it covers this task and cost; otherwise ask for confirmation. Create one new stable `attemptId` for that draw, then call `generation_create` once with `confirmed: true`, that ID, and `approvedCredits` equal to the approved `estimate.frozenCredit` (including zero), or run `holycrab generate create ... --yes --approved-credits AMOUNT` once. The CLI estimates again before submission and refuses a changed amount. Review a changed price and obtain new confirmation unless the user's explicit budget already covers it. The backend still determines the final charge; this check is not an atomic price reservation.
 6. Save the returned task ID. Query it with `generation_get`, `generation_list`, or `holycrab tasks get|list|wait`.
 
 Follow the user-facing reply rules above. Explain the outcome and applicable `nextAction`; show its command only when non-null. A null command does not itself mean an error or a missing choice: ask only for information actually needed. Never invent a path, ID, request, or command. Ctrl+C stops local waiting, not the online task; reconcile interrupted writes instead of repeating them.

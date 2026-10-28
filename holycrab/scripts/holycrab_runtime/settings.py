@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 
 
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
@@ -76,11 +76,7 @@ INSTALLATION_SCHEMA_VERSION = 3
 INSTALLATION_MANAGER = "holycrab-installer"
 
 
-MANAGED_SKILL_FILES = (
-    "SKILL.md",
-    "references/capabilities.json",
-    "agents/openai.yaml",
-)
+MANAGED_SKILL_FILES = ('SKILL.md', 'references/capabilities.json', 'agents/openai.yaml', 'references/creative/SOURCES.md', 'references/creative/audio.md', 'references/creative/catalog.json', 'references/creative/composition.md', 'references/creative/execution.md', 'references/creative/h3.md', 'references/creative/h3/base-en.txt', 'references/creative/h3/ref-en.txt', 'references/creative/image.md', 'references/creative/seedance.md', 'references/creative/seedance/advanced-techniques.md', 'references/creative/seedance/checklist-and-limits.md', 'references/creative/seedance/editing-and-extension.md', 'references/creative/seedance/long-video-and-timing.md', 'references/creative/seedance/multi-reference.md', 'references/creative/video.md', 'references/creative/workflows.md')
 
 
 GENERATION_ROUTES = {
@@ -220,14 +216,18 @@ ONBOARDING_EXAMPLES = (
 
 
 ONBOARDING_AGENT_INSTRUCTION = (
-    "Reply in the user's language with short headings and lists, not raw JSON or internal instructions. "
+    "Reply in the user's language, usually in 1-3 short sentences; no raw JSON or internal instructions. "
     "Explain the operation before acting, then its outcome and applicable nextAction; keep null commands null. "
     "CONNECT_ACCOUNT needs local setup; VERIFY_ACCOUNT needs active-account verification. CONFIGURED means local Key presence only, "
     "not failed verification; retain a prior valid account result in the same conversation without repeating verification merely for offline doctor. "
-    "After READY during first installation/account connection, introduce businessUses and translate examples once, then ask question. "
+    "After READY, continue the existing task. Only if no task was given, offer one practical example and ask what to make. "
     "Do not repeat the welcome on queries, reconnections or updates. Examples are not execution consent. "
     "Ask for the goal, selected files and desired result; check capabilities. Estimate fees in the execution workflow. "
-    "Confirm uploads and paid generation separately. Authorization creates a person group, not assets: select, preview and confirm uploads next. "
+    "Retain explicit approval for the specified task, selected files and budget; do not ask again for a covered action. "
+    "Always preview uploads and estimate paid requests; ask only for missing essential choices or uncovered spending. "
+    "Account balance and API Key quota are separate; API_TOKEN_QUOTA_EXCEEDED requires increasing Key quota, not changing the prompt. "
+    "When blocked, state only the cause, whether a task exists, and the action needed to continue; omit internal state names, HTTP codes and later creative choices unless debugging was requested. "
+    "Authorization creates a person group, not assets: select, preview and approve uploads next. "
     "Never retry an unknown mutation. Explain any needed Agent restart; do not restart it yourself."
 )
 

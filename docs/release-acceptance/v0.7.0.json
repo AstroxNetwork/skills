@@ -1,0 +1,83 @@
+{
+  "version": "v0.7.0",
+  "realHumanCoreFlow": {
+    "status": "passed",
+    "mode": "unchanged-components-with-fresh-readonly-query",
+    "operator": "Codex release acceptance",
+    "testedAt": "2026-10-28T06:52:15.720646+00:00",
+    "notes": "Authorization, uploads, account state, transport, task and capability implementation bytes are identical to v0.6.0. Reuse its recorded successful live authorization/upload-query coverage with these exact component hashes, plus fresh successful current-candidate group and asset queries and current full offline CLI/MCP regressions. No new biometric verification or personal-media upload was performed or claimed. Creative tools are validated separately.",
+    "reusedEvidenceFile": "docs/release-acceptance/v0.6.0-live-upload.json",
+    "reusedEvidenceSha256": "9cae055ec5b45b02a7ce9db0b06a03535005dbaab041e964fff57dc5eef87849",
+    "unchangedComponentHashes": {
+      "holycrab/scripts/holycrab_runtime/state.py": "c87236d05ecdcefa64249aa3cf3fa4003918a887751f5469386531fefa330946",
+      "holycrab/scripts/holycrab_runtime/transport.py": "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432",
+      "holycrab/scripts/holycrab_runtime/uploads.py": "4a1c21aa5df008841d1e0425991800ff36ed219ca82284f05deaadf8b0b79cc5",
+      "holycrab/scripts/holycrab_runtime/real_human.py": "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74",
+      "holycrab/scripts/holycrab_runtime/tasks.py": "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27",
+      "holycrab/scripts/holycrab_runtime/capabilities.py": "43585789f09a5d1e5f3d215c75f1fc888e6aa9fead3b09d4244f667301fd0f64",
+      "holycrab/scripts/holycrab_runtime/results.py": "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2"
+    },
+    "freshReadOnlyQueries": {
+      "groups": "passed",
+      "assets": "passed"
+    },
+    "newAuthorizationPerformed": false,
+    "newUploadPerformed": false
+  },
+  "creativeFlow": {
+    "status": "passed",
+    "scope": "Codex and macOS; one live silent video, download, timed Chinese captions, full decode and recovery",
+    "estimatedCredits": 46,
+    "observedBalanceDecrease": 46,
+    "createdTasks": 1,
+    "automaticRetries": 0,
+    "localMediaScenariosPassed": 9,
+    "audioLiveTested": false
+  },
+  "backendReaudit": {
+    "commit": "1c235b67b7ca1a184b0ed20e943dcb406be34490",
+    "notes": "Read full diffs from previous audited 569aa948. Audio/image/Seedance validators consolidated into SeedanceGenerationRequestValidator. TaskAssetValidator adds Audio 1.5-only reference/total rules; existing 16-model descriptions remain unchanged. TaskAssetParameterValidator adds Audio 1.5 and delegates existing validation to consolidated class. TaskAssetResolver now returns structured failure for unprobeable external media. Existing CLI preserves these server-owned errors; does not impose new local limits. All existing shape, route, size/inclusive-boundary and material checks remain enabled."
+  },
+  "publication": {
+    "status": "approved",
+    "approvedBy": "user",
+    "approvedAt": "2026-10-28T06:52:15.720871+00:00",
+    "notes": "User explicitly requested formal 0.7.0 publication in this chat."
+  },
+  "candidateSha256": "0c7f856b6ea3e3b7a90ccc43f755e1c37c12c21535a555ea31d539c0387c911e",
+  "generateContractCheck": {
+    "status": "passed",
+    "mode": "local-immutable-main",
+    "verifiedMainCommit": "1c235b67b7ca1a184b0ed20e943dcb406be34490",
+    "verifiedAt": "2026-10-28T07:22:42.828905+00:00",
+    "candidateSha256": "0c7f856b6ea3e3b7a90ccc43f755e1c37c12c21535a555ea31d539c0387c911e",
+    "sourceFiles": {
+      "client/user-front/src/api/tasks.ts": "24fa99779e5bef1f73342469649a3f9886c7198dc4a35344ee71856fb65cab25",
+      "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
+      "client/user-front/src/utils/agnesModels.ts": "a35e69ad04cb9181615a8fae2f4572dab946d73152edfcf73e40a878661eac22",
+      "client/user-front/src/utils/assetUploadLimits.ts": "c0f4c29317ec53e2b099e882218dd8c4ec314661ad1e63603810fe5d4caea95f",
+      "client/user-front/src/utils/generationOptions.ts": "13a7f54c39567a91c3cc353e5cd5dd39e0fe8fea990f535e81aff34ff2443966",
+      "client/user-front/src/utils/imageGenerationParams.ts": "d673839bf8df441da349da7626300e8712d6ec0ff5f3a0db07a8224d6ff3824f",
+      "client/user-front/src/utils/seedAudioRules.ts": "b48e8bcce144496b032837124152a20fe40cf564a24e26bb5a93c8fc49e0a0ed",
+      "server/user/src/main/java/com/astrox/seedance/user/api/ApiResult.java": "df005905953bde4a9cb59e560c4eb8f4f5a4db48243daeb01721226adebeae82",
+      "server/user/src/main/java/com/astrox/seedance/user/api/AssetValidationError.java": "21f43810dc145342834dd85bb655e4edf0f53ad3cf30c4b1e791bc5933506acd",
+      "server/user/src/main/java/com/astrox/seedance/user/api/GlobalExceptionHandler.java": "f56ea4044bfaf7489d98811d3ed3d208a21fcc4016158f6fd884ea3c143e6734",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserAssetController.java": "c47ece1d6574cee8589aabcc55d2d8d6e36202503614868953a5dacf8524641f",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserTaskController.java": "f34a6691357b5805c3beca2109dabce793f825d27d456727d2bfc20e07ed26bb",
+      "server/user/src/main/java/com/astrox/seedance/user/serialization/AssetSerializer.java": "4753f32a277121104c55fb8c227cbceb5010b3038ce6aea1a16fe05a3788abeb",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AgnesGenerationRequestValidator.java": "bae266c7162eb7bf8483eacb03e4b86194fb68f2e193e3d5d06cb2cdda9d4202",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java": "3e9bb56da7dceb77b910b797512af8e5fb64747e0846e2b758b97a46820bdc2f",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxGenerationRequestValidator.java": "d88ac7a5bc5a2a50d9e24326b6df0fd3c35a01136a2b3ed3d1fb1b42b881286c",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MulerouterGenerationRequestValidator.java": "6d5ff7041475ce6461e70c203621c3f694a924f0d70e475a3bd9d99820f3eeaa",
+      "server/user/src/main/java/com/astrox/seedance/user/service/SeedanceGenerationRequestValidator.java": "9ca9947d6c21d2f4764129e58239dac65feaf4463e3bbf2602c4f485eeba646d",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java": "10372ad0623fac7b6b77fe25641c000e912c04fae8d7223360e86f8e5f7b17ae",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java": "5de7de1b23af11e61c37ce30ba3db632a027fb8d426471f6021f01220a22e361",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java": "473ac3d96abc2f5b3c73f2874c6f00e768686a227e7faa0332facdc729f1ad73",
+      "server/user/src/main/java/com/astrox/seedance/user/service/UserAssetService.java": "6af4f5f368b0305b249b245c150045c26c5872a0260fe37771e2a9d3c3eddd4b",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/AssetVO.java": "42223ee08d1909fb5d653b47d784234236bc74fda78bdb547cc39d8dc0a18ee7",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
+    },
+    "validatorSha256": "eac178a6e6cab9f42258da731b7c734956ea65a58753a12fafedb9cb3218a89a",
+    "evidenceSha256": "c2e9631795658ed479e789ecea6f077c7c8faa727c7ec01803a324b40b7d3468"
+  }
+}

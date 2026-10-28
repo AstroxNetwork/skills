@@ -33,7 +33,7 @@ MUTATIONS = [
     ('mcp-error-flag', HTTP + 'test_mcp_backend_rejection_preserves_false_zero_and_is_error', [
         ('mcp.py', '"isError": isinstance(value, _results.OperationResult) and value.outcome != "success",', '"isError": False,')]),
     ('truncated-download', HTTP + 'test_partial_and_truncated_http_download_preserve_old_file', [
-        ('cli.py', 'if expected_length is not None and total != expected_length:', 'if False:')]),
+        ('downloads.py', 'if expected_length is not None and total != expected_length:', 'if False:')]),
     ('installer-digest-bypass', 'tests.test_v041.V041Tests.test_update_requires_confirmation_and_verifies_digest_before_execution', [
         ('lifecycle.py', 'if digest.hexdigest() != expected:', 'if False:')]),
     ('delete-customized-skill', REGRESSION + 'test_modified_owned_skill_is_not_deleted', [

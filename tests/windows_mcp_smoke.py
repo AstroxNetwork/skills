@@ -47,7 +47,7 @@ def run_smoke(cli_path: str) -> dict:
         assert replies[0]["result"]["serverInfo"]["name"] == "holycrab-local"
         tools = replies[1]["result"]["tools"]
         names = [row["name"] for row in tools]
-        assert len(names) == len(set(names)) == 22, names
+        assert len(names) == len(set(names)) == 32, names
         assert replies[2]["result"] == {}
         calls = []
         for name in names:

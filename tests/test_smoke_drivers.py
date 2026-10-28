@@ -22,6 +22,11 @@ def load(name):
 
 
 class SmokeDriverTests(unittest.TestCase):
+    def test_public_upgrade_driver_targets_the_current_release(self):
+        driver = load("post_release_upgrade")
+        manifest = json.loads((ROOT / "runtime-files.json").read_text())
+        self.assertEqual(driver.VERSION, "v" + manifest["version"])
+
     def test_live_write_phases_require_fresh_explicit_opt_in(self):
         for phase in ("prepare", "create"):
             with self.subTest(phase=phase), tempfile.TemporaryDirectory() as root:
@@ -35,7 +40,7 @@ class SmokeDriverTests(unittest.TestCase):
         live = load("live_release_smoke")
         with tempfile.TemporaryDirectory() as root:
             run = live.LiveRun(Path(root))
-            self.assertEqual(run.inventory["version"], "0.6.0")
+            self.assertEqual(run.inventory["version"], "0.7.0")
             self.assertIn("asset_upload_plan_get", {row["name"] for row in run.inventory["mcpTools"]})
             replies = [{"result": {"serverInfo": {"version": run.inventory["version"]}}},
                        {"result": {"tools": run.inventory["mcpTools"]}},
@@ -96,6 +101,6 @@ class SmokeDriverTests(unittest.TestCase):
         smoke = load("local_lifecycle_smoke")
         result = smoke.run_lifecycle()
         self.assertEqual(result["status"], "passed")
-        self.assertEqual(result["candidate"], "holycrab 0.6.0")
+        self.assertEqual(result["candidate"], "holycrab 0.7.0")
         self.assertIn("failed-upgrade-byte-rollback", result["checks"])
         self.assertTrue(result["temporaryHome"])

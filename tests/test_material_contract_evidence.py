@@ -27,13 +27,13 @@ def evidence_for(root=ROOT):
 class EvidenceTests(unittest.TestCase):
     def setUp(self):
         self.proof = evidence_for()
-        self.record = {"version": "v0.6.0", "candidateSha256": self.proof["candidateSha256"],
+        self.record = {"version": "v0.7.0", "candidateSha256": self.proof["candidateSha256"],
                        "generateContractCheck": self.proof, "realHumanCoreFlow": {"status": "pending"}}
 
     def test_offline_contract_proof_does_not_approve_real_person_or_release(self):
-        validate(self.record, "v0.6.0", root=ROOT, contract_only=True)
+        validate(self.record, "v0.7.0", root=ROOT, contract_only=True)
         with self.assertRaisesRegex(ValueError, "real-person"):
-            validate(self.record, "v0.6.0", root=ROOT)
+            validate(self.record, "v0.7.0", root=ROOT)
 
     def test_tampered_status_hashes_and_commit_fail(self):
         for field, value in (("status", "failed"), ("verifiedMainCommit", "z" * 40),
@@ -72,7 +72,7 @@ class EvidenceTests(unittest.TestCase):
     def test_record_preserves_pending_gates_and_rejects_wrong_verified_main(self):
         with tempfile.TemporaryDirectory() as temporary:
             record = Path(temporary) / "acceptance.json"
-            original = {"version": "v0.6.0", "realHumanCoreFlow": {"status": "pending"},
+            original = {"version": "v0.7.0", "realHumanCoreFlow": {"status": "pending"},
                         "publication": {"status": "awaiting-user-confirmation"}}
             record.write_text(json.dumps(original))
             before = record.read_bytes()

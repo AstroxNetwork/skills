@@ -73,7 +73,10 @@ class McpProtocolTests(unittest.TestCase):
                                 "real_human_groups_list", "real_human_group_rename",
                                 "real_human_group_delete", "real_human_assets_list",
                                 "real_human_asset_delete", "asset_upload_prepare", "asset_upload_execute",
-                                "asset_get", "asset_upload_plan_get", "asset_metadata_retry"})
+                                "asset_get", "asset_upload_plan_get", "asset_metadata_retry",
+                                "skills_list", "skill_get", "workflow_list", "workflow_prepare", "workflow_get",
+                                "workflow_estimate", "workflow_run_next", "generation_download",
+                                "media_doctor", "media_compose"})
 
     def test_delete_tools_require_confirmation_and_are_destructive(self) -> None:
         response = holycrab.mcp_dispatch(

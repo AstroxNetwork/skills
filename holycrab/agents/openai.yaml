@@ -1,4 +1,6 @@
 interface:
-  display_name: "HolyCrab Agent Tools"
-  short_description: "查询能力、发起真人授权并安全使用素材创建 HolyCrab 生成任务"
-  default_prompt: "使用 $holycrab 查询能力；需要真人素材时提供授权链接和二维码，等待本人验证与素材就绪，再估算积分，经我确认后只提交一次生成任务。重命名或删除前核对公开 ID；永久删除必须获得我对具体对象的明确确认。"
+  display_name: "HolyCrab"
+  short_description: "从需求到分镜、生成与成片，支持图片、视频和配音"
+  default_prompt: "使用 $holycrab 将我的需求整理为创作计划，读取对应 Skill，核对模型能力和素材，预估积分并经我确认后执行。多镜头任务保存流程记录，生成后完成本地合成；修改时复用未受影响的结果。"
+policy:
+  allow_implicit_invocation: true

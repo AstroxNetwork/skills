@@ -63,6 +63,7 @@ class Suite:
         self.args = args
         self.root = Path(args.root).resolve()
         self.source = Path(args.source).resolve()
+        self.version = json.loads((self.source / "runtime-files.json").read_text(encoding="utf-8"))["version"]
         self.baseline = Path(args.baseline).resolve()
         self.prefix = self.root / "ordinary prefix"
         self.config = self.root / "private config"
@@ -234,24 +235,24 @@ class Suite:
         skill = Path(os.environ["USERPROFILE"]) / ".agents/skills/holycrab"
         (skill / "user-note.txt").write_text("keep skill note", encoding="utf-8")
         self.install(env=dict(self.env, HOLYCRAB_INSTALL_AGENTS="", HOLYCRAB_INSTALL_MCP=""))
-        assert self.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+        assert self.cli_run("--version").stdout.strip() == "holycrab " + self.version
         assert (self.config / "config.json").read_bytes() == before
         assert note.read_text() == "keep user contents"
         assert (skill / "user-note.txt").read_text() == "keep skill note"
         assert json.loads(self.cli_run("doctor", "--json").stdout)["runtimeOk"] is True
         self.credential_bytes = before
         self.report["cases"].append({"id": "upgrade.real-v050", "status": "passed", "driver": "win.upgrade.real_v050"})
-        return {"oldVersion": "0.5.0", "newVersion": "0.6.0", "credentialUnchanged": True,
+        return {"oldVersion": "0.5.0", "newVersion": self.version, "credentialUnchanged": True,
                 "baselineCommit": BASELINE_COMMIT, "baselineTagObject": BASELINE_TAG_OBJECT, "userFilesPreserved": True}
 
     def shells(self):
         for shell in (self.ps51, self.ps7):
             self.install(shell=shell)
             result = self.ps("& " + ps_quote(self.launcher) + " --version; exit $LASTEXITCODE", shell=shell)
-            assert result.stdout.strip() == "holycrab 0.6.0"
+            assert result.stdout.strip() == "holycrab " + self.version
         result = self.cmd('"%HOLYCRAB_TEST_LAUNCHER%" --version', delayed=True,
                           env=dict(self.env, HOLYCRAB_TEST_LAUNCHER=str(self.launcher)))
-        assert result.stdout.strip() == "holycrab 0.6.0"
+        assert result.stdout.strip() == "holycrab " + self.version
         launch_text = self.launcher.read_text(encoding="utf-8")
         invocation = next(line for line in launch_text.splitlines() if 'holycrab_cli.py' in line and '%*' in line)
         match = re.match(r'^"([^"]+)"', invocation)
@@ -309,7 +310,7 @@ run([ps51, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
      '-File', str(pathlib.Path(source) / 'install.ps1')])
 library = pathlib.Path(prefix) / 'lib/holycrab'
 cli = library / 'holycrab_cli.py'
-assert run([sys.executable, str(cli), '--version']).strip() == 'holycrab 0.6.0'
+assert run([sys.executable, str(cli), '--version']).strip() == 'holycrab ' + json.loads((pathlib.Path(source) / 'runtime-files.json').read_text(encoding='utf-8'))['version']
 run([sys.executable, str(pathlib.Path(source) / 'tools/native_install_checks.py'), 'runtime', str(library)])
 run([sys.executable, str(cli), 'uninstall', '--yes'])
 pathlib.Path(proof).write_text(json.dumps({'inheritedPS7ModulePath': inherited,
@@ -334,11 +335,11 @@ pathlib.Path(proof).write_text(json.dumps({'inheritedPS7ModulePath': inherited,
         launcher = prefix / "bin/holycrab.cmd"
         for shell in (self.ps51, self.ps7):
             result = self.ps("& " + ps_quote(launcher) + " --version; exit $LASTEXITCODE", shell=shell)
-            assert result.stdout.strip() == "holycrab 0.6.0", result.stdout
+            assert result.stdout.strip() == "holycrab " + self.version, result.stdout
         # cmd receives the path through a quoted environment variable.
         cmd_env = dict(self.env, HOLYCRAB_TEST_LAUNCHER=str(launcher))
         result = self.cmd('"%HOLYCRAB_TEST_LAUNCHER%" --version', env=cmd_env)
-        assert result.stdout.strip() == "holycrab 0.6.0", result.stdout
+        assert result.stdout.strip() == "holycrab " + self.version, result.stdout
         code = self.ps("& " + ps_quote(launcher) + " unknown-command; exit $LASTEXITCODE", expected=2)
         assert "invalid choice" in code.stderr
         self.run([sys.executable, str(prefix / "lib/holycrab/holycrab_cli.py"), "uninstall", "--yes"])
@@ -352,7 +353,7 @@ pathlib.Path(proof).write_text(json.dumps({'inheritedPS7ModulePath': inherited,
         result = self.install(prefix=prefix, expected=None)
         if result.returncode == 0:
             program = prefix / "lib/holycrab/holycrab_cli.py"
-            assert self.run([sys.executable, str(program), "--version"]).stdout.strip() == "holycrab 0.6.0"
+            assert self.run([sys.executable, str(program), "--version"]).stdout.strip() == "holycrab " + self.version
             self.run([sys.executable, str(program), "uninstall", "--yes"])
             self.wait_missing(program)
             return {"prefixLength": len(str(prefix)), "supported": True}
@@ -409,10 +410,10 @@ function Invoke-WebRequest {
         urls = log.read_text(encoding="utf-8-sig").splitlines()
         assert len(urls) >= 20 and all("/" + "a" * 40 + "/" in url for url in urls)
         program = prefix / "lib/holycrab/holycrab_cli.py"
-        assert self.run([sys.executable, str(program), "--version"], env=env).stdout.strip() == "holycrab 0.6.0"
+        assert self.run([sys.executable, str(program), "--version"], env=env).stdout.strip() == "holycrab " + self.version
         self.run([sys.executable, str(program), "uninstall", "--yes"], env=env)
         self.wait_missing(program)
-        return {"immutableRef": "a" * 40, "verifiedDownloads": len(urls), "version": "0.6.0"}
+        return {"immutableRef": "a" * 40, "verifiedDownloads": len(urls), "version": self.version}
 
     def invalid_ref(self):
         prefix = self.root / "invalid-ref"
@@ -487,7 +488,7 @@ function Invoke-WebRequest {
         result = self.install(source=broken, expected=None)
         assert result.returncode != 0
         assert snapshot(self.prefix) == before, "Failed health verification changed previous installation bytes"
-        assert self.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+        assert self.cli_run("--version").stdout.strip() == "holycrab " + self.version
         return {"exactPreviousFilesRestored": True}
 
     def lock_rollback(self):
@@ -496,7 +497,7 @@ function Invoke-WebRequest {
             result = self.install(expected=None)
             assert result.returncode != 0, "Installer ignored native write-denying file handle"
             assert snapshot(self.prefix) == before
-        assert self.cli_run("--version").stdout.strip() == "holycrab 0.6.0"
+        assert self.cli_run("--version").stdout.strip() == "holycrab " + self.version
         return {"nativeSharingLock": True, "previousInstallationUsable": True}
 
     def concurrency(self):
