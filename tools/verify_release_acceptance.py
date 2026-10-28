@@ -12,6 +12,7 @@ from pathlib import Path
 
 LOCAL_EVIDENCE_TAG = "v0.4.4"
 LOCAL_EVIDENCE_TAGS = {LOCAL_EVIDENCE_TAG, "v0.5.0"}
+CANDIDATE_CONTRACT_TAGS = {"v0.6.0", "v0.7.0"}
 REUSED_CORE_TAG = "v0.5.0"
 REUSED_CORE_HASH = "dde70a8d891d97c6837276e9a3daa32016f7ca987e9cc92adec620e0912da94a"
 MODEL_UPDATE_NODES = {"VERSION", "GENERATION_ROUTES", "MODEL_GENERATION_ROUTES", "PUBLIC_ACCOUNT_FIELDS",
@@ -141,10 +142,10 @@ def validate(record, tag, *, root=None, contract_only=False):
         raise ValueError("Manual acceptance version must match the release tag")
     if tag in LOCAL_EVIDENCE_TAGS and root is not None:
         validate_contract(record, root)
-    if tag == "v0.6.0" and root is not None:
+    if tag in CANDIDATE_CONTRACT_TAGS and root is not None:
         validate_candidate_contract(record, root)
     if contract_only:
-        if (tag not in LOCAL_EVIDENCE_TAGS and tag != "v0.6.0") or root is None:
+        if (tag not in LOCAL_EVIDENCE_TAGS and tag not in CANDIDATE_CONTRACT_TAGS) or root is None:
             raise ValueError("Local contract mode requires an explicitly authorized release version")
         return
     if tag not in LOCAL_EVIDENCE_TAGS:

@@ -44,16 +44,16 @@ def generated():
                 if count!=1: raise ValueError('Missing PowerShell hash: '+variable)
     modules=[row for row in manifest['files'] if not row.get('legacyVariable')]
     shell=block(shell,'RUNTIME DOWNLOADS','\n'.join([
-        f'fetch "runtime-files.json" "$TEMP_DIR/runtime-files.json" "{digest}"','mkdir -p "$TEMP_DIR/holycrab_runtime"',
+        f'fetch "runtime-files.json" "$TEMP_DIR/runtime-files.json" "{digest}"',*[f'mkdir -p "$TEMP_DIR/{directory}"' for directory in sorted({str(PurePosixPath(r['stage']).parent) for r in modules})],
         *[f'fetch "{r["source"]}" "$TEMP_DIR/{r["stage"]}" "{r["sha256"]}"' for r in modules]]))
     shell=block(shell,'RUNTIME INSTALL','\n'.join([
-        'mkdir -p "$LIB_DIR/holycrab_runtime"','install -m 644 "$TEMP_DIR/runtime-files.json" "$LIB_DIR/runtime-files.json"',
+        *[f'mkdir -p "$LIB_DIR/{directory}"' for directory in sorted({str(PurePosixPath(r['target']).parent) for r in modules})],'install -m 644 "$TEMP_DIR/runtime-files.json" "$LIB_DIR/runtime-files.json"',
         *[f'install -m 644 "$TEMP_DIR/{r["stage"]}" "$LIB_DIR/{r["target"]}"' for r in modules]]))
     ps=block(ps,'RUNTIME DOWNLOADS','\n'.join([
         f'    @{{ Relative = "runtime-files.json"; Name = "runtime-files.json"; Sha256 = "{digest}" }},',
         *[f'    @{{ Relative = "{r["source"]}"; Name = "{r["stage"]}"; Sha256 = "{r["sha256"]}" }}'+(',' if i+1<len(modules) else '') for i,r in enumerate(modules)]]))
     ps=block(ps,'RUNTIME INSTALL','\n'.join([
-        '    New-Item -ItemType Directory -Force -Path (Join-Path $LibDir "holycrab_runtime") | Out-Null',
+        *[f'    New-Item -ItemType Directory -Force -Path (Join-Path $LibDir "{directory}") | Out-Null' for directory in sorted({str(PurePosixPath(r['target']).parent) for r in modules})],
         '    Copy-Item -LiteralPath $Downloaded["runtime-files.json"] -Destination (Join-Path $LibDir "runtime-files.json") -Force',
         *[f'    Copy-Item -LiteralPath $Downloaded["{r["stage"]}"] -Destination (Join-Path $LibDir "{r["target"]}") -Force' for r in modules]]))
     return {'runtime-files.json':data,'install.sh':shell.encode(),'install.ps1':ps.encode()}

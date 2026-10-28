@@ -122,6 +122,24 @@ REAL_HUMAN_TOOLS = [
 
 MCP_TOOLS.extend(REAL_HUMAN_TOOLS)
 
+CREATIVE_TOOLS = [
+    real_human_tool("skills_list", "Discover bundled creative skills. For a video, image, audio or editing request, choose a matching skill and read it before planning generation.", {}),
+    real_human_tool("skill_get", "Read one creative skill or one of its listed reference resources on demand. The live CLI capability schema takes precedence over creative examples.", {"name": {"type": "string"}, "resource": {"type": "string"}}, ("name",)),
+    real_human_tool("workflow_prepare", "Save or revise a local multi-step creative plan without submitting any generation. Revisions preserve unaffected outputs; rerunStepIds explicitly invalidate selected steps and dependants.", {"plan": {"type": "object"}, "workflowId": _settings.ID_SCHEMA, "expectedRevision": {"type": "integer", "minimum": 1}}, ("plan",), read_only=False),
+    real_human_tool("workflow_list", "Find recent local projects by title to resume without remembering a workflow ID.", {"limit": {"type": "integer", "minimum": 1, "maximum": 100}, "offset": {"type": "integer", "minimum": 0}}),
+    real_human_tool("workflow_get", "Read a production record. refresh queries existing task and asset IDs and never resubmits work.", {"workflowId": _settings.ID_SCHEMA, "refresh": {"type": "boolean"}}, ("workflowId",)),
+    real_human_tool("workflow_estimate", "Preview all currently ready steps, uploads and local outputs. readyCredits excludes deferred steps. Present the exact preview and obtain approval before workflow_run_next.", {"workflowId": _settings.ID_SCHEMA}, ("workflowId",), read_only=False),
+    real_human_tool("workflow_run_next", "Execute one ready step from an approved current estimate. Paid writes use the one-shot ledger. Never automatically retry an uncertain step.", {"workflowId": _settings.ID_SCHEMA, "approvalId": _settings.ID_SCHEMA, "confirmed": {"type": "boolean"}}, ("workflowId", "approvalId", "confirmed"), read_only=False, destructive=True),
+    real_human_tool("generation_download", "Download one existing task output to an explicitly selected local path. Existing files require force=true.", {"taskId": _settings.ID_SCHEMA, "output": {"type": "string"}, "index": {"type": "integer", "minimum": 0}, "force": {"type": "boolean"}}, ("taskId", "output"), read_only=False),
+    real_human_tool("media_doctor", "Check local FFmpeg/FFprobe and subtitle/encoding support without installing anything.", {}),
+    real_human_tool("media_compose", "Preview a local video timeline. To export the final MP4, present the preview then supply confirmed=true and its approvalHash. Supports trimming, canvas normalization, concatenation, narration, music and timed/imported subtitles; no speech recognition.", {"request": {"type": "object"}, "confirmed": {"type": "boolean"}, "approvalHash": {"type": "string"}}, ("request",), read_only=False, destructive=True),
+]
+for _tool in CREATIVE_TOOLS:
+    if _tool["name"] in {"skills_list", "skill_get", "workflow_prepare", "workflow_list", "media_doctor", "media_compose"}:
+        _tool["annotations"]["openWorldHint"] = False
+MCP_TOOLS.extend(CREATIVE_TOOLS)
+
+
 
 def validate_tool_arguments(name: str, arguments: dict[str, Any]) -> None:
     tool = next((tool for tool in MCP_TOOLS if tool["name"] == name), None)
@@ -165,6 +183,27 @@ def mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
 
 def _mcp_tool_call(name: str, arguments: dict[str, Any]) -> Any:
     validate_tool_arguments(name, arguments)
+    from . import skills, workflows, media, downloads
+    if name == "skills_list":
+        return skills.list_skills()
+    if name == "skill_get":
+        return skills.get_skill(arguments["name"], arguments.get("resource"))
+    if name == "workflow_prepare":
+        return workflows.prepare(arguments["plan"], workflow_id=arguments.get("workflowId"), expected_revision=arguments.get("expectedRevision"))
+    if name == "workflow_list":
+        return workflows.list_workflows(limit=arguments.get("limit", 20), offset=arguments.get("offset", 0))
+    if name == "workflow_get":
+        return workflows.get(arguments["workflowId"], refresh=arguments.get("refresh", False))
+    if name == "workflow_estimate":
+        return workflows.estimate(arguments["workflowId"])
+    if name == "workflow_run_next":
+        return workflows.run_next(arguments["workflowId"], approval_id=arguments["approvalId"], confirmed=arguments["confirmed"])
+    if name == "generation_download":
+        return downloads.download_task(arguments["taskId"], arguments["output"], index=arguments.get("index", 0), force=arguments.get("force", False))
+    if name == "media_doctor":
+        return media.doctor()
+    if name == "media_compose":
+        return media.compose(arguments["request"], confirmed=arguments.get("confirmed", False), approval_hash=arguments.get("approvalHash"))
     if name == "real_human_authorization_start":
         return _real_human.create_authorization(arguments["name"])
     if name == "real_human_authorization_get":
@@ -262,7 +301,8 @@ def mcp_dispatch(message: dict[str, Any]) -> dict[str, Any] | None:
         requested = params.get("protocolVersion")
         negotiated = requested if requested in _settings.SUPPORTED_INITIALIZE_PROTOCOLS else _settings.LATEST_INITIALIZE_PROTOCOL
         notice = _lifecycle.cached_update_notice()
-        instructions = (_settings.ONBOARDING_AGENT_INSTRUCTION
+        instructions = ("For video, image, audio or editing requests call skills_list then skill_get before planning. Resume saved projects with workflow_get. "
+                        + _settings.ONBOARDING_AGENT_INSTRUCTION
                         + " Read cli_status/account_get onboarding for the shared business examples. "
                         + _UPDATE_AGENT_INSTRUCTION)
         if notice:

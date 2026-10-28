@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "minCliVersion": "0.7.0",
+  "skills": [
+    {
+      "name": "holycrab-video",
+      "title": "Video production",
+      "description": "Use for product ads, social clips, image animation, scripts and multi-shot videos. Read execution.md before any API call and workflows.md for multiple tasks.",
+      "entry": "video.md",
+      "resources": [
+        "seedance.md",
+        "workflows.md",
+        "image.md",
+        "video.md",
+        "composition.md",
+        "audio.md",
+        "h3.md",
+        "execution.md",
+        "h3/base-en.txt",
+        "h3/ref-en.txt",
+        "seedance/long-video-and-timing.md",
+        "seedance/editing-and-extension.md",
+        "seedance/advanced-techniques.md",
+        "seedance/multi-reference.md",
+        "seedance/checklist-and-limits.md"
+      ]
+    },
+    {
+      "name": "holycrab-image",
+      "title": "Product images",
+      "description": "Use for product listing images, lifestyle scenes, campaign visuals and reference frames. Read execution.md first.",
+      "entry": "image.md",
+      "resources": [
+        "seedance.md",
+        "workflows.md",
+        "image.md",
+        "video.md",
+        "composition.md",
+        "audio.md",
+        "h3.md",
+        "execution.md",
+        "h3/base-en.txt",
+        "h3/ref-en.txt",
+        "seedance/long-video-and-timing.md",
+        "seedance/editing-and-extension.md",
+        "seedance/advanced-techniques.md",
+        "seedance/multi-reference.md",
+        "seedance/checklist-and-limits.md"
+      ]
+    },
+    {
+      "name": "holycrab-audio",
+      "title": "Voiceover",
+      "description": "Use for product narration, explanatory speech and a user's script. Read execution.md first.",
+      "entry": "audio.md",
+      "resources": [
+        "seedance.md",
+        "workflows.md",
+        "image.md",
+        "video.md",
+        "composition.md",
+        "audio.md",
+        "h3.md",
+        "execution.md",
+        "h3/base-en.txt",
+        "h3/ref-en.txt",
+        "seedance/long-video-and-timing.md",
+        "seedance/editing-and-extension.md",
+        "seedance/advanced-techniques.md",
+        "seedance/multi-reference.md",
+        "seedance/checklist-and-limits.md"
+      ]
+    },
+    {
+      "name": "seedance-prompt-optimizer",
+      "title": "Seedance prompts",
+      "description": "Use the selected Seedance capability for request fields, task types, duration, resolution, references and audio flags. The accompanying upstream guides are creative references; their platform limits and prices are not the HolyCrab API contract. User constraints and current CLI capabilities take precedence.",
+      "entry": "seedance.md",
+      "resources": [
+        "seedance.md",
+        "workflows.md",
+        "image.md",
+        "video.md",
+        "composition.md",
+        "audio.md",
+        "h3.md",
+        "execution.md",
+        "h3/base-en.txt",
+        "h3/ref-en.txt",
+        "seedance/long-video-and-timing.md",
+        "seedance/editing-and-extension.md",
+        "seedance/advanced-techniques.md",
+        "seedance/multi-reference.md",
+        "seedance/checklist-and-limits.md"
+      ]
+    },
+    {
+      "name": "h3-prompt-writing",
+      "title": "H3 prompts",
+      "description": "Identify the supported input mode using the installed H3/H3 Max capability. Read h3/base-en.txt for text or keyframe composition, or h3/ref-en.txt for full-reference rewriting. Preserve structured prompt sections and stable reference labels. Dialogue and visible scene text stay in the requested language.",
+      "entry": "h3.md",
+      "resources": [
+        "seedance.md",
+        "workflows.md",
+        "image.md",
+        "video.md",
+        "composition.md",
+        "audio.md",
+        "h3.md",
+        "execution.md",
+        "h3/base-en.txt",
+        "h3/ref-en.txt",
+        "seedance/long-video-and-timing.md",
+        "seedance/editing-and-extension.md",
+        "seedance/advanced-techniques.md",
+        "seedance/multi-reference.md",
+        "seedance/checklist-and-limits.md"
+      ]
+    }
+  ]
+}

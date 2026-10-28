@@ -72,8 +72,8 @@ class PublicGuidanceTests(unittest.TestCase):
 
     def test_inventory_matches_real_parser_and_schema(self):
         inventory = interface.public_inventory(cli)
-        self.assertEqual(len(inventory["commands"]), 33)
-        self.assertEqual(len(inventory["mcpTools"]), 22)
+        self.assertEqual(len(inventory["commands"]), 43)
+        self.assertEqual(len(inventory["mcpTools"]), 32)
         self.assertEqual({r["command"] for r in inventory["commands"] if r["compatibilityOnly"]},
                          {"auth set-key", "credits estimate"})
         self.assertNotIn("asset_upload", {r["name"] for r in inventory["mcpTools"]})

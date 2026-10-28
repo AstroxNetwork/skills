@@ -372,6 +372,19 @@ class GenerationWorkflowTests(unittest.TestCase):
             '/api/tasks/image-generation/freeze-credit', '/api/tasks/image-generation/freeze-credit',
             '/api/tasks/image-generation'])
 
+    def test_key_quota_rejection_explains_quota_and_never_retries(self) -> None:
+        payload = {"model": "seedream-5-0-lite-260128", "prompt": "draw", "size": "2k"}
+        replies = [(200, {"code": 0, "data": {"frozenCredit": 5}}),
+                   (429, {"code": 429, "message": "API key 额度不足", "errorCode": "API_TOKEN_QUOTA_EXCEEDED"})]
+        with patch.object(holycrab._owner("send"), "send", side_effect=replies) as send:
+            result = holycrab.create_generation("image", payload, confirmed=True, attempt_id="quota-rejected", approved_credits=5)
+        self.assertEqual(result["state"], "failed")
+        self.assertNotIn("taskId", result)
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual(holycrab.load_attempts()["quota-rejected"]["state"], "failed")
+        self.assertEqual(result["nextAction"]["code"], "INCREASE_KEY_QUOTA")
+        self.assertIsNone(result["nextAction"]["command"])
+
     def test_ambiguous_network_error_is_recorded_without_retry(self) -> None:
         payload = {"model": "seedream-5-0-lite-260128", "prompt": "draw", "size": "2k"}
         replies = [
@@ -397,10 +410,10 @@ class GenerationWorkflowTests(unittest.TestCase):
             "send",
             return_value=(
                 200,
-                {"code": 0, "data": {"uniqId": "task-1", "videoUrl": "https://cdn.example/result.mp4?secret=value"}},
+                {"code": 0, "data": {"uniqId": "task1", "videoUrl": "https://cdn.example/result.mp4?secret=value"}},
             ),
         ), patch.object(holycrab._owner("open_download"), "open_download", return_value=response), redirect_stdout(io.StringIO()) as output:
-            args = argparse.Namespace(uniq_id="task-1", output=str(destination), index=0, force=False)
+            args = argparse.Namespace(uniq_id="task1", output=str(destination), index=0, force=False)
             self.assertEqual(holycrab.command_download(args), 0)
         self.assertEqual(destination.read_bytes(), b"video-bytes")
         self.assertNotIn("secret=value", output.getvalue())
@@ -419,12 +432,12 @@ class GenerationWorkflowTests(unittest.TestCase):
             "send",
             return_value=(
                 200,
-                {"code": 0, "data": {"uniqId": "task-1", "videoUrl": "https://cdn.example/result.mp4"}},
+                {"code": 0, "data": {"uniqId": "task1", "videoUrl": "https://cdn.example/result.mp4"}},
             ),
         ), patch.object(holycrab._owner("open_download"), "open_download", return_value=response), redirect_stdout(
             io.StringIO()
         ):
-            args = argparse.Namespace(uniq_id="task-1", output=str(destination), index=0, force=False)
+            args = argparse.Namespace(uniq_id="task1", output=str(destination), index=0, force=False)
             self.assertEqual(holycrab.command_download(args), 0)
 
         self.assertEqual(protected.read_bytes(), b"keep-me")
@@ -439,7 +452,7 @@ class PublicProjectionTests(unittest.TestCase):
         response = {
             "code": 0,
             "data": {
-                "uniqId": "task-1",
+                "uniqId": "task1",
                 "step": 2,
                 "videoUrl": "https://cdn.example/result.mp4",
                 "provider": "internal-provider",
@@ -448,9 +461,9 @@ class PublicProjectionTests(unittest.TestCase):
             },
         }
         with patch.object(holycrab._owner("send"), "send", return_value=(200, response)), redirect_stdout(output):
-            self.assertEqual(holycrab.command_task_get(argparse.Namespace(uniq_id="task-1")), 0)
+            self.assertEqual(holycrab.command_task_get(argparse.Namespace(uniq_id="task1")), 0)
         data = json.loads(output.getvalue())["response"]["data"]
-        self.assertEqual(data["uniqId"], "task-1")
+        self.assertEqual(data["uniqId"], "task1")
         self.assertEqual(data["videoUrl"], "https://cdn.example/result.mp4")
         self.assertNotIn("provider", data)
         self.assertNotIn("seedanceTaskId", data)

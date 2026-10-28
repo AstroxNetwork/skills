@@ -197,8 +197,9 @@ def format_onboarding(guidance: dict[str, Any], *, installed: bool = False,
         return "API Key: configured"
     if state == "READY":
         if not installed:
-            lines += ["HolyCrab account connected", ""]
-        lines += ["Next: return to Codex or Claude Code."]
+            lines += ["HolyCrab account connected"]
+        if installed or introduce:
+            lines += ["Next: return to Codex or Claude Code."]
     else:
         if state == "CONNECT_ACCOUNT":
             title = "Next: connect your account"
@@ -441,8 +442,109 @@ def terminal_capability(value: dict[str, Any]) -> list[str]:
     return lines
 
 
+def terminal_creative(value: dict[str, Any], view: str) -> list[str] | None:
+    """Show decisions and progress; full records remain available as JSON."""
+    if view == "skills-list":
+        return terminal_table("Creative skills", ("Name", "Use"), [
+            [row["name"], row["title"]] for row in value["skills"]]) + ["", "Read a guide: holycrab skills get NAME"]
+    if view == "skills-get":
+        return [value["content"]]
+    if view == "skills-doctor":
+        return ([f"{value['count']} creative skills available (v{value['version']})", value["instruction"]]
+                if value.get("ok") else ["Skills need attention", value.get("error", "Reinstall the CLI.")])
+    if view == "media-doctor":
+        return ["Local editing ready"] if value.get("ok") else ["Local editing needs attention", *value.get("errors", [])]
+    if view == "workflow-list":
+        rows = value.get("workflows", [])
+        lines = terminal_table("Workflows", ("Workflow ID", "Title", "State"), [
+            [row["workflowId"], row["title"], row["state"]] for row in rows]) if rows else ["No saved workflows"]
+        if value.get("nextOffset") is not None:
+            lines += [f"More: holycrab workflows list --offset {value['nextOffset']}"]
+        if value.get("unreadableRecords"):
+            lines += [f"{len(value['unreadableRecords'])} unreadable record(s); use --json-output for details."]
+        return lines
+    if view == "workflow-estimate":
+        lines = [f"Next steps: {value['readyCredits']} credits"]
+        for step in value["steps"]:
+            lines += ["", f"{step['stepId']} · {step['kind']}"]
+            if step.get("duplicateRisk"):
+                lines += ["Previous submission is uncertain: another draw may charge twice."]
+            # Exact requests and every selected upload stay visible at approval.
+            if "uploadPreview" in step:
+                lines += [format_terminal_result(step["uploadPreview"])]
+            elif "editPreview" in step:
+                # Workflow approval already binds this preview; show only its edit decisions.
+                lines += (terminal_creative(step["editPreview"], "media-compose") or [])[:-2]
+            else:
+                lines += terminal_fields(step["request"])
+            if "credits" in step:
+                lines += [f"Credits: {step['credits']}"]
+        if value.get("deferredSteps"):
+            lines += ["", "Later (not included): " + ", ".join(value["deferredSteps"])]
+        if value["steps"]:
+            lines += ["", "When approved:", f"  holycrab workflows run-next {value['workflowId']} --approval-id {value['approvalId']} --yes"]
+        else:
+            lines += ["No ready steps.", f"  holycrab workflows get {value['workflowId']} --refresh"]
+        return lines
+    if view in {"workflow-prepare", "workflow-get", "workflow-run-next"}:
+        titles = {"pending": "Ready to continue", "waiting": "In progress", "succeeded": "Completed", "needs_attention": "Stopped"}
+        lines = [f"{value['title']} · {titles.get(value['state'], value['state'])}", f"Workflow: {value['workflowId']}"]
+        for row in value["steps"]:
+            label = row.get("description") or row["id"]
+            lines += [f"  {label}: {row['state']}"]
+            if row.get("outputs", {}).get("output"):
+                lines += ["  Path: " + row["outputs"]["output"]]
+            if row["state"] in {"failed", "unknown"}:
+                result = row.get("result", {})
+                if result.get("errorCode") == "API_TOKEN_QUOTA_EXCEEDED":
+                    lines += ["  API Key quota is separate from account balance."]
+                else:
+                    error = row.get("error") or result.get("message") or row.get("task", {}).get("error")
+                    if error:
+                        lines += terminal_paragraph(error, indent="  ").splitlines()
+                for key in ("taskId", "attemptId"):
+                    if row.get(key):
+                        lines += [f"  {terminal_label(key)}: {row[key]}"]
+        if value.get("instruction"):
+            lines += [value["instruction"]]
+        if value.get("localStateSaved") is False:
+            # Recovery IDs must survive even if the state file could not be saved.
+            for row in value["steps"]:
+                lines += terminal_fields({key: row[key] for key in ("taskId", "attemptId") if row.get(key)})
+        if value["state"] != "succeeded":
+            lines += terminal_next_action(value.get("nextAction"))
+        return lines
+    if view == "media-compose":
+        if value.get("verified"):
+            return ["Video saved", "Path: " + value["output"], f"Duration: {value['duration']:g} seconds"]
+        lines = [f"Edit preview: {value['duration']:g}s · {value['width']}×{value['height']} · {value['fps']:g} fps",
+                 "Path: " + value["output"]]
+        for clip in value["timeline"]:
+            lines += [f"Clip: {clip['path']} ({clip['start']:g}s + {clip['duration']:g}s)"]
+        lines += [f"Fit: {value['fit']}", f"Audio: {'muted' if value['mute'] else 'source audio'}"]
+        for key, path in value.get("sources", {}).items():
+            lines += [terminal_label(key) + ": " + path]
+        if value.get("sources", {}).get("narration"):
+            lines += ["Narration replaces source audio."]
+        if value.get("sources", {}).get("music"):
+            lines += [f"Music volume: {value['musicVolume']:g}; loops to match the video."]
+        if not value["mute"]:
+            lines += [f"Source volume: {value['sourceVolume']:g}"]
+        for caption in value.get("captions", []):
+            lines += [f"Caption {caption['start']:g}–{caption['end']:g}s: {caption['text']}"]
+        if value.get("force"):
+            lines += ["Overwrite the existing output: approved in this preview."]
+        lines += ["Approval hash: " + value["approvalHash"], "To render, repeat with --yes --approval-hash HASH using the hash above."]
+        return lines
+    return None
+
+
 def format_terminal_result(value: Any, *, introduce_onboarding: bool = False, view: str | None = None) -> str:
     value = sanitize_for_output(value)
+    if isinstance(value, dict) and view:
+        creative = terminal_creative(value, view)
+        if creative is not None:
+            return "\n".join(terminal_safe_text(line) for line in creative)
     if view == "models" and isinstance(value, list) and value:
         return "\n".join(terminal_table("Models", ("Model ID", "Type", "Name"), [
             [item.get("id"), item.get("kind"), item.get("label")] for item in value]))
@@ -535,6 +637,10 @@ def format_terminal_result(value: Any, *, introduce_onboarding: bool = False, vi
         lines += terminal_paragraph(value.get("message", "Request failed")).splitlines()
         return "\n".join(lines + terminal_api_errors(value))
     if "attemptId" in value and "state" in value:
+        if value.get("errorCode") == "API_TOKEN_QUOTA_EXCEEDED":
+            return "\n".join(["Submission rejected: API Key quota is insufficient.", "No task was created.",
+                              "Increase this Key's quota; account balance is separate.",
+                              "Attempt ID: " + terminal_scalar(value["attemptId"])])
         titles = {"created": "Task created", "failed": "Submission rejected", "unknown": "Submission outcome unknown",
                   "submitting": "Submission not yet confirmed", "prepared": "Submission not yet confirmed"}
         lines = [titles.get(value["state"], "Submission status")]

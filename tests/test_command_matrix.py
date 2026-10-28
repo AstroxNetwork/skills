@@ -29,6 +29,10 @@ COMMANDS = {
     "real-human groups delete": ["group1", "--yes"], "real-human assets list": ["--group", "group1"],
     "real-human assets delete": ["asset1", "--group", "group1", "--yes"],
     "assets metadata retry": ["asset1"], "assets uploads get": ["plan1"], "assets upload": [], "assets get": ["asset1"], "assets wait": ["asset1", "--timeout", "0"],
+    "skills list": [], "skills get": ["holycrab-video"], "skills doctor": [],
+    "media doctor": [], "media compose": ["--json", "{}"],
+    "workflows list": [], "workflows prepare": ["--json", "{}"], "workflows get": ["flow1"],
+    "workflows estimate": ["flow1"], "workflows run-next": ["flow1", "--approval-id", "approve1", "--yes"],
     "mcp serve": [], "update": ["--check"], "doctor": ["--json"], "uninstall": ["--yes"],
 }
 
@@ -128,12 +132,26 @@ class CommandMatrixTests(unittest.TestCase):
             "schedule_windows_program_cleanup": {},
         }.items():
             stack.enter_context(patch.object(cli._owner(name), name, **kwargs))
+        from holycrab_runtime import skills, workflows, media
+        workflow = {"workflowId": "flow1", "revision": 1, "title": "Fixture", "state": "pending", "steps": [], "history": []}
+        creative_results = (
+            (skills, "list_skills", skills.catalog()),
+            (skills, "get_skill", {"name": "holycrab-video", "content": "Video guide", "resources": []}),
+            (skills, "health", {"ok": True, "count": 5, "version": "1.0.0", "instruction": "Start Codex."}),
+            (workflows, "list_workflows", {"workflows": [], "nextOffset": None, "total": 0, "unreadableRecords": []}),
+            (workflows, "prepare", workflow), (workflows, "get", workflow), (workflows, "run_next", workflow),
+            (workflows, "estimate", {"workflowId": "flow1", "approvalId": "approve1", "readyCredits": 0, "steps": [], "deferredSteps": []}),
+            (media, "doctor", {"ok": True, "tools": {}, "errors": []}),
+            (media, "compose", {"verified": True, "output": str(self.root / "edit.mp4"), "duration": 10}),
+        )
+        for module, name, result in creative_results:
+            stack.enter_context(patch.object(module, name, **({"side_effect": ValueError("fixture failure")} if failure else {"return_value": result})))
         stack.enter_context(patch.object(cli.getpass, "getpass", return_value="hc_test_input_only"))
         stack.enter_context(patch.object(cli.sys, "stdin", io.StringIO('{"jsonrpc":"2.0","id":1,"method":"initialize"}\n')))
 
-    def test_inventory_is_exactly_33_commands(self) -> None:
+    def test_inventory_is_exactly_43_commands(self) -> None:
         self.assertEqual(set(leaf_commands(cli.build_parser())), set(COMMANDS))
-        self.assertEqual(len(COMMANDS), 33)
+        self.assertEqual(len(COMMANDS), 43)
 
     def test_every_command_help_bypasses_all_housekeeping(self) -> None:
         for command in leaf_commands(cli.build_parser()):
@@ -210,8 +228,8 @@ class CommandMatrixTests(unittest.TestCase):
                 self.assertNotIn("Traceback", output.getvalue() + errors.getvalue())
                 self.assertNotIn("Task created.", errors.getvalue())
 
-    def test_all_22_mcp_tools_schema_errors_are_protocol_only(self) -> None:
-        self.assertEqual(len(cli.MCP_TOOLS), 22)
+    def test_all_32_mcp_tools_schema_errors_are_protocol_only(self) -> None:
+        self.assertEqual(len(cli.MCP_TOOLS), 32)
         for tool in cli.MCP_TOOLS:
             with self.subTest(tool=tool["name"]), redirect_stdout(io.StringIO()) as output, redirect_stderr(TerminalBuffer()) as errors:
                 response = cli.mcp_dispatch({"id": 1, "method": "tools/call", "params": {
@@ -219,7 +237,7 @@ class CommandMatrixTests(unittest.TestCase):
                 self.assertTrue(response["result"]["isError"])
                 self.assertEqual(output.getvalue() + errors.getvalue(), "")
 
-    def test_all_22_mcp_tools_valid_results_are_protocol_only(self) -> None:
+    def test_all_32_mcp_tools_valid_results_are_protocol_only(self) -> None:
         arguments = {"asset_upload_plan_get": {"uploadPlanId": "plan1"}, "capability_get": {"model": "seedream-5-0-lite-260128"},
             "generation_estimate": {"kind": "image", "request": self.payload()},
             "generation_create": {"kind": "image", "request": self.payload(), "confirmed": True, "attemptId": "mcp-create"},
@@ -230,6 +248,10 @@ class CommandMatrixTests(unittest.TestCase):
             "real_human_assets_list": {"groupUniqId": "group1"},
             "real_human_asset_delete": {"groupUniqId": "group1", "assetId": "asset1", "confirmed": True},
             "asset_metadata_retry": {"assetId": "asset1"}, "asset_get": {"assetId": "asset1"}, "asset_upload_prepare": {"files": [str(self.file)]}}
+        arguments.update({"skill_get": {"name": "holycrab-video"}, "workflow_prepare": {"plan": {}},
+            "workflow_get": {"workflowId": "flow1"}, "workflow_estimate": {"workflowId": "flow1"},
+            "workflow_run_next": {"workflowId": "flow1", "approvalId": "approve1", "confirmed": True},
+            "media_compose": {"request": {}}, "generation_download": {"taskId": "task1", "output": str(self.root / "mcp-download.jpg")}})
         for tool in cli.MCP_TOOLS:
             with self.subTest(tool=tool["name"]), ExitStack() as stack:
                 self.context(stack)

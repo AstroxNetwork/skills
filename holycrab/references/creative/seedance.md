@@ -1,0 +1,6 @@
+# Seedance prompt adaptation
+Use the selected Seedance capability for request fields, task types, duration, resolution, references and audio flags. The accompanying upstream guides are creative references; their platform limits and prices are not the HolyCrab API contract. User constraints and current CLI capabilities take precedence.
+
+Structure the scene as subject -> concrete action -> environment -> visual treatment -> camera -> requested audio. Keep parameters outside the prompt. Identify the role of every selected image/video/audio reference, and preserve their order. For multiple subjects or motion references read seedance/multi-reference.md. For multiple beats read seedance/long-video-and-timing.md. For edit/extend read seedance/editing-and-extension.md only if the selected capability supports that task. For keyframes read seedance/advanced-techniques.md. Never promise a task type merely because it appears in a creative guide.
+
+For API execution read execution.md and workflows.md. For prompt-only requests return a usable prompt and assumptions without account queries, upload or generation. Do not turn a request for one short clip into unnecessary reference generation or a longer production.

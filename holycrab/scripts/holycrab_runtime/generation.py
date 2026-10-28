@@ -203,8 +203,10 @@ def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, a
             "attemptId": selected_attempt,
             **({} if saved else {"localStateSaved": False, "warning": "The rejection could not be saved. Keep the attempt ID."}),
             "nextAction": {
-                "code": "FIX_REQUEST",
-                "instruction": "Correct the rejected request and create a new attempt only after confirmation. Do not retry automatically.",
+                "code": "INCREASE_KEY_QUOTA" if error_result.get("errorCode") == "API_TOKEN_QUOTA_EXCEEDED" else "FIX_REQUEST",
+                "instruction": ("API Key quota is insufficient, even if the account has credits. Increase this Key's quota before retrying. No task was created."
+                                if error_result.get("errorCode") == "API_TOKEN_QUOTA_EXCEEDED" else
+                                "Correct the rejected request and create a new attempt only after confirmation. Do not retry automatically."),
                 "command": None,
             },
         }
