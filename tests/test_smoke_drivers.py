@@ -22,6 +22,11 @@ def load(name):
 
 
 class SmokeDriverTests(unittest.TestCase):
+    def test_public_upgrade_driver_targets_the_current_release(self):
+        driver = load("post_release_upgrade")
+        manifest = json.loads((ROOT / "runtime-files.json").read_text())
+        self.assertEqual(driver.VERSION, "v" + manifest["version"])
+
     def test_live_write_phases_require_fresh_explicit_opt_in(self):
         for phase in ("prepare", "create"):
             with self.subTest(phase=phase), tempfile.TemporaryDirectory() as root:

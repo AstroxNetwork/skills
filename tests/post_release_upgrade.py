@@ -17,10 +17,10 @@ import urllib.request
 from datetime import datetime, timezone
 
 REPO = 'AstroxNetwork/skills'
-VERSION = 'v0.6.0'
+VERSION = 'v' + json.loads((Path(__file__).resolve().parents[1] / 'runtime-files.json').read_text(encoding='utf-8'))['version']
 
 def fetch(url):
-    request = urllib.request.Request(url, headers={'User-Agent':'holycrab-public-upgrade-check/0.6.0'})
+    request = urllib.request.Request(url, headers={'User-Agent':'holycrab-public-upgrade-check/' + VERSION})
     with urllib.request.urlopen(request,timeout=60) as response:
         if response.status != 200:
             raise RuntimeError('Public artifact download did not return 200')
@@ -113,7 +113,7 @@ sys.addaudithook(check)
         self.record(label)
 
     def verify_new(self,label,env):
-        assert self.cli(label+'-version',env,'--version').strip()=='holycrab 0.6.0'
+        assert self.cli(label+'-version',env,'--version').strip()=='holycrab ' + VERSION[1:]
         assert json.loads(self.cli(label+'-doctor',env,'doctor','--json'))['ok'] is True
         spec=importlib.util.spec_from_file_location('native_checks',self.args.source/'tools/native_install_checks.py')
         mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
@@ -123,15 +123,15 @@ sys.addaudithook(check)
                   {'jsonrpc':'2.0','id':3,'method':'tools/call','params':{'name':'capabilities_list','arguments':{}}}]
         replies=[json.loads(row) for row in self.cli(label+'-mcp',env,'mcp','serve',input=''.join(json.dumps(m)+'\n' for m in messages)).splitlines()]
         assert len(replies)==3 and all('error' not in reply for reply in replies)
-        assert replies[0]['result']['serverInfo']['version']=='0.6.0'
+        assert replies[0]['result']['serverInfo']['version']==VERSION[1:]
         names=[tool['name'] for tool in replies[1]['result']['tools']]
-        assert len(names)==len(set(names))==22
+        assert len(names)==len(set(names))==32
         assert replies[2]['result']['isError'] is False
         caps=replies[2]['result']['structuredContent']
         assert len(caps['models'])==len({model['id'] for model in caps['models']})==16
         latest=json.loads(self.cli(label+'-latest',env,'update','--check'))
         assert latest['updateAvailable'] is False
-        self.record(label+' health, immutable runtime, 22 MCP tools, 16 models, current stable version')
+        self.record(label+' health, immutable runtime, 32 MCP tools, 16 models, current stable version')
 
     def execute(self):
         latest=json.loads(fetch(f'https://api.github.com/repos/{REPO}/releases/latest'))
@@ -157,9 +157,9 @@ sys.addaudithook(check)
         assert json.loads(self.cli('v050-baseline-doctor',old,'doctor','--json'))['ok'] is True
         before={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}
         check=json.loads(self.cli('v050-detects-v060',old,'update','--check'))
-        assert check['updateAvailable'] is True and check['latestVersion']=='0.6.0'
+        assert check['updateAvailable'] is True and check['latestVersion']==VERSION[1:]
         assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}, 'Baseline records changed before update'
-        self.record('Actual v0.5.0 discovers v0.6.0 via public Latest')
+        self.record('Actual v0.5.0 discovers ' + VERSION + ' via public Latest')
         try:
             if self.args.upgrade_method=='installer':
                 self.install('official-installer-over-v050',VERSION,old)

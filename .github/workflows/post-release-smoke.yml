@@ -149,7 +149,9 @@ jobs:
           verify_runtime(library)
           for directory in ('.agents', '.claude'):
               skill = pathlib.Path.home() / directory / 'skills/holycrab'
-              assert {p.relative_to(skill).as_posix() for p in skill.rglob('*') if p.is_file()} == {'SKILL.md', 'agents/openai.yaml', 'references/capabilities.json'}
+              manifest = json.loads(pathlib.Path('runtime-files.json').read_text())
+              expected = {row['target'] for row in manifest['files'] if row['kind'] == 'skill'}
+              assert {p.relative_to(skill).as_posix() for p in skill.rglob('*') if p.is_file()} == expected
           messages = [
               {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'website-smoke', 'version': '1'}}},
               {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
@@ -161,10 +163,10 @@ jobs:
           assert len(replies) == 4 and all('error' not in r for r in replies)
           assert replies[0]['result']['serverInfo']['version'] == version
           names = {tool['name'] for tool in replies[1]['result']['tools']}
-          assert len(names) == 22 and "asset_upload" not in names and 'uninstall' not in names
+          assert len(names) == 32 and "asset_upload" not in names and 'uninstall' not in names
           assert {'cli_status', 'asset_upload_prepare', 'asset_upload_execute', 'asset_upload_plan_get'} <= names
           assert not any(reply['result'].get('isError') for reply in replies[2:])
-          print('Installed version, health, uninstall help, runtime allowlist and all 22 Agent tool registrations passed. No business API calls were made.')
+          print('Installed version, health, uninstall help, runtime allowlist and all 32 Agent tool registrations passed. No business API calls were made.')
           PY
       - name: Uninstall isolated macOS test installation
         if: always() && runner.os == 'macOS'
