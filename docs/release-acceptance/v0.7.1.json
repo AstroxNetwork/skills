@@ -19,13 +19,13 @@
     "newAuthorizationPerformed": false,
     "newUploadPerformed": false
   },
-  "candidateSha256": "97cf364c04a151d4c53ef88425fa51c4056cffbd065766ef3a387ed017b39c25",
+  "candidateSha256": "07ff971d22b446121b8a3fcffa87bdee082dc6a120575e8019556eb5d82417ba",
   "generateContractCheck": {
     "status": "passed",
     "mode": "local-immutable-main",
     "verifiedMainCommit": "4bd857b90b1bbb133675ee11b666164c221fbeb4",
-    "verifiedAt": "2026-11-06T15:08:08.665788+00:00",
-    "candidateSha256": "97cf364c04a151d4c53ef88425fa51c4056cffbd065766ef3a387ed017b39c25",
+    "verifiedAt": "2026-11-06T15:26:07.649565+00:00",
+    "candidateSha256": "07ff971d22b446121b8a3fcffa87bdee082dc6a120575e8019556eb5d82417ba",
     "sourceFiles": {
       "client/user-front/src/api/tasks.ts": "24fa99779e5bef1f73342469649a3f9886c7198dc4a35344ee71856fb65cab25",
       "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
@@ -53,7 +53,7 @@
       "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
     },
     "validatorSha256": "73a81683fc56802a141f966bc68205c5f076758bfdd9297d11d98114f291a30a",
-    "evidenceSha256": "9572847eec5c13c0a5a791121019fe2e3403b1be8fd5036e4c663682ee87d862"
+    "evidenceSha256": "e00a567a8a8ce79e10f5821bfd525a4ec0c754093f12968005feffcb72115d66"
   },
   "publication": {
     "status": "approved-conditional-on-ci",
