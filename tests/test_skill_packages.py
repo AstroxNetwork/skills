@@ -36,7 +36,7 @@ class SkillPackageTests(unittest.TestCase):
                     skill = archive.read(prefix + "SKILL.md").decode()
                     for link in re.findall(r"\]\((references/[^)]+)\)", skill):
                         self.assertIn(prefix + link, archive.namelist())
-                    self.assertEqual(package["minCliVersion"], "0.7.0")
+                    self.assertEqual(package["minCliVersion"], "0.7.1")
 
     def test_customized_resource_blocks_upgrade_without_changing_it(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(Path, "home", return_value=Path(directory)):

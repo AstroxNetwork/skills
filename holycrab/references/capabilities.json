@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "source": {
     "name": "HolyCrab Public Capability Registry",
-    "version": "2026-10-23",
-    "publishedAt": "2026-10-23"
+    "version": "2026-11-06",
+    "publishedAt": "2026-11-06"
   },
   "requestSchemas": {
     "seedanceVideo": {
@@ -626,6 +626,145 @@
           }
         }
       }
+    },
+    "minimaxHighspeedVideo": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt",
+        "duration",
+        "resolution"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "MiniMax-H3-Highspeed"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 7000,
+          "lengthUnit": "utf16"
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "768P"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 15
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "adaptive",
+            "21:9",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16"
+          ]
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "videoAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "audioAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "firstFrameAssetId": {
+          "type": "string"
+        },
+        "lastFrameAssetId": {
+          "type": "string"
+        }
+      }
+    },
+    "minimaxLiteVideo": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt",
+        "duration",
+        "resolution"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "MiniMax-H3-Lite"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 7000,
+          "lengthUnit": "utf16"
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "480P",
+            "768P"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 15
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "adaptive",
+            "21:9",
+            "16:9",
+            "4:3",
+            "1:1",
+            "3:4",
+            "9:16"
+          ]
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "videoAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "audioAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "firstFrameAssetId": {
+          "type": "string"
+        },
+        "lastFrameAssetId": {
+          "type": "string"
+        }
+      }
     }
   },
   "videoModels": [
@@ -1118,6 +1257,261 @@
         "framesAndReferencesMutuallyExclusive": true,
         "audioOnlyReference": false,
         "generateAudioSupported": false
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 52428800,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          },
+          "frameRate": {
+            "min": 23.976,
+            "max": 60
+          },
+          "videoCodecs": [
+            "h264",
+            "hevc"
+          ],
+          "audioCodecs": [
+            "aac",
+            "mp3"
+          ]
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          }
+        }
+      }
+    },
+    {
+      "id": "MiniMax-H3-Lite",
+      "label": "MiniMax H3 Lite",
+      "requestSchemaRef": "minimaxLiteVideo",
+      "resolutions": [
+        "480P",
+        "768P"
+      ],
+      "durationSeconds": {
+        "min": 4,
+        "max": 15
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "adaptive",
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audio": 3,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15
+      },
+      "rules": {
+        "textOnlyRequiresConcreteRatio": true,
+        "frameModeForcesAdaptive": true,
+        "lastFrameWithoutFirstFrame": true,
+        "framesAndReferencesMutuallyExclusive": true,
+        "audioOnlyReference": false,
+        "generateAudioSupported": false,
+        "referenceRequiresConcreteRatio": true
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "max": 52428800,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          },
+          "width": {
+            "min": 256,
+            "max": 5760
+          },
+          "height": {
+            "min": 256,
+            "max": 5760
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          },
+          "frameRate": {
+            "min": 23.976,
+            "max": 60
+          },
+          "videoCodecs": [
+            "h264",
+            "hevc"
+          ],
+          "audioCodecs": [
+            "aac",
+            "mp3"
+          ]
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": true
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 15
+          }
+        }
+      }
+    },
+    {
+      "id": "MiniMax-H3-Highspeed",
+      "label": "MiniMax H3 Highspeed",
+      "requestSchemaRef": "minimaxHighspeedVideo",
+      "resolutions": [
+        "768P"
+      ],
+      "durationSeconds": {
+        "min": 4,
+        "max": 15
+      },
+      "taskTypes": [
+        "reference",
+        "frames"
+      ],
+      "ratios": [
+        "adaptive",
+        "21:9",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16"
+      ],
+      "referenceLimits": {
+        "images": 9,
+        "videos": 3,
+        "audio": 3,
+        "combinedVideoSeconds": 15,
+        "combinedAudioSeconds": 15
+      },
+      "rules": {
+        "textOnlyRequiresConcreteRatio": true,
+        "frameModeForcesAdaptive": true,
+        "lastFrameWithoutFirstFrame": true,
+        "framesAndReferencesMutuallyExclusive": true,
+        "audioOnlyReference": false,
+        "generateAudioSupported": false,
+        "referenceRequiresConcreteRatio": false
       },
       "materialRules": {
         "enforcedBy": "backend",

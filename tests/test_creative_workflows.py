@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests.test_cli import holycrab
-from holycrab_runtime import workflows as w, skills, media, generation, state, uploads, real_human
+from holycrab_runtime import workflows as w, skills, media, generation, state, uploads, real_human, downloads
 
 
 class CreativeWorkflowTests(unittest.TestCase):
@@ -58,6 +58,28 @@ class CreativeWorkflowTests(unittest.TestCase):
         self.assertEqual(quote["readyCredits"], 10)
         self.assertEqual(quote["deferredSteps"], ["download"])
         create.assert_not_called()
+
+    def test_download_uses_approved_destination_after_working_directory_or_home_change(self):
+        before, after = self.root.resolve() / "before", self.root.resolve() / "after"
+        before.mkdir(); after.mkdir()
+        old_cwd = Path.cwd()
+        self.addCleanup(os.chdir, old_cwd)
+        for output in ("movie.mp4", "~/movie.mp4"):
+            with self.subTest(output=output):
+                key = w.prepare({"title": "Download", "steps": [{"id": "download", "kind": "download",
+                    "request": {"taskId": "task1", "output": output}}]})["workflowId"]
+                os.chdir(before)
+                with patch.dict(os.environ, {"HOME": str(before), "USERPROFILE": str(before)}):
+                    quote = w.estimate(key)
+                destination = quote["steps"][0]["destination"]
+                self.assertEqual(destination, str((before / "movie.mp4").resolve()))
+                os.chdir(after)
+                with patch.dict(os.environ, {"HOME": str(after), "USERPROFILE": str(after)}), \
+                        patch.object(downloads, "download_task", return_value={"output": destination}) as download:
+                    result = w.run_next(key, approval_id=quote["approvalId"], confirmed=True)
+                os.chdir(old_cwd)
+                download.assert_called_once_with("task1", destination, index=0, force=False)
+                self.assertEqual(result["steps"][0]["outputs"]["output"], destination)
 
     def test_progress_provides_the_action_for_pending_unknown_and_quota_states(self):
         key = self.create()

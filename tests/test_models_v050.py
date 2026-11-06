@@ -16,8 +16,8 @@ IMAGE = {'model': 'agnes-image-2.5-flash', 'prompt': 'A red crab on a beach', 's
 class NewModelsTests(unittest.TestCase):
     def test_directory_is_complete_and_excludes_retired_models(self):
         models = cli.all_models()
-        self.assertEqual(len(models), 16)
-        self.assertEqual([sum(m['kind'] == k for m in models) for k in ('video', 'image', 'audio')], [11, 4, 1])
+        self.assertEqual(len(models), 18)
+        self.assertEqual([sum(m['kind'] == k for m in models) for k in ('video', 'image', 'audio')], [13, 4, 1])
         self.assertFalse({'agnes-video-v2.0', 'agnes-video-2.5-flash'} & {m['id'] for m in models})
 
     def test_correct_kind_and_exact_routes(self):
@@ -93,7 +93,7 @@ class NewModelsTests(unittest.TestCase):
 
     def test_mcp_discovery_and_account_share_cli_projection(self):
         result = cli.mcp_tool_call('capabilities_list', {})
-        self.assertEqual(len(result['models']), 16)
+        self.assertEqual(len(result['models']), 18)
         self.assertEqual(cli.mcp_tool_call('capability_get', {'model':MAX['model']})['id'], MAX['model'])
         with patch.object(cli._owner('send'), 'send', return_value=(200, {'code':200, 'data':{'credit':10,'disabled_models':[MAX['model']]}})):
             self.assertEqual(cli.mcp_tool_call('account_get', {})['disabled_models'], [MAX['model']])

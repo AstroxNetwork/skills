@@ -132,10 +132,54 @@ def validate_central_asset_rules(rules: str, errors: list[str]) -> None:
         require(rules, rf'range\(errors,[^;]*\b{name},\s*true,\s*true', name + " inclusive validation", errors)
 
 
+def validate_minimax_v071(generate_root: Path, manifest: dict) -> list[str]:
+    """Check new model declarations and their independently owned server rules."""
+    errors = []
+    source = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxGenerationRequestValidator.java").read_text(encoding="utf-8")
+    for pattern, label in (
+        (r'getPrompt\(\).length\(\)\s*>\s*7000', 'H3 UTF-16 prompt bound'),
+        (r'"MiniMax-H3-Highspeed".equals\(model\)\s*\?\s*Set.of\("768P"\)\s*:\s*max\s*\|\|\s*lite\s*\?\s*Set.of\("480P",\s*"768P"\)', 'new H3 resolutions'),
+        (r'getDuration\(\)\s*<\s*\(max\s*\?\s*5\s*:\s*4\).*?getDuration\(\)\s*>\s*15', 'new H3 duration'),
+        (r'if\s*\(frames\)\s*ratio\s*=\s*"adaptive"', 'H3 frame ratio'),
+        (r'!frames\s*&&\s*\(!references\s*\|\|\s*lite\)\s*&&\s*"adaptive"', 'Lite concrete ratio'),
+        (r'boolean lite\s*=\s*"MiniMax-H3-Lite".equals\(model\)', 'Lite model selection'),
+    ):
+        require(source, pattern, label, errors)
+    models = {row['id']: row for row in manifest['videoModels']}
+    for suffix, resolutions in [('Highspeed', ['768P']), ('Lite', ['480P', '768P'])]:
+        model_id = 'MiniMax-H3-' + suffix
+        model = models.get(model_id, {})
+        name = 'minimax' + suffix + 'Video'
+        schema = manifest['requestSchemas'].get(name, {})
+        fields = schema.get('properties', {})
+        if (model.get('requestSchemaRef') != name or schema.get('additionalProperties') is not False
+                or set(schema.get('required', [])) != {'model', 'prompt', 'duration', 'resolution'}
+                or fields.get('model', {}).get('const') != model_id
+                or fields.get('resolution', {}).get('enum') != resolutions or model.get('resolutions') != resolutions
+                or fields.get('duration') != {'type': 'integer', 'minimum': 4, 'maximum': 15}
+                or model.get('durationSeconds') != {'min': 4, 'max': 15}
+                or fields.get('prompt') != {'type': 'string', 'minLength': 1, 'maxLength': 7000, 'lengthUnit': 'utf16'}
+                or set(fields.get('ratio', {}).get('enum', [])) != java_string_set(source, 'RATIOS')
+                or set(model.get('ratios', [])) != java_string_set(source, 'RATIOS')):
+            errors.append('CLI snapshot drift: ' + model_id + ' request contract')
+        for key, expected in {'referenceRequiresConcreteRatio': suffix == 'Lite',
+                              'textOnlyRequiresConcreteRatio': True, 'frameModeForcesAdaptive': True,
+                              'framesAndReferencesMutuallyExclusive': True, 'audioOnlyReference': False,
+                              'lastFrameWithoutFirstFrame': True, 'generateAudioSupported': False}.items():
+            if model.get('rules', {}).get(key) is not expected:
+                errors.append('CLI snapshot drift: ' + model_id + ' ' + key)
+        base = models['MiniMax-H3']
+        for key in ('materialRules', 'referenceLimits'):
+            if model.get(key) != base.get(key):
+                errors.append('CLI snapshot drift: ' + model_id + ' ' + key)
+    return errors
+
+
 def validate(generate_root: Path, cli_root: Path) -> list[str]:
     errors: list[str] = []
     manifest = json.loads((cli_root / "holycrab/references/capabilities.json").read_text(encoding="utf-8"))
     errors.extend(validate_new_model_snapshot(manifest))
+    errors.extend(validate_minimax_v071(generate_root, manifest))
     image = (generate_root / "client/user-front/src/utils/imageGenerationParams.ts").read_text(encoding="utf-8")
     video_options = (generate_root / "client/user-front/src/utils/generationOptions.ts").read_text(encoding="utf-8")
     task_api = (generate_root / "client/user-front/src/api/tasks.ts").read_text(encoding="utf-8")
@@ -188,7 +232,7 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     require(task_api, r"audioIds\?:\s*string", "string audioIds response", errors)
     require(task_api, r"interface ImageGenerationParams[\s\S]*prompt:\s*string[\s\S]*model:\s*string[\s\S]*size:\s*string[\s\S]*aspectRatio:\s*string[\s\S]*resolution:\s*string[\s\S]*outputFormat:\s*string[\s\S]*imageUrls\?:\s*string\[\]", "image request fields", errors)
     require(minimax, r"ratio\s*=\s*references\s*\?\s*\"adaptive\"\s*:\s*null", "H3 reference ratio default", errors)
-    require(minimax, r"!frames\s*&&\s*!references\s*&&\s*\"adaptive\"", "H3 text-only ratio restriction", errors)
+    require(minimax, r"!frames\s*&&\s*\(!references\s*\|\|\s*lite\)\s*&&\s*\"adaptive\"", "H3 text-only ratio restriction", errors)
     if not centralized:
         require(seedance, r"imageCount\s*>\s*30\s*\|\|\s*videoCount\s*>\s*10\s*\|\|\s*audioCount\s*>\s*10", "Seedance 2.5 reference limits", errors)
     require(upload, r"ASSET_UPLOAD_BATCH_LIMIT\s*=\s*10", "asset batch limit", errors)
@@ -310,8 +354,8 @@ def record_evidence(record_path: Path, cli_root: Path, commit: str, expected_mai
     if commit != expected_main or re.fullmatch(r"[0-9a-f]{40}", expected_main) is None:
         raise ValueError("Selected source must match the independently verified remote main SHA")
     record = json.loads(record_path.read_text(encoding="utf-8"))
-    if record.get("version") not in {"v0.6.0", "v0.7.0"}:
-        raise ValueError("Local evidence recording is authorized only for local v0.6.0/v0.7.0 candidates")
+    if record.get("version") not in {"v0.6.0", "v0.7.0", "v0.7.1"}:
+        raise ValueError("Local evidence recording is authorized only for local v0.6.0/v0.7.0/v0.7.1 candidates")
     fingerprint = candidate_fingerprint(cli_root)
     proof = {"status": "passed", "mode": "local-immutable-main", "verifiedMainCommit": commit,
              "verifiedAt": datetime.now(timezone.utc).isoformat(), "candidateSha256": fingerprint,

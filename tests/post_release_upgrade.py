@@ -128,10 +128,10 @@ sys.addaudithook(check)
         assert len(names)==len(set(names))==32
         assert replies[2]['result']['isError'] is False
         caps=replies[2]['result']['structuredContent']
-        assert len(caps['models'])==len({model['id'] for model in caps['models']})==16
+        assert len(caps['models'])==len({model['id'] for model in caps['models']})==18
         latest=json.loads(self.cli(label+'-latest',env,'update','--check'))
         assert latest['updateAvailable'] is False
-        self.record(label+' health, immutable runtime, 32 MCP tools, 16 models, current stable version')
+        self.record(label+' health, immutable runtime, 32 MCP tools, 18 models, current stable version')
 
     def execute(self):
         latest=json.loads(fetch(f'https://api.github.com/repos/{REPO}/releases/latest'))

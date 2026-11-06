@@ -18,15 +18,15 @@ SOURCE_FILES = tuple(SERVER + name for name in (
 )) + ("client/user-front/src/config/wan3Models.ts",)
 BERRY = {"berry-1.0", "berry-1.0-pro", "berry-1.0-turbo", "berry-1.0-pro-turbo"}
 ERROR_FIELDS = ("code", "scope", "assetId", "assetIds", "role", "requestPath", "field", "actual", "rule", "message", "retryable")
-METADATA_FIELDS = ("durationSeconds", "mediaFormat", "metadataStatus", "metadataErrorCode", "metadataUpdatedAt",
+METADATA_FIELDS = ("duration", "mediaFormat", "metadataStatus", "metadataErrorCode", "metadataUpdatedAt",
                    "width", "height", "sizeBytes", "frameRate", "videoCodec", "audioCodec")
 
 
 # Independently audited source/description pair. These are deliberately conservative:
 # ANY source-rule change requires re-audit, not automatic acceptance of a changed bound.
 # This gate does not execute a second copy of the server's material policy.
-AUDITED_RULE_SOURCES = {'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java': '473ac3d96abc2f5b3c73f2874c6f00e768686a227e7faa0332facdc729f1ad73', 'server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java': '3e9bb56da7dceb77b910b797512af8e5fb64747e0846e2b758b97a46820bdc2f', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java': '5de7de1b23af11e61c37ce30ba3db632a027fb8d426471f6021f01220a22e361', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java': '10372ad0623fac7b6b77fe25641c000e912c04fae8d7223360e86f8e5f7b17ae'}
-AUDITED_DESCRIPTION_SHA256 = "a64ff2be235c78e0af333f02da7b1e8ca813c8e64f88872b5fcd121a0fa6a482"
+AUDITED_RULE_SOURCES = {'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java': '473ac3d96abc2f5b3c73f2874c6f00e768686a227e7faa0332facdc729f1ad73', 'server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java': '3e9bb56da7dceb77b910b797512af8e5fb64747e0846e2b758b97a46820bdc2f', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java': '4b17780a54b0d43df341d1f275ab56e26af1d0da656f607c55383e0f2c02bc56', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java': '10372ad0623fac7b6b77fe25641c000e912c04fae8d7223360e86f8e5f7b17ae'}
+AUDITED_DESCRIPTION_SHA256 = "2a0cc34c2631fbaec97f1b7a5ca6711cd42766b1aedbfa49245152b616b281b8"
 
 
 def validate_audited_material_pair(root: Path, manifest: dict) -> list[str]:

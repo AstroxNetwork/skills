@@ -55,6 +55,8 @@ def download_task(task_id: str, output: str, *, index: int = 0, force: bool = Fa
                     last_progress = now
             if expected_length is not None and total != expected_length:
                 raise SystemExit(f"Download was incomplete: expected {expected_length} bytes, received {total}. The output was not replaced")
+            if total == 0:
+                raise SystemExit("Download returned an empty file. The output was not replaced")
         if force:
             os.replace(partial, destination)
         else:

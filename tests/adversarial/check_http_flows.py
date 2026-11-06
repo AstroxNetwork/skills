@@ -18,7 +18,7 @@ VECTORS = []
 for model in ('seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini', 'dreamina-seedance-2-5-260628'):
     request = {'model': model, 'prompt': '中文 🦀', 'duration': 5, 'resolution': '720p'}
     VECTORS.append(('video', request, '/api/tasks/generation', {**request, 'generateAudio': True}))
-for model in ('MiniMax-H3', 'MiniMax-H3-Max'):
+for model in ('MiniMax-H3', 'MiniMax-H3-Max', 'MiniMax-H3-Highspeed', 'MiniMax-H3-Lite'):
     request = {'model': model, 'prompt': '中文 🦀', 'duration': 5, 'resolution': '768P', 'ratio': '16:9'}
     VECTORS.append(('video', request, '/api/tasks/minimax-generation', request))
 for kind, model, fields in (('video', 'agnes-video-2.5', {'size': '720P', 'seconds': 4, 'ratio': '16:9'}),
@@ -102,8 +102,8 @@ class HttpWorkflowTests(unittest.TestCase):
         self.assertNotIn('fixture-api-key', result.stdout + result.stderr)
         return response['result'].get('structuredContent', {})
 
-    def test_all_sixteen_models_real_http_estimate_create_query_download(self):
-        self.assertEqual(len(VECTORS), 16)
+    def test_all_models_real_http_estimate_create_query_download(self):
+        self.assertEqual(len(VECTORS), 18)
         for index, (kind, request, route, normalized) in enumerate(VECTORS):
             with self.subTest(model=request.get('model', 'seed-audio-1.0')):
                 self.service.calls.clear()
@@ -297,7 +297,7 @@ class HttpWorkflowTests(unittest.TestCase):
                 self.assertIn(field, value, value)
                 if expected is not None: self.assertEqual(value[field], expected, value)
                 if name == 'generation_attempt_list': self.assertEqual(value[field][0]['attemptId'], 'tools')
-                if name == 'capabilities_list': self.assertEqual(len(value[field]), 16)
+                if name == 'capabilities_list': self.assertEqual(len(value[field]), 18)
                 if name == 'asset_upload_execute':
                     self.assertEqual(value[field][0]['assetUniqId'], 'asset1')
                     self.assertIsNone(value['failedOrUnknown'])

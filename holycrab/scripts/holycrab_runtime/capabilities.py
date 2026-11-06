@@ -257,6 +257,20 @@ def normalize_generation_request(kind: str, payload: dict[str, Any]) -> dict[str
         if not isinstance(model_id, str):
             raise SystemExit("Generation request must include model")
         model = find_model(model_id)
+        if model_id in {"MiniMax-H3-Highspeed", "MiniMax-H3-Lite"}:
+            # Match the server's ratio defaults without duplicating material validation.
+            frames = any(isinstance(normalized.get(key), str) and normalized[key].strip()
+                         for key in ("firstFrameAssetId", "lastFrameAssetId"))
+            references = any(isinstance(normalized.get(key), list) and
+                             any(isinstance(item, str) and item.strip() for item in normalized[key])
+                             for key in ("imageAssetIds", "videoAssetIds", "audioAssetIds"))
+            if frames:
+                normalized["ratio"] = "adaptive"
+            elif references and not normalized.get("ratio"):
+                normalized["ratio"] = "adaptive"
+            if not frames and (not references or model["rules"]["referenceRequiresConcreteRatio"]):
+                if normalized.get("ratio") not in model["ratios"] or normalized["ratio"] == "adaptive":
+                    raise SystemExit(f"{model_id} requires a concrete ratio for this request")
         if model_id.startswith("berry-"):
             for name, default in {"duration": 5, "resolution": "1080p", "ratio": "adaptive", "audio": True}.items():
                 normalized.setdefault(name, default)

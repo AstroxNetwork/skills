@@ -9,7 +9,7 @@ Use the installed `holycrab` CLI or its local MCP tools. Treat its versioned cap
 
 ## Creative requests
 
-For any video, image, audio, storyboard or local editing request, select the guidance below before deciding parameters. Users can describe their goal naturally; they do not need to name a Skill. Read only the relevant guide and its linked references. Requires CLI 0.7.0 or later.
+For any video, image, audio, storyboard or local editing request, select the guidance below before deciding parameters. Users can describe their goal naturally; they do not need to name a Skill. Read only the relevant guide and its linked references. Requires CLI 0.7.1 or later.
 
 - Video, ads, explainers, animation, music videos, short drama or multiple shots: [video workflow](references/creative/video.md).
 - Product photos, posters, visual references or image variants: [image workflow](references/creative/image.md).

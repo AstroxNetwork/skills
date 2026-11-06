@@ -184,7 +184,14 @@ def interrupt_installer(suite):
             else:
                 # Feed the exact installer text through IEX, as irm|iex does,
                 # while keeping a real interactive host to observe survival.
-                expression = ("function global:prompt { 'HC_INSTALL_HOST_READY> ' }; "
+                # Use the real console's line reader for the follow-up command.
+                # PSReadLine's editor can consume the queued Enter during its
+                # initialization after Ctrl+C (windows-2025 / Python 3.10).
+                # This changes only the test host, not the installer or its
+                # interruption, exit-code and byte-for-byte rollback checks.
+                expression = ("Remove-Module PSReadLine -ErrorAction SilentlyContinue; "
+                              "function global:PSConsoleHostReadLine { [Console]::ReadLine() }; "
+                              "function global:prompt { 'HC_INSTALL_HOST_READY> ' }; "
                               "Get-Content -LiteralPath (Join-Path $env:HOLYCRAB_INSTALL_SOURCE_DIR 'install.ps1') -Raw -Encoding UTF8 | Invoke-Expression")
                 if mode == "streamed-iex-from-script":
                     wrapper = suite.root / "iex_outer_script.ps1"

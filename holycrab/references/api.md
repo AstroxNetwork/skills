@@ -667,3 +667,20 @@ Berry 生成：`POST /api/tasks/mulerouter-generation`；估算：`POST /api/tas
 | imageAssetIds / videoAssetIds / audioAssetIds | 可选，素材 ID 数组；后端限制分别为 10/5/5 |
 
 Berry 参考视频与输出总时长不得超过 30 秒；具体大小、格式、数量、组合和元数据规则由服务端实测判定。素材规则说明是版本快照，不是本地可用性保证。
+
+
+## MiniMax H3 Highspeed and Lite (CLI 0.7.1)
+
+- `MiniMax-H3-Highspeed`: 768P, integer duration 4–15 seconds.
+- `MiniMax-H3-Lite`: 480P or 768P, integer duration 4–15 seconds.
+- Both accept prompts up to 7000 UTF-16 code units and use existing MiniMax estimation, generation and task commands. Do not send `generateAudio`.
+- Text-only requests need a concrete ratio. Highspeed references may use `adaptive`; Lite references need a concrete ratio. First/last-frame mode forces `adaptive`, including last-frame-only requests.
+- Describe at most 9 images, 3 videos and 3 audio references; frames and references are exclusive, and audio needs a visual reference. Service validation owns counts, combinations and metadata; the CLI forwards structured errors without creating a task after a failed estimate.
+
+Example request for `generation_estimate` with kind `video` (creation requires separately approved credits):
+
+```json
+{"model":"MiniMax-H3-Lite","prompt":"A crab walks across a beach","resolution":"480P","duration":4,"ratio":"16:9"}
+```
+
+For Highspeed use `MiniMax-H3-Highspeed` and `768P`. Query `capability_get` before choosing parameters; prices come from the service estimate.
