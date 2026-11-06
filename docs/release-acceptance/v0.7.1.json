@@ -1,0 +1,88 @@
+{
+  "version": "v0.7.1",
+  "realHumanCoreFlow": {
+    "status": "passed",
+    "mode": "reused-unchanged-authorization-upload-core",
+    "operator": "Codex release acceptance",
+    "testedAt": "2026-11-06T15:17:15.991042+00:00",
+    "notes": "Release-specific acceptance reuses recorded successful authorization/upload coverage from v0.6.0 and v0.7.0 after exact byte comparison of the unchanged authorization, upload, state, transport, tasks and result components. User explicitly authorized v0.7.1 publication after all CI passes. No new identity verification, personal upload or fresh group query is claimed. Changed model normalization, workflow/download paths are covered by current regression and independent review; two minimum-spec video generations passed earlier in this session.",
+    "reusedEvidenceFile": "docs/release-acceptance/v0.6.0-live-upload.json",
+    "reusedEvidenceSha256": "9cae055ec5b45b02a7ce9db0b06a03535005dbaab041e964fff57dc5eef87849",
+    "unchangedComponentHashes": {
+      "holycrab/scripts/holycrab_runtime/state.py": "c87236d05ecdcefa64249aa3cf3fa4003918a887751f5469386531fefa330946",
+      "holycrab/scripts/holycrab_runtime/transport.py": "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432",
+      "holycrab/scripts/holycrab_runtime/uploads.py": "4a1c21aa5df008841d1e0425991800ff36ed219ca82284f05deaadf8b0b79cc5",
+      "holycrab/scripts/holycrab_runtime/real_human.py": "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74",
+      "holycrab/scripts/holycrab_runtime/tasks.py": "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27",
+      "holycrab/scripts/holycrab_runtime/results.py": "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2"
+    },
+    "newAuthorizationPerformed": false,
+    "newUploadPerformed": false
+  },
+  "candidateSha256": "97cf364c04a151d4c53ef88425fa51c4056cffbd065766ef3a387ed017b39c25",
+  "generateContractCheck": {
+    "status": "passed",
+    "mode": "local-immutable-main",
+    "verifiedMainCommit": "4bd857b90b1bbb133675ee11b666164c221fbeb4",
+    "verifiedAt": "2026-11-06T15:08:08.665788+00:00",
+    "candidateSha256": "97cf364c04a151d4c53ef88425fa51c4056cffbd065766ef3a387ed017b39c25",
+    "sourceFiles": {
+      "client/user-front/src/api/tasks.ts": "24fa99779e5bef1f73342469649a3f9886c7198dc4a35344ee71856fb65cab25",
+      "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
+      "client/user-front/src/utils/agnesModels.ts": "a35e69ad04cb9181615a8fae2f4572dab946d73152edfcf73e40a878661eac22",
+      "client/user-front/src/utils/assetUploadLimits.ts": "c0f4c29317ec53e2b099e882218dd8c4ec314661ad1e63603810fe5d4caea95f",
+      "client/user-front/src/utils/generationOptions.ts": "26b1da2f0eba8fcb40bf4a10750ca3892772279f6456d222fee71d0580f61fc8",
+      "client/user-front/src/utils/imageGenerationParams.ts": "d673839bf8df441da349da7626300e8712d6ec0ff5f3a0db07a8224d6ff3824f",
+      "client/user-front/src/utils/seedAudioRules.ts": "b48e8bcce144496b032837124152a20fe40cf564a24e26bb5a93c8fc49e0a0ed",
+      "server/user/src/main/java/com/astrox/seedance/user/api/ApiResult.java": "df005905953bde4a9cb59e560c4eb8f4f5a4db48243daeb01721226adebeae82",
+      "server/user/src/main/java/com/astrox/seedance/user/api/AssetValidationError.java": "21f43810dc145342834dd85bb655e4edf0f53ad3cf30c4b1e791bc5933506acd",
+      "server/user/src/main/java/com/astrox/seedance/user/api/GlobalExceptionHandler.java": "f56ea4044bfaf7489d98811d3ed3d208a21fcc4016158f6fd884ea3c143e6734",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserAssetController.java": "c47ece1d6574cee8589aabcc55d2d8d6e36202503614868953a5dacf8524641f",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserTaskController.java": "3dc9befd6ce8df37890ca2b5c2b9de56b02129e137c3af36e69f59672fa550df",
+      "server/user/src/main/java/com/astrox/seedance/user/serialization/AssetSerializer.java": "c567ac5e5ee0d5eede0b0ab1cf4ad322a3bc87de6e7a054d9032c2b090c18237",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AgnesGenerationRequestValidator.java": "bae266c7162eb7bf8483eacb03e4b86194fb68f2e193e3d5d06cb2cdda9d4202",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java": "3e9bb56da7dceb77b910b797512af8e5fb64747e0846e2b758b97a46820bdc2f",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxGenerationRequestValidator.java": "210d8330a685f70eb0b8f1e0b43ae7b43a03e2a61bd63497f960f7b0952398c2",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MulerouterGenerationRequestValidator.java": "6d5ff7041475ce6461e70c203621c3f694a924f0d70e475a3bd9d99820f3eeaa",
+      "server/user/src/main/java/com/astrox/seedance/user/service/SeedanceGenerationRequestValidator.java": "9ca9947d6c21d2f4764129e58239dac65feaf4463e3bbf2602c4f485eeba646d",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java": "10372ad0623fac7b6b77fe25641c000e912c04fae8d7223360e86f8e5f7b17ae",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java": "4b17780a54b0d43df341d1f275ab56e26af1d0da656f607c55383e0f2c02bc56",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java": "473ac3d96abc2f5b3c73f2874c6f00e768686a227e7faa0332facdc729f1ad73",
+      "server/user/src/main/java/com/astrox/seedance/user/service/UserAssetService.java": "6af4f5f368b0305b249b245c150045c26c5872a0260fe37771e2a9d3c3eddd4b",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/AssetVO.java": "52fe355480e4dd715c8796de2e45002747dc2e960779e98154133b236d54e962",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
+    },
+    "validatorSha256": "73a81683fc56802a141f966bc68205c5f076758bfdd9297d11d98114f291a30a",
+    "evidenceSha256": "9572847eec5c13c0a5a791121019fe2e3403b1be8fd5036e4c663682ee87d862"
+  },
+  "publication": {
+    "status": "approved-conditional-on-ci",
+    "approvedBy": "user",
+    "approvedAt": "2026-11-06T15:17:15.991042+00:00",
+    "notes": "User requested commit/push, Windows/Linux CI, then v0.7.1 publication and website synchronization only after all checks pass."
+  },
+  "liveGeneration": {
+    "status": "passed",
+    "models": [
+      {
+        "model": "MiniMax-H3-Highspeed",
+        "requestedSeconds": 4,
+        "resolution": "768P",
+        "recordedCredits": 18,
+        "outputSeconds": 3.75,
+        "completeDecode": true
+      },
+      {
+        "model": "MiniMax-H3-Lite",
+        "requestedSeconds": 4,
+        "resolution": "480P",
+        "recordedCredits": 8,
+        "outputSeconds": 4.458333,
+        "completeDecode": true
+      }
+    ],
+    "newSubmissions": 2,
+    "retries": 0,
+    "notes": "Authorized in this session; full request/task records remain private in build/live-v0.7.1. This does not prove exact 4-second output or reference/frame modes."
+  }
+}

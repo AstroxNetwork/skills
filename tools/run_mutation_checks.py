@@ -25,7 +25,7 @@ MUTATIONS = [
         ('generation.py', '@_state.protect_operation\ndef create_generation(', 'def create_generation(')]),
     ('reusable-upload-plan', HTTP + 'test_concurrent_upload_plan_sends_only_one_file', [
         ('uploads.py', 'plan["state"] = "executing"', 'plan["state"] = "prepared"')]),
-    ('audio-estimate-body', HTTP + 'test_all_sixteen_models_real_http_estimate_create_query_download', [
+    ('audio-estimate-body', HTTP + 'test_all_models_real_http_estimate_create_query_download', [
         ('generation.py', 'payload=normalized)', 'payload=None if kind == "audio" else normalized)')]),
     ('success-exit-on-api-error', HTTP + 'test_refused_estimate_exits_nonzero_and_never_creates', [
         ('cli.py', 'except _results.ApiError as error:\n        _presentation.print_result(error.result)\n        return 1',

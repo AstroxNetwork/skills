@@ -377,7 +377,9 @@ def run_next(workflow_id, *, approval_id, confirmed, progress=None):
                 row["outputs"] = {"assetIds": [x["assetUniqId"] for x in outcome.get("uploaded", [])]}
                 row["state"] = "unknown" if outcome.get("failedOrUnknown") or outcome.get("notAttempted") else "processing"
             elif kind == "download":
-                outcome = downloads.download_task(request["taskId"], request["output"],
+                # The preview binds the expanded, absolute destination. A resumed
+                # process may have a different working directory or home.
+                outcome = downloads.download_task(request["taskId"], item["destination"],
                     index=request.get("index", 0), force=request.get("force", False))
                 row.update(state="succeeded", outputs={"output": outcome["output"], "files": [outcome["output"]]})
             else:

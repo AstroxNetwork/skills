@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.7.0",
+  "version": "0.7.1",
   "files": [
     {
       "source": "holycrab/scripts/holycrab_cli.py",
@@ -16,7 +16,7 @@
       "target": "references/capabilities.json",
       "kind": "runtime",
       "legacyVariable": "CAPABILITIES",
-      "sha256": "9a3b05927bfbc75a13f44bd7ee5483d5f4dc3447b65b6d3b8a5ce477a61bcdee"
+      "sha256": "ab1a5ad0be17c91468d1e550fe0ffcb8db9a72b4bc380ef1ceea3af20d01602d"
     },
     {
       "source": "bin/holycrab",
@@ -32,7 +32,7 @@
       "target": "SKILL.md",
       "kind": "skill",
       "legacyVariable": "SKILL",
-      "sha256": "3ae4b9c16a3605521a5da092f6c47a1e2e7eb71eb456c610b6603535082d4421"
+      "sha256": "d5f03e44cfed19bd0fac479de9d98b43ed6159bf9ccb9e475b74aff28cf5e2d9"
     },
     {
       "source": "holycrab/agents/openai.yaml",
@@ -70,7 +70,7 @@
       "stage": "holycrab_runtime/capabilities.py",
       "target": "holycrab_runtime/capabilities.py",
       "kind": "runtime",
-      "sha256": "43585789f09a5d1e5f3d215c75f1fc888e6aa9fead3b09d4244f667301fd0f64"
+      "sha256": "97779e1a50f7883de3ff60842a37909cde13f81a2bdb2c6e54585437d72f8074"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/cli.py",
@@ -133,7 +133,7 @@
       "stage": "holycrab_runtime/settings.py",
       "target": "holycrab_runtime/settings.py",
       "kind": "runtime",
-      "sha256": "a561ae9baaa4a6e792152725f29ec0ee6bbffabbe1698d83dae9fab2c5bcfdf9"
+      "sha256": "e86a4b4651e31cfb00a15975d666de4bc32d68725995fb6544766eb742d8720c"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/state.py",
@@ -168,7 +168,7 @@
       "stage": "holycrab_runtime/downloads.py",
       "target": "holycrab_runtime/downloads.py",
       "kind": "runtime",
-      "sha256": "4d9fd603d09a4df7cf1a0da7e90ebe43d7d64f9855d07f5d560a82fdb7abc14b"
+      "sha256": "2d092b1bc66c2107b9d9511c24d94832a20625b7686a0fb55fa658e4ab618ba6"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/media.py",
@@ -189,7 +189,7 @@
       "stage": "holycrab_runtime/workflows.py",
       "target": "holycrab_runtime/workflows.py",
       "kind": "runtime",
-      "sha256": "081d378610bc31097b54e145647ea212f880a01e1f7cc4df451697f25783b00b"
+      "sha256": "88e03f7bfcebff993e38802ec6455f70945283690d48b04f5ec53d5e373247f3"
     },
     {
       "source": "holycrab/references/creative/SOURCES.md",
@@ -210,7 +210,7 @@
       "stage": "references/creative/catalog.json",
       "target": "references/creative/catalog.json",
       "kind": "runtime",
-      "sha256": "b56eb79eb7a08843187344a79b8c637825d1fa3680b9fde72ebb8d4b30af4980"
+      "sha256": "a986c80244f24e3b752ce990701ccb0eeaaf885ddb3ae81e7d30883ed4d003e8"
     },
     {
       "source": "holycrab/references/creative/composition.md",
@@ -231,7 +231,7 @@
       "stage": "references/creative/h3.md",
       "target": "references/creative/h3.md",
       "kind": "runtime",
-      "sha256": "44a7afc46320511c43013369d802e054628c853e6a60b6f6303a9f1298e1d8e6"
+      "sha256": "edbebbf73281c90f65518d68e1a9bb27f1ec10bd520f34dea6b81cba812cccb2"
     },
     {
       "source": "holycrab/references/creative/h3/base-en.txt",

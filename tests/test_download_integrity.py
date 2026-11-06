@@ -59,6 +59,24 @@ class DownloadIntegrityTests(unittest.TestCase):
                 self.assertEqual(result["bytes"], 3)
                 self.assertEqual(destination.read_bytes(), b"abc")
 
+    def test_empty_success_response_never_creates_or_replaces_output(self):
+        fixtures = [(b"", b"Content-Length: 0\r\n"),
+                    (b"0\r\n\r\n", b"Transfer-Encoding: chunked\r\n"),
+                    (b"", b"")]
+        for body, header in fixtures:
+            for existing in (False, True):
+                with self.subTest(header=header, existing=existing), tempfile.TemporaryDirectory() as root:
+                    destination = Path(root) / "output.mp4"
+                    if existing:
+                        destination.write_bytes(b"previous complete video")
+                    with self.assertRaisesRegex(SystemExit, "empty file"):
+                        self.download(destination, body, header, force=existing)
+                    if existing:
+                        self.assertEqual(destination.read_bytes(), b"previous complete video")
+                    else:
+                        self.assertFalse(destination.exists())
+                    self.assertEqual(list(Path(root).glob("*.part")), [])
+
     def test_incomplete_chunked_download_never_replaces_output(self):
         with tempfile.TemporaryDirectory() as root:
             destination = Path(root) / "output.mp4"

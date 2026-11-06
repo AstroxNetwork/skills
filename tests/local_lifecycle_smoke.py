@@ -91,6 +91,12 @@ def run_lifecycle(source=SOURCE, baseline=None):
         (config / "config.json").chmod(0o600)
         (config / "attempts.json").write_text('{"reserved":{"attemptId":"reserved","state":"unknown"}}\n')
         (config / "attempts.json").chmod(0o600)
+        # Persist a real workflow through rollback, upgrade and default uninstall.
+        plan = root / "workflow.json"
+        plan.write_text(json.dumps({"title": "Upgrade preservation", "steps": [
+            {"id": "shot", "kind": "video", "request": {"model": "MiniMax-H3",
+             "prompt": "A crab", "duration": 5, "resolution": "768P", "ratio": "16:9"}}]}))
+        command("workflows", "prepare", "--json", "@" + str(plan))
         (library / "user-note.txt").write_text("Keep user file\n")
         saved_config, saved_program = private_records(config), snapshot(prefix)
         saved_skills = snapshot(home)
@@ -124,7 +130,7 @@ def run_lifecycle(source=SOURCE, baseline=None):
             require(not (home / agent / "skills/holycrab/SKILL.md").exists(), "Uninstall left an owned Skill")
         return {"status": "passed", "baseline": old_version, "candidate": version,
                 "checks": ["baseline-install", "failed-upgrade-byte-rollback", "agent-skill-rollback",
-                           "candidate-upgrade", "installed-doctor", "default-uninstall", "private-records-preserved", "user-file-preserved"],
+                           "candidate-upgrade", "installed-doctor", "default-uninstall", "private-records-preserved", "workflow-records-preserved", "user-file-preserved"],
                 "network": "not-used", "temporaryHome": True}
 
 
