@@ -15,13 +15,13 @@
   "publication": {
     "status": "pending"
   },
-  "candidateSha256": "bebad3843fee77eefb243c6285bb391f21eb68dc3068187f0beff712a515c312",
+  "candidateSha256": "ea77915f6152ba1112b7357dfcb8ac684c035ab7eeaae294d64ba169b698b9b8",
   "generateContractCheck": {
     "status": "passed",
     "mode": "local-immutable-main",
     "verifiedMainCommit": "f69df2eafc1844fae0ce1906911322fba88737fc",
-    "verifiedAt": "2026-11-15T06:21:01.505376+00:00",
-    "candidateSha256": "bebad3843fee77eefb243c6285bb391f21eb68dc3068187f0beff712a515c312",
+    "verifiedAt": "2026-11-15T06:27:13.595178+00:00",
+    "candidateSha256": "ea77915f6152ba1112b7357dfcb8ac684c035ab7eeaae294d64ba169b698b9b8",
     "sourceFiles": {
       "client/user-front/src/api/tasks.ts": "f109eaaa610903a9b1a861a9873e753de18d0f73cf91ebd235e1ef32b4eaf08d",
       "client/user-front/src/config/klingModels.ts": "ff171a456c113239320c877f3b28bb00cd67f9b445d26f2b01ff0c7863df2900",
@@ -55,7 +55,7 @@
       "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da"
     },
     "validatorSha256": "75b7149b77fc609af3a1155446ba9b5c20171f4696360c684fc7a5ff386d938f",
-    "evidenceSha256": "41f29d3fa3f2b9bb054192febd8f12a386bd3214f56570ea31f0f99a602dfb11"
+    "evidenceSha256": "2290ba3896fd677048d0b374b07d986fd3d4aff3c57fa81a47222f03ce575031"
   },
   "paidGeneration": {
     "status": "passed",

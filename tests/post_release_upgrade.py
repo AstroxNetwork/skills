@@ -1,4 +1,4 @@
-"""Verify public stable installation and genuine v0.5.0 update, without business API calls."""
+"""Verify public stable installation and genuine earlier-version upgrades, without business API calls."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,19 @@ from datetime import datetime, timezone
 REPO = 'AstroxNetwork/skills'
 VERSION = 'v' + json.loads((Path(__file__).resolve().parents[1] / 'runtime-files.json').read_text(encoding='utf-8'))['version']
 
+def baseline_version(value):
+    if not re.fullmatch(r'v\d+\.\d+\.\d+',value) or tuple(map(int,value[1:].split('.'))) >= tuple(map(int,VERSION[1:].split('.'))):
+        raise argparse.ArgumentTypeError('Baseline must be an earlier stable release tag')
+    return value
+
 def fetch(url):
+    metadata_prefix=f'https://api.github.com/repos/{REPO}/releases/'
+    if os.environ.get('GH_TOKEN') and url.startswith(metadata_prefix):
+        # Only release metadata uses CI's read-only GitHub token. Installer and
+        # artifact downloads stay public; child environments strip both tokens.
+        data=subprocess.check_output(['gh','api',url.removeprefix('https://api.github.com/')],timeout=60)
+        if len(data)>10*1024*1024: raise RuntimeError('Metadata exceeded size bound')
+        return data
     request = urllib.request.Request(url, headers={'User-Agent':'holycrab-public-upgrade-check/' + VERSION})
     with urllib.request.urlopen(request,timeout=60) as response:
         if response.status != 200:
@@ -64,11 +77,12 @@ def verify_inventory(names, models, source):
 class Run:
     def __init__(self, args):
         self.args=args
+        self.baseline=baseline_version(args.baseline_version)
         self.report=args.report.resolve()
         self.report.parent.mkdir(parents=True,exist_ok=True)
         self.root=Path(tempfile.mkdtemp(prefix='holycrab-public-upgrade-',dir=self.report.parent))
         self.data={'status':'running','platform':platform.platform(),'python':sys.version.split()[0],
-                   'version':VERSION,'upgradeMethod':args.upgrade_method,'checks':[],'businessRequests':0,'runnerSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+                   'version':VERSION,'baselineVersion':self.baseline,'upgradeMethod':args.upgrade_method,'checks':[],'businessRequests':0,'runnerSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
         self.environments=[]
         guard=self.root/'guard';guard.mkdir()
         (guard/'sitecustomize.py').write_text('''import sys, urllib.parse
@@ -147,7 +161,7 @@ sys.addaudithook(check)
         latest=json.loads(fetch(f'https://api.github.com/repos/{REPO}/releases/latest'))
         assert latest['tag_name']==VERSION and latest['draft'] is False and latest['prerelease'] is False
         self.data['releaseUrl']=latest['html_url'];self.data['publishedAt']=latest['published_at']
-        self.data['artifacts']={version:bundle(version,self.root/version) for version in ('v0.5.0',VERSION)}
+        self.data['artifacts']={version:bundle(version,self.root/version) for version in (self.baseline,VERSION)}
         for name in ('install.sh','install.ps1'):
             assert (self.root/VERSION/name).read_bytes()==(self.args.source/name).read_bytes()
         self.record('Public stable Release, both installer digests and checksums')
@@ -156,7 +170,7 @@ sys.addaudithook(check)
         old=self.environment('upgrade')
         if os.name=='nt':
             self.command('legacy-shell-prerequisites',['powershell','-NoProfile','-Command', '$ErrorActionPreference = "Stop"; if ($PSVersionTable.PSVersion.Major -ne 5) { throw "Expected Windows PowerShell 5.1" }; Get-Command Get-FileHash | Select-Object Name,Source | ConvertTo-Json'],old)
-        self.install('actual-v050-install','v0.5.0',old)
+        self.install('actual-baseline-install',self.baseline,old)
         self.cli('isolated-key',old,'auth','set-key','--stdin','--no-verify',input='hc-isolated-release-test-not-a-real-key\n')
         config=Path(old['HOLYCRAB_CONFIG_DIR']);plans=config/'upload-plans';plans.mkdir(exist_ok=True)
         (config/'attempts.json').write_text(json.dumps({'retainedAttempt':{'state':'unknown','taskId':'known-task'}}))
@@ -164,15 +178,15 @@ sys.addaudithook(check)
         user_file=Path(old['HOLYCRAB_INSTALL_PREFIX'])/'user-notes.txt';user_file.write_text('keep user data\n')
         watched=[config/'config.json',config/'attempts.json',plans/'retainedPlan.json',user_file]
         for private_file in watched[:-1]: private_file.chmod(0o600)
-        assert json.loads(self.cli('v050-baseline-doctor',old,'doctor','--json'))['ok'] is True
+        assert json.loads(self.cli('baseline-doctor',old,'doctor','--json'))['ok'] is True
         before={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}
-        check=json.loads(self.cli('v050-detects-v060',old,'update','--check'))
+        check=json.loads(self.cli('baseline-detects-latest',old,'update','--check'))
         assert check['updateAvailable'] is True and check['latestVersion']==VERSION[1:]
         assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}, 'Baseline records changed before update'
-        self.record('Actual v0.5.0 discovers ' + VERSION + ' via public Latest')
+        self.record('Actual '+self.baseline+' discovers ' + VERSION + ' via public Latest')
         try:
             if self.args.upgrade_method=='installer':
-                self.install('official-installer-over-v050',VERSION,old)
+                self.install('official-installer-over-baseline',VERSION,old)
             else:
                 self.cli('actual-update',old,'update','--yes',timeout=600)
         except RuntimeError:
@@ -182,7 +196,7 @@ sys.addaudithook(check)
                 self.data['failedUpdateDiagnostics'][label]={'exitCode':probe.returncode,'stdout':probe.stdout,'stderr':probe.stderr}
             raise
         assert before=={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in watched}
-        self.record('Actual v0.5.0 '+self.args.upgrade_method+' preserves credential bytes, recovery records and user files')
+        self.record('Actual '+self.baseline+' '+self.args.upgrade_method+' preserves credential bytes, recovery records and user files')
         self.verify_new('upgraded',old)
 
     def cleanup(self):
@@ -206,6 +220,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source',type=Path,required=True);p.add_argument('--report',type=Path,required=True)
     p.add_argument('--upgrade-method',choices=('update','installer'),default='update')
+    p.add_argument('--baseline-version',type=baseline_version,default='v0.5.0')
     args=p.parse_args();args.source=args.source.resolve();run=Run(args)
     if sys.flags.optimize: raise RuntimeError('Assertions must be enabled for release verification')
     try:
