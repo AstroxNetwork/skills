@@ -14,3 +14,5 @@ Generate additional reference images only when needed and approved. Do not creat
 Review a short storyboard and the executable estimates, upload only confirmed selected files, then submit approved tasks. Query and download completed outputs. Use composition.md to deliver one final file when required. Return the actual local file, which parts completed and any remaining limitations. Do not call separate clips a finished edit.
 
 Example: “Use this product photo for a 15-second vertical ad, no voiceover.” Keep the product appearance, vertical framing and no voiceover; choose one supported generation when sufficient. “Only write the storyboard” ends at the storyboard with no upload or generation.
+
+For Kling, use its reference roles and preserve prompt @IDs. Audio references are prepared by the backend; estimate then submit the video normally, without a separate voice workflow. For Seedance 2.5 drafts, use 480p with draft:true, review the result, then separately estimate and confirm the 1080p final from sourceDraftTaskUniqId. A workflow final can reference the draft step's taskId; keep each stage's cost approval separate.

@@ -12,7 +12,7 @@ foreach ($BuiltinModule in @("Microsoft.PowerShell.Management", "Microsoft.Power
 }
 
 $Repository = "AstroxNetwork/skills"
-$Version = "v0.7.1"
+$Version = "v0.7.2"
 $SourceRef = if ($env:HOLYCRAB_INSTALL_REF) { $env:HOLYCRAB_INSTALL_REF } else { $Version }
 if ($SourceRef -cnotmatch '^(?:[0-9a-f]{40}|v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$') {
     throw "HOLYCRAB_INSTALL_REF must be a full commit hash or stable version tag; installation stopped."
@@ -97,24 +97,24 @@ else:
 
 $ReleaseFiles = @(
     @{ Relative = "holycrab/scripts/holycrab_cli.py"; Name = "holycrab_cli.py"; Sha256 = "ce732cda8548c77b53b513321fad5a52d5c695a02b04a9d5f45b240f302ab2fb" },
-    @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "ab1a5ad0be17c91468d1e550fe0ffcb8db9a72b4bc380ef1ceea3af20d01602d" },
-    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "d5f03e44cfed19bd0fac479de9d98b43ed6159bf9ccb9e475b74aff28cf5e2d9" },
+    @{ Relative = "holycrab/references/capabilities.json"; Name = "capabilities.json"; Sha256 = "139f58d043d74fbc4cdc55337501f3d17fccadf2485d05fbce98fd37ad9c74e1" },
+    @{ Relative = "holycrab/SKILL.md"; Name = "SKILL.md"; Sha256 = "6d1337d2ca6d192b2455123b3557896e7a37064b59fdcc7e8ed8f89bb98ed920" },
     @{ Relative = "holycrab/agents/openai.yaml"; Name = "openai.yaml"; Sha256 = "dbd2fc02cf5625a67f6af88837ed208d8de63e85359dfc923d1c9d465f7557ad" },
     @{ Relative = "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl"; Name = "segno.whl"; Sha256 = "28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7" },
     @{ Relative = "holycrab/scripts/vendor/LICENSE.segno"; Name = "LICENSE.segno"; Sha256 = "de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935" },
 # BEGIN GENERATED RUNTIME DOWNLOADS
-    @{ Relative = "runtime-files.json"; Name = "runtime-files.json"; Sha256 = "74184ef53be85d3b95ea061d663c5fe2e5601d30cc3ac2ec22667f337afd88c9" },
+    @{ Relative = "runtime-files.json"; Name = "runtime-files.json"; Sha256 = "f1a4f3d4e1ad12cc490aea75a8a64ba7a1cfea4a62912fce3de1e6f4ecc1b348" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/__init__.py"; Name = "holycrab_runtime/__init__.py"; Sha256 = "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/capabilities.py"; Name = "holycrab_runtime/capabilities.py"; Sha256 = "97779e1a50f7883de3ff60842a37909cde13f81a2bdb2c6e54585437d72f8074" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/cli.py"; Name = "holycrab_runtime/cli.py"; Sha256 = "5313558d35b510053f5bf67828e0414fe89577f25879c7737aa0c6418fb3b520" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/capabilities.py"; Name = "holycrab_runtime/capabilities.py"; Sha256 = "e3008cf162793354a38f7bd8c4ce6ca2675dd773a5928a1647e2f917788d2012" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/cli.py"; Name = "holycrab_runtime/cli.py"; Sha256 = "078c0272de4c39f9250aa18744b2ac5bdaae6ab86ef86ee3c6edec71b8e6653a" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/exports.py"; Name = "holycrab_runtime/exports.py"; Sha256 = "d0dcf10cb10a719b2d8a5d32510c3a20608d5dd88fb14a4225d2d51d23c4a7c6" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/generation.py"; Name = "holycrab_runtime/generation.py"; Sha256 = "2c77b1a8d617f35e337cb775289f534ca1686b38b5d3a451b817883be3914485" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/generation.py"; Name = "holycrab_runtime/generation.py"; Sha256 = "aa6386cda4f4e344db47829f59cf511a7608001f2c3226a75cd86abedfe94c53" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/lifecycle.py"; Name = "holycrab_runtime/lifecycle.py"; Sha256 = "6e193f20bdd1a6d2782640e513b1d870bf1a2e421a4bb90105e71ef04d7e6e19" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/mcp.py"; Name = "holycrab_runtime/mcp.py"; Sha256 = "cc68e2d8c6c8b80000f7d16656869cd60dec89a702fadfb99e12d24a254a9edf" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/presentation.py"; Name = "holycrab_runtime/presentation.py"; Sha256 = "483c3e830104c2a773341ea395e61f7d005b28c55282a33fdb852118399f671c" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/real_human.py"; Name = "holycrab_runtime/real_human.py"; Sha256 = "36ff3c4c5603647ccbc2e3bc12ccd69f0b83bdedf9a385c168e3b9c74af29e74" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/mcp.py"; Name = "holycrab_runtime/mcp.py"; Sha256 = "ed63c5b6854629dfe3fe26bcdebafd4b96c931e6808fe714b0fa9ebeb936a117" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/presentation.py"; Name = "holycrab_runtime/presentation.py"; Sha256 = "4b1d41e17d4c6ea23121b509bd8bf25518e6dc2e3fd4c050ad0aa5db11823210" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/real_human.py"; Name = "holycrab_runtime/real_human.py"; Sha256 = "7ee0f3574e7f3f04ee892753e8618685e4018462dc67da63c056ed1257f66fc4" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/results.py"; Name = "holycrab_runtime/results.py"; Sha256 = "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/settings.py"; Name = "holycrab_runtime/settings.py"; Sha256 = "e86a4b4651e31cfb00a15975d666de4bc32d68725995fb6544766eb742d8720c" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/settings.py"; Name = "holycrab_runtime/settings.py"; Sha256 = "16de5de19dbd35d15dd1011bc1a005d89a7bfcf36da720232404a14c7c0d884b" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/state.py"; Name = "holycrab_runtime/state.py"; Sha256 = "c87236d05ecdcefa64249aa3cf3fa4003918a887751f5469386531fefa330946" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/tasks.py"; Name = "holycrab_runtime/tasks.py"; Sha256 = "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/transport.py"; Name = "holycrab_runtime/transport.py"; Sha256 = "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432" },
@@ -122,23 +122,23 @@ $ReleaseFiles = @(
     @{ Relative = "holycrab/scripts/holycrab_runtime/downloads.py"; Name = "holycrab_runtime/downloads.py"; Sha256 = "2d092b1bc66c2107b9d9511c24d94832a20625b7686a0fb55fa658e4ab618ba6" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/media.py"; Name = "holycrab_runtime/media.py"; Sha256 = "eb15a22314ba1be354b47eddfcc66884e8deb9379cfd6feedd7259740acdf6bd" },
     @{ Relative = "holycrab/scripts/holycrab_runtime/skills.py"; Name = "holycrab_runtime/skills.py"; Sha256 = "c704273a473ca17a599d63e452cf56ffb11ca2cf92fc0b54caae93db2278900e" },
-    @{ Relative = "holycrab/scripts/holycrab_runtime/workflows.py"; Name = "holycrab_runtime/workflows.py"; Sha256 = "88e03f7bfcebff993e38802ec6455f70945283690d48b04f5ec53d5e373247f3" },
+    @{ Relative = "holycrab/scripts/holycrab_runtime/workflows.py"; Name = "holycrab_runtime/workflows.py"; Sha256 = "fe7d30cdeb769e6ad4bd8aa14d4d9a5931a648cbb6137cada7ffe7ce1e15c383" },
     @{ Relative = "holycrab/references/creative/SOURCES.md"; Name = "references/creative/SOURCES.md"; Sha256 = "c3410ef2b72003d9f6bfe0ca5d07d6afa91f0352aa21f27c6e9b672b5f33c814" },
     @{ Relative = "holycrab/references/creative/audio.md"; Name = "references/creative/audio.md"; Sha256 = "f6226800c0f6868188538d7db08e8cabbfbba938d5633e5e4f923fcc123c850a" },
-    @{ Relative = "holycrab/references/creative/catalog.json"; Name = "references/creative/catalog.json"; Sha256 = "a986c80244f24e3b752ce990701ccb0eeaaf885ddb3ae81e7d30883ed4d003e8" },
+    @{ Relative = "holycrab/references/creative/catalog.json"; Name = "references/creative/catalog.json"; Sha256 = "cc0279ed138d3afd7f8130f480621c6731de83ea84a71c585693ff382b7fd602" },
     @{ Relative = "holycrab/references/creative/composition.md"; Name = "references/creative/composition.md"; Sha256 = "6abb8c32e9c4cae7365774b397860374c98117c1b2746abaeedb1230acf706df" },
-    @{ Relative = "holycrab/references/creative/execution.md"; Name = "references/creative/execution.md"; Sha256 = "57f30155557e1d847954d33f847c3e641881743113bb76f9e0483649d82664bf" },
+    @{ Relative = "holycrab/references/creative/execution.md"; Name = "references/creative/execution.md"; Sha256 = "56a232e01c5034287202e84981653108398647802308d7dc3f76e163ded10bc4" },
     @{ Relative = "holycrab/references/creative/h3.md"; Name = "references/creative/h3.md"; Sha256 = "edbebbf73281c90f65518d68e1a9bb27f1ec10bd520f34dea6b81cba812cccb2" },
     @{ Relative = "holycrab/references/creative/h3/base-en.txt"; Name = "references/creative/h3/base-en.txt"; Sha256 = "2cfebc096a6e08370f288d468d90b60f7f9bcb938f94bf090816e910e48e75fc" },
     @{ Relative = "holycrab/references/creative/h3/ref-en.txt"; Name = "references/creative/h3/ref-en.txt"; Sha256 = "1e574f356716ad55612247ffb7bbccbcdb484ad96599d63c7dca1af186b1fab7" },
-    @{ Relative = "holycrab/references/creative/image.md"; Name = "references/creative/image.md"; Sha256 = "25ab6ce720058b687272420be0124ac20be8c19b7f6cc68a886a6d9e431e9699" },
+    @{ Relative = "holycrab/references/creative/image.md"; Name = "references/creative/image.md"; Sha256 = "7ea959cb81c2cfec929c8cd10ead86bda7be54c572403aba567ea2e751a9ea28" },
     @{ Relative = "holycrab/references/creative/seedance.md"; Name = "references/creative/seedance.md"; Sha256 = "c611181f833a4bff646195abed155728a46977e9a7a444231b616b6d2b3688fe" },
     @{ Relative = "holycrab/references/creative/seedance/advanced-techniques.md"; Name = "references/creative/seedance/advanced-techniques.md"; Sha256 = "ba96d48c29eb211328894b885e091137a874ea0b71bff6dd49c822340ed0d54a" },
     @{ Relative = "holycrab/references/creative/seedance/checklist-and-limits.md"; Name = "references/creative/seedance/checklist-and-limits.md"; Sha256 = "182be5d7a2047caa5dd25651dc4c01eda4cafd9ec916ee13838d4e6b1a599f72" },
     @{ Relative = "holycrab/references/creative/seedance/editing-and-extension.md"; Name = "references/creative/seedance/editing-and-extension.md"; Sha256 = "7aa000ebc123da8696e9f843725d4f38fa218221783702b1a1996a64eb87e8b4" },
     @{ Relative = "holycrab/references/creative/seedance/long-video-and-timing.md"; Name = "references/creative/seedance/long-video-and-timing.md"; Sha256 = "3234541b0927f62373692c93bc30e4c53d1abec2b16cf6a1d4d8efc7b780bbfd" },
     @{ Relative = "holycrab/references/creative/seedance/multi-reference.md"; Name = "references/creative/seedance/multi-reference.md"; Sha256 = "f0acf5b0d651b5bab2d4104f4f198df71fbc90ef349742f28cc1a681b2e4f070" },
-    @{ Relative = "holycrab/references/creative/video.md"; Name = "references/creative/video.md"; Sha256 = "0ef629ff1447b8b358e8b118885677c788ec39a1ec3cfda5019cacb60bf43599" },
+    @{ Relative = "holycrab/references/creative/video.md"; Name = "references/creative/video.md"; Sha256 = "ddd2dcc272ed08c5956818233ed05570ff6135d241d73e6e5a3c62f99cbf0c68" },
     @{ Relative = "holycrab/references/creative/workflows.md"; Name = "references/creative/workflows.md"; Sha256 = "2b613be0dfd7bde015a7c29d541a3db9ccbee26eb175813aea818e9d0916d9d0" }
 # END GENERATED RUNTIME DOWNLOADS
 )

@@ -83,6 +83,9 @@ def all_models() -> list[dict[str, Any]]:
             if not isinstance(schema, dict):
                 raise SystemExit(f"HolyCrab capability schema is missing: {schema_ref}")
             resolved["requestSchema"] = schema
+            final_ref = resolved.pop("finalRequestSchemaRef", None)
+            if final_ref:
+                resolved["finalRequestSchema"] = schemas[final_ref]
             output.append(resolved)
     if cache is not None:
         cache["models"] = output
@@ -163,6 +166,11 @@ def _validate_schema_value(name: str, value: Any, rule: dict[str, Any]) -> None:
 
 
 def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
+    if kind == "video" and "sourceDraftTaskUniqId" in payload:
+        _validate_schema_value("request", payload, load_capabilities()["requestSchemas"]["seedanceDraftFinal"])
+        if not re.fullmatch(r"[A-Za-z0-9]{1,64}", payload["sourceDraftTaskUniqId"]):
+            raise SystemExit("Invalid source draft task ID")
+        return
     if kind == "audio":
         model = next((item for item in all_models() if item.get("kind") == "audio"), None)
     else:
@@ -198,6 +206,45 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
             if sources[0] != "assetId" and "type" in reference:
                 raise SystemExit("Use type only with an audio reference assetId")
 
+    model_id = model["id"]
+    if model_id.startswith("kling-"):
+        prompt = payload["prompt"].strip()
+        english = sum(ord(c) < 128 for c in prompt)
+        if not prompt or english * 11000 + (len(prompt)-english) * 26000 > 286000000:
+            raise SystemExit("Kling prompt exceeds weighted length limit")
+        refs = payload.get("references", [])
+        ids = [r["id"].strip() for r in refs]
+        if len(set(ids)) != len(ids) or any(not all(c.isalpha() or c.isdecimal() or c in "_-" for c in i) or len(i)>64 for i in ids):
+            raise SystemExit("Kling reference IDs must be unique letters, numbers, underscores or hyphens")
+        if any(not r["assetId"].strip() for r in refs): raise SystemExit("Empty asset ID")
+        images = sum(r["type"] in {"first_frame","middle_frame","last_frame","refer_image"} for r in refs)
+        videos = sum(r["type"] in {"feature_video","base_video"} for r in refs)
+        voices = sum(r["type"] == "voice" for r in refs)
+        if len(refs)>15 or images>10 or videos>5 or voices>3 or any(sum(r["type"]==role for r in refs)>1 for role in ["first_frame","last_frame","base_video"]):
+            raise SystemExit("Kling reference count exceeds limit")
+        if payload.get("audio")=="original" and (not videos or voices): raise SystemExit("Original audio requires video and excludes voice references")
+    if payload.get("draft") and (model_id != "dreamina-seedance-2-5-260628" or payload.get("resolution") != "480p"):
+        raise SystemExit("Draft requires Seedance 2.5 at 480p")
+    if model_id in {"MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"}:
+        size = payload.get("size", "auto")
+        fixed = size != "auto"
+        if fixed:
+            match = re.fullmatch(r"([0-9]{1,8})x([0-9]{1,8})", size)
+            if not match: raise SystemExit("Image size must be auto or WIDTHxHEIGHT")
+            w,h = map(int,match.groups())
+            if not 655360 <= w*h <= 20000000 or min(w,h)<=0 or max(w,h)>3*min(w,h): raise SystemExit("MiniMax image size outside limits")
+        else:
+            ratio=payload.get("aspectRatio", "auto")
+            if ratio != "auto":
+                match=re.fullmatch(r"([0-9]{1,3}):([0-9]{1,3})",ratio)
+                if not match: raise SystemExit("Invalid aspect ratio")
+                x,y=map(int,match.groups())
+                if not (1<=x<=300 and 1<=y<=300) or max(x,y)>3*min(x,y): raise SystemExit("Invalid aspect ratio")
+        if max(len(payload.get("imageAssetIds", [])), len(payload.get("imageUrls", []))) > 16: raise SystemExit("At most 16 reference images")
+        edit_mode=bool(payload.get("imageAssetIds") or payload.get("imageUrls"))
+        if payload.get("imageAssetIds") and payload.get("imageUrls"): raise SystemExit("Use imageAssetIds or imageUrls, not both")
+        if payload.get("disablePromptEnhanced") and (edit_mode or (not fixed and payload.get("aspectRatio","auto")=="auto")): raise SystemExit("Disabling enhancement requires text-to-image with concrete dimensions or ratio")
+        return
     if kind == "image":
         size = payload.get("size")
         if isinstance(size, str) and size:
@@ -244,10 +291,35 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
             raise SystemExit("Berry prompt must not be blank")
 
 
-def normalize_generation_request(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
+def normalize_generation_request(kind: str, payload: dict[str, Any], *, for_estimate: bool = False) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise SystemExit("Generation request must be an object")
     normalized = dict(payload)
+    if kind == "video" and "sourceDraftTaskUniqId" in normalized:
+        validate_generation_request(kind, normalized)
+        return normalized
+    if kind == "image" and str(normalized.get("model", "")).lower() in {"minimax-h3-image", "minimax-h3-image-highspeed"}:
+        normalized["model"] = "MiniMax-H3-Image" + ("-Highspeed" if normalized["model"].lower().endswith("highspeed") else "")
+        normalized.setdefault("size", "auto")
+        normalized.setdefault("n", 1)
+        normalized.setdefault("outputFormat", "jpeg")
+        normalized["outputFormat"] = normalized["outputFormat"].lower().replace("jpg", "jpeg")
+        if "resolution" in normalized: normalized["resolution"] = normalized["resolution"].lower()
+        if normalized["size"] != "auto":
+            normalized.pop("aspectRatio", None); normalized.pop("area", None)
+        normalized["prompt"] = normalized.get("prompt", "").strip()
+        if for_estimate and not normalized["prompt"]:
+            checked = dict(normalized, prompt="credit-estimate")
+            validate_generation_request(kind, checked)
+            return normalized
+    if kind == "image" and for_estimate and str(normalized.get("model", "")).startswith("seedream-") and not normalized.get("prompt"):
+        validate_generation_request(kind, dict(normalized, prompt="credit-estimate"))
+        return normalized
+    if kind == "video" and str(normalized.get("model", "")).startswith("kling-"):
+        normalized["model"] = normalized["model"].strip()
+        for field in ("prompt", "ratio", "audio"):
+            if isinstance(normalized.get(field), str): normalized[field] = normalized[field].strip()
+        if isinstance(normalized.get("resolution"), str): normalized["resolution"] = normalized["resolution"].strip().lower()
     if kind == "video":
         model_id = normalized.get("model")
         if isinstance(model_id, str) and model_id.strip().lower().startswith("berry-"):

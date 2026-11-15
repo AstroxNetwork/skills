@@ -25,7 +25,7 @@ class MiniMax071Tests(unittest.TestCase):
     def test_release_version_matches_installers_and_runtime_inventory(self):
         root = Path(__file__).resolve().parents[1]
         from holycrab_runtime.settings import VERSION
-        self.assertEqual(VERSION, '0.7.1')
+        self.assertEqual(VERSION, '0.7.2')
         self.assertEqual(json.loads((root/'runtime-files.json').read_text())['version'], VERSION)
         self.assertIn('VERSION=v'+VERSION, (root/'install.sh').read_text())
         self.assertIn('$Version = "v'+VERSION+'"', (root/'install.ps1').read_text())

@@ -223,7 +223,28 @@ def estimate(workflow_id):
                 bind_account(value)
                 request = capabilities.normalize_generation_request(kind, request)
                 item["request"] = request
-                item["credits"] = generation.estimate_generation(kind, request)["estimate"]["frozenCredit"]
+                model = request.get("model")
+                ids = []
+                for field in ("imageAssetIds", "videoAssetIds", "audioAssetIds"):
+                    ids.extend(request.get(field, []))
+                for field in ("firstFrameAssetId", "lastFrameAssetId", "sourceVideoAssetId"):
+                    if request.get(field): ids.append(request[field])
+                ids.extend(ref["assetId"] for ref in request.get("references", []) if isinstance(ref, dict) and "assetId" in ref)
+                if model:
+                    assets = [(asset, real_human.get_asset(asset, model=model)) for asset in dict.fromkeys(ids)]
+                    for asset, details in assets:
+                        if not details.get("ready") and details.get("step") in {"FAILED", "DELETING"}:
+                            reason = details.get("error") or details["step"]
+                            raise ValueError(f"Asset {asset} is unavailable for {model}: {reason}")
+                    if any(not details.get("ready") for _, details in assets):
+                        continue
+                try:
+                    item["credits"] = generation.estimate_generation(kind, request)["estimate"]["frozenCredit"]
+                except results.ApiError as error:
+                    issues = error.result.get("errors", [])
+                    if issues and all(issue.get("retryable") is True for issue in issues):
+                        continue
+                    raise
             elif kind == "upload":
                 bind_account(value)
                 if set(request) - {"files", "groupUniqId", "durationSeconds"}:
@@ -289,8 +310,8 @@ def _reconcile(value):
             if ids:
                 assets = [real_human.get_asset(asset_id) for asset_id in ids]
                 row["assets"] = assets
-                row["state"] = "succeeded" if all(x.get("ready") is True for x in assets) else "processing"
-                if any(x.get("step") == "FAILED" for x in assets):
+                row["state"] = "succeeded" if all((x.get("url") or x.get("ready")) and x.get("step") != "DELETING" for x in assets) else "processing"
+                if any(x.get("step") == "DELETING" for x in assets):
                     row["state"] = "failed"
             else:
                 row["state"] = "unknown"

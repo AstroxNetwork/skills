@@ -25,9 +25,11 @@ METADATA_FIELDS = ("duration", "mediaFormat", "metadataStatus", "metadataErrorCo
 # Independently audited source/description pair. These are deliberately conservative:
 # ANY source-rule change requires re-audit, not automatic acceptance of a changed bound.
 # This gate does not execute a second copy of the server's material policy.
-AUDITED_RULE_SOURCES = {'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java': '473ac3d96abc2f5b3c73f2874c6f00e768686a227e7faa0332facdc729f1ad73', 'server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java': '3e9bb56da7dceb77b910b797512af8e5fb64747e0846e2b758b97a46820bdc2f', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java': '4b17780a54b0d43df341d1f275ab56e26af1d0da656f607c55383e0f2c02bc56', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java': '10372ad0623fac7b6b77fe25641c000e912c04fae8d7223360e86f8e5f7b17ae'}
-AUDITED_DESCRIPTION_SHA256 = "2a0cc34c2631fbaec97f1b7a5ca6711cd42766b1aedbfa49245152b616b281b8"
+AUDITED_RULE_SOURCES = {'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java': 'ca7b5dd01b7f2dbf6ea0219797807877ee485389b3ec1ea0f9b7726958dafcbd', 'server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java': '7af05ff649197d1ebb2ee7802a138dd193170a084361dbbe6b2c9cfe69dc43ee', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java': '8fe0bcf751af9504eab114ae164b5363554d59833270916639bcd99940f41adf', 'server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java': '54d6d34908e1b45d96d3b826595fbce5597a020bbdd1c4f7f3d18c8fc5e0185f', 'server/user/src/main/java/com/astrox/seedance/user/service/KlingGenerationRequestValidator.java': '4ebcfce89a4b191d8b0d5096f4d416917be718d8797c4b47644ee3f51b85c983', 'server/user/src/main/java/com/astrox/seedance/user/service/KlingAssetValidator.java': '54555357cb2acc9cfc0a1d86368c237bf9b20bfb018f1e026853eab56ce8009a', 'server/user/src/main/java/com/astrox/seedance/user/service/MinimaxImageRequestValidator.java': '01b1c6baf83ba28cedd65951cf2d83d2a62395cb4126502498208cb851901015', 'server/user/src/main/java/com/astrox/seedance/user/service/DraftFinalGenerationService.java': '4368e6ff1a8ef9447a7e22202b7cd1ae9a8765f03b5c1059d99e0ebaabd3a699'}
+AUDITED_DESCRIPTION_SHA256 = "dd0a8b1b57068fd556b44edb559d4ccb39a718f356b260ccec76e2305b076953"
 
+
+SOURCE_FILES = tuple(dict.fromkeys(SOURCE_FILES + tuple(AUDITED_RULE_SOURCES)))
 
 def validate_audited_material_pair(root: Path, manifest: dict) -> list[str]:
     errors = []

@@ -111,13 +111,13 @@ jobs:
       - name: Install from the checked-out release source
         env:
           HOLYCRAB_NO_UPDATE_CHECK: "1"
-          HOLYCRAB_EXPECTED_VERSION: "0.7.1"
           HOLYCRAB_INSTALL_SOURCE_DIR: ${{ github.workspace }}
           HOLYCRAB_INSTALL_MCP: "0"
           HOLYCRAB_INSTALL_AGENTS: codex,claude
           HOLYCRAB_INSTALL_PREFIX: ${{ runner.temp }}/holycrab-prefix
           HOLYCRAB_CONFIG_DIR: ${{ runner.temp }}/holycrab-config
         run: |
+          HOLYCRAB_EXPECTED_VERSION="$(python3 -c 'import json; print(json.load(open("runtime-files.json"))["version"])')"
           sh install.sh
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
@@ -160,7 +160,14 @@ jobs:
       - name: Complete portable Windows tests without blanket module skips
         run: python tools/run_checks.py --report build/validation/report.json
       - name: Verify recorded contract fingerprint on native Windows
-        run: python tools/verify_release_acceptance.py v0.7.1 --contract-only
+        shell: python
+        run: |
+          import json
+          import subprocess
+          import sys
+          with open("runtime-files.json", encoding="utf-8") as source:
+              version = "v" + json.load(source)["version"]
+          subprocess.run([sys.executable, "tools/verify_release_acceptance.py", version, "--contract-only"], check=True)
       - name: Actual installed HTTP workflows
         if: always()
         run: python tools/run_checks.py --unit-worker build/validation/http-results.json --test-name tests.adversarial.check_http_flows

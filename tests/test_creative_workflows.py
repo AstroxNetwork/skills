@@ -59,6 +59,28 @@ class CreativeWorkflowTests(unittest.TestCase):
         self.assertEqual(quote["deferredSteps"], ["download"])
         create.assert_not_called()
 
+    def test_model_asset_failures_are_reported_and_only_processing_is_deferred(self):
+        plan = {"title": "References", "steps": [{"id": "video", "kind": "video", "request": {
+            "model": "dreamina-seedance-2-5-260628", "prompt": "crab", "duration": 4,
+            "resolution": "480p", "imageAssetIds": ["pending", "failed"]}}]}
+        key = w.prepare(plan)["workflowId"]
+        with patch.object(real_human, "get_asset", side_effect=[{"ready": False, "step": "PROCESSING"},
+                {"ready": False, "step": "FAILED", "error": "Ark rejected image"}]), \
+                patch.object(generation, "estimate_generation") as quote:
+            with self.assertRaisesRegex(ValueError, "failed.*Ark rejected image"):
+                w.estimate(key)
+            quote.assert_not_called()
+        with patch.object(real_human, "get_asset", return_value={"ready": False, "step": "PROCESSING"}), \
+                patch.object(generation, "estimate_generation") as quote:
+            self.assertEqual(w.estimate(key)["deferredSteps"], ["video"])
+            quote.assert_not_called()
+        plan["steps"][0]["kind"] = "image"
+        plan["steps"][0]["request"] = {"model": "MiniMax-H3-Image", "prompt": "crab", "imageAssetIds": ["failed"]}
+        key = w.prepare(plan)["workflowId"]
+        with patch.object(real_human, "get_asset", return_value={"ready": True, "step": "FAILED"}), \
+                patch.object(generation, "estimate_generation", return_value={"estimate": {"frozenCredit": 3}}):
+            self.assertEqual(w.estimate(key)["readyCredits"], 3)
+
     def test_download_uses_approved_destination_after_working_directory_or_home_change(self):
         before, after = self.root.resolve() / "before", self.root.resolve() / "after"
         before.mkdir(); after.mkdir()
