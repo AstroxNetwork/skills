@@ -669,7 +669,7 @@ Berry 生成：`POST /api/tasks/mulerouter-generation`；估算：`POST /api/tas
 Berry 参考视频与输出总时长不得超过 30 秒；具体大小、格式、数量、组合和元数据规则由服务端实测判定。素材规则说明是版本快照，不是本地可用性保证。
 
 
-## MiniMax H3 Highspeed and Lite (CLI 0.7.1)
+## MiniMax H3 Highspeed and Lite (CLI 0.7.2)
 
 - `MiniMax-H3-Highspeed`: 768P, integer duration 4–15 seconds.
 - `MiniMax-H3-Lite`: 480P or 768P, integer duration 4–15 seconds.
@@ -684,3 +684,21 @@ Example request for `generation_estimate` with kind `video` (creation requires s
 ```
 
 For Highspeed use `MiniMax-H3-Highspeed` and `768P`. Query `capability_get` before choosing parameters; prices come from the service estimate.
+
+## v0.7.2 models and drafts
+
+Kling models `kling-4.0` (720p/1080p, integer 3–30 seconds) and `kling-4.0-flash` (720p, integer 3–20 seconds) use `references: [{type, assetId, id}]`. IDs are unique letters/numbers/underscore/hyphen, up to 64 characters. Use `@id` in the prompt. Standard supports first_frame, middle_frame, last_frame, refer_image, feature_video, base_video and voice; Flash excludes middle_frame, last_frame and voice. Maximum 10 images, 5 videos, 3 voices and 15 references total; first_frame, last_frame and base_video each allow one. `audio` defaults to native; original requires video and excludes voices. Prompt allowance is ASCII/26000 + other Unicode code points/11000 <= 1. All media must be owned account assets. Voice preparation is handled by the backend, including during estimates; users only submit and query the video task.
+
+```json
+{"model":"kling-4.0","prompt":"The person in @portrait speaks using @voice","resolution":"720p","ratio":"16:9","duration":5,"references":[{"type":"refer_image","assetId":"IMAGE_ID","id":"portrait"},{"type":"voice","assetId":"AUDIO_ID","id":"voice"}]}
+```
+
+`MiniMax-H3-Image` and `MiniMax-H3-Image-Highspeed` use the existing image estimate/create commands. Prompt supports 1–32000 Unicode code points; estimates may omit it. `n` is 1–10 (default 1); it creates that many images in one task, so do not also multiply workflow steps. `size:auto` supports aspectRatio auto or X:Y within 1:3–3:1 and resolution 1k/2k/4k (or area 1K/2K/4K). Omitting both resolution and area retains the backend default. Fixed WIDTHxHEIGHT takes precedence over aspectRatio/area: 655360–20000000 pixels, ratio 1:3–3:1, no dimension-multiple rule. Formats: jpeg/png/webp. Use up to 16 owned imageAssetIds OR imageUrls, never both. disablePromptEnhanced defaults false; true requires text-to-image with concrete size or ratio. Quotes are reservations, not final charge caps.
+
+```json
+{"model":"MiniMax-H3-Image","prompt":"A red crab on a white background","size":"auto","aspectRatio":"1:1","resolution":"2k","outputFormat":"png","n":1}
+```
+
+Seedance 2.5 supports `draft:true` at 480p. Ordinary 480p is not a draft. To create a final, use `{"sourceDraftTaskUniqId":"TASK_ID","resolution":"1080p"}` with video estimate/create. The CLI supplies the approved expectedCredit on submission; do not copy prompt, model or materials into this request. Drafts and finals are billed separately. Tasks expose draft, draftExpiresAt, sourceDraftTaskUniqId and draftHdTaskUniqId. Expiry and eligibility are determined by the backend. Query existing linked finals rather than recreating them; never automatically resubmit an uncertain request.
+
+`holycrab assets get ID --model MODEL` and `assets wait ID --model MODEL` check model-specific availability. Seedance requires Ark approval. Other models may use pending/rejected Ark assets with valid media; the generation estimate still checks ownership, metadata and file limits. Without --model, the legacy Ark readiness behavior is retained.

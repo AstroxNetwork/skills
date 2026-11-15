@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "source": {
     "name": "HolyCrab Public Capability Registry",
-    "version": "2026-11-06",
-    "publishedAt": "2026-11-06"
+    "version": "2026-11-15",
+    "publishedAt": "2026-11-15"
   },
   "requestSchemas": {
     "seedanceVideo": {
@@ -93,6 +93,9 @@
         },
         "lastFrameAssetId": {
           "type": "string"
+        },
+        "draft": {
+          "type": "boolean"
         }
       }
     },
@@ -765,6 +768,337 @@
           "type": "string"
         }
       }
+    },
+    "klingVideo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "prompt",
+        "resolution",
+        "ratio",
+        "duration"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "kling-4.0"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "720p",
+            "1080p"
+          ]
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "21:9",
+            "16:9",
+            "9:16",
+            "1:1",
+            "adaptive"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 30
+        },
+        "audio": {
+          "type": "string",
+          "enum": [
+            "native",
+            "original"
+          ]
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "assetId",
+              "id"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "first_frame",
+                  "middle_frame",
+                  "last_frame",
+                  "refer_image",
+                  "feature_video",
+                  "base_video",
+                  "voice"
+                ]
+              },
+              "assetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      }
+    },
+    "klingFlashVideo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "prompt",
+        "resolution",
+        "ratio",
+        "duration"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "kling-4.0-flash"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "720p"
+          ]
+        },
+        "ratio": {
+          "type": "string",
+          "enum": [
+            "21:9",
+            "16:9",
+            "9:16",
+            "1:1",
+            "adaptive"
+          ]
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 20
+        },
+        "audio": {
+          "type": "string",
+          "enum": [
+            "native",
+            "original"
+          ]
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "assetId",
+              "id"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "first_frame",
+                  "refer_image",
+                  "feature_video",
+                  "base_video"
+                ]
+              },
+              "assetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          }
+        }
+      }
+    },
+    "minimaxImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "prompt"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "MiniMax-H3-Image"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32000
+        },
+        "size": {
+          "type": "string"
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "1k",
+            "2k",
+            "4k"
+          ]
+        },
+        "aspectRatio": {
+          "type": "string"
+        },
+        "area": {
+          "type": "string",
+          "enum": [
+            "1K",
+            "2K",
+            "4K"
+          ]
+        },
+        "outputFormat": {
+          "type": "string",
+          "enum": [
+            "jpeg",
+            "png",
+            "webp"
+          ]
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "disablePromptEnhanced": {
+          "type": "boolean"
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "minimaxImageHighspeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "prompt"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "MiniMax-H3-Image-Highspeed"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32000
+        },
+        "size": {
+          "type": "string"
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "1k",
+            "2k",
+            "4k"
+          ]
+        },
+        "aspectRatio": {
+          "type": "string"
+        },
+        "area": {
+          "type": "string",
+          "enum": [
+            "1K",
+            "2K",
+            "4K"
+          ]
+        },
+        "outputFormat": {
+          "type": "string",
+          "enum": [
+            "jpeg",
+            "png",
+            "webp"
+          ]
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "disablePromptEnhanced": {
+          "type": "boolean"
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "seedanceDraftFinal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceDraftTaskUniqId",
+        "resolution"
+      ],
+      "properties": {
+        "sourceDraftTaskUniqId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "resolution": {
+          "type": "string",
+          "const": "1080p"
+        },
+        "expectedCredit": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     }
   },
   "videoModels": [
@@ -1216,7 +1550,10 @@
       },
       "rules": {
         "framesAndReferencesMutuallyExclusive": true
-      }
+      },
+      "draftSupported": true,
+      "draftResolution": "480p",
+      "finalRequestSchemaRef": "seedanceDraftFinal"
     },
     {
       "id": "MiniMax-H3",
@@ -2293,6 +2630,91 @@
           }
         }
       }
+    },
+    {
+      "id": "kling-4.0",
+      "name": "kling-4.0",
+      "requestSchemaRef": "klingVideo",
+      "resolutions": [
+        "720p",
+        "1080p"
+      ],
+      "ratios": [
+        "21:9",
+        "16:9",
+        "9:16",
+        "1:1",
+        "adaptive"
+      ],
+      "durationSeconds": {
+        "min": 3,
+        "max": 30
+      },
+      "referenceLimits": {
+        "images": 10,
+        "videos": 5,
+        "audio": 3,
+        "total": 15
+      },
+      "materialRules": {
+        "images": {
+          "maxBytes": 31457280
+        },
+        "videos": {
+          "maxBytes": 314572800
+        },
+        "audio": {
+          "maxBytes": 52428800,
+          "minDurationSeconds": 5,
+          "maxDurationSeconds": 30
+        }
+      },
+      "rules": {
+        "arkReviewRequired": false,
+        "voicePreparationManagedByServer": true
+      }
+    },
+    {
+      "id": "kling-4.0-flash",
+      "name": "kling-4.0-flash",
+      "requestSchemaRef": "klingFlashVideo",
+      "resolutions": [
+        "720p"
+      ],
+      "ratios": [
+        "21:9",
+        "16:9",
+        "9:16",
+        "1:1",
+        "adaptive"
+      ],
+      "durationSeconds": {
+        "min": 3,
+        "max": 20
+      },
+      "referenceLimits": {
+        "images": 10,
+        "videos": 5,
+        "audio": 0,
+        "total": 15
+      },
+      "materialRules": {
+        "images": {
+          "maxBytes": 31457280
+        },
+        "videos": {
+          "maxBytes": 314572800
+        },
+        "audio": {
+          "maxBytes": 52428800,
+          "minDurationSeconds": 5,
+          "maxDurationSeconds": 30
+        }
+      },
+      "rules": {
+        "arkReviewRequired": false,
+        "voicePreparationManagedByServer": true
+      }
     }
   ],
   "imageModels": [
@@ -2558,6 +2980,80 @@
         "heic",
         "heif"
       ]
+    },
+    {
+      "id": "MiniMax-H3-Image",
+      "name": "MiniMax-H3-Image",
+      "requestSchemaRef": "minimaxImage",
+      "sizes": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "outputFormatSupported": true,
+      "customSizeSupported": true,
+      "customSize": {
+        "minPixels": 655360,
+        "maxPixels": 20000000
+      },
+      "referenceLimits": {
+        "images": 16
+      },
+      "materialRules": {
+        "images": {
+          "maxBytes": 67108864,
+          "minDimension": 128,
+          "maxDimension": 8192,
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif"
+          ]
+        }
+      },
+      "rules": {
+        "arkReviewRequired": false
+      }
+    },
+    {
+      "id": "MiniMax-H3-Image-Highspeed",
+      "name": "MiniMax-H3-Image-Highspeed",
+      "requestSchemaRef": "minimaxImageHighspeed",
+      "sizes": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "outputFormatSupported": true,
+      "customSizeSupported": true,
+      "customSize": {
+        "minPixels": 655360,
+        "maxPixels": 20000000
+      },
+      "referenceLimits": {
+        "images": 16
+      },
+      "materialRules": {
+        "images": {
+          "maxBytes": 67108864,
+          "minDimension": 128,
+          "maxDimension": 8192,
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "heic",
+            "heif"
+          ]
+        }
+      },
+      "rules": {
+        "arkReviewRequired": false
+      }
     }
   ],
   "audioModels": [

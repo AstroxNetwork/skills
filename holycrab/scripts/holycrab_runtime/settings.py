@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 
 
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
@@ -80,6 +80,7 @@ MANAGED_SKILL_FILES = ('SKILL.md', 'references/capabilities.json', 'agents/opena
 
 
 GENERATION_ROUTES = {
+    "klingVideo": ("/api/tasks/kling-generation/freeze-credit", "/api/tasks/kling-generation"),
     "seedanceVideo": ("/api/tasks/generation/freeze-credit", "/api/tasks/generation"),
     "minimaxVideo": (
         "/api/tasks/minimax-generation/freeze-credit",
@@ -105,6 +106,9 @@ GENERATION_ROUTES = {
 
 
 MODEL_GENERATION_ROUTES = {
+    "kling-4.0": "klingVideo", "kling-4.0-flash": "klingVideo",
+    "MiniMax-H3-Image": "imageGeneration", "MiniMax-H3-Image-Highspeed": "imageGeneration",
+    "klingVideo": ("/api/tasks/kling-generation/freeze-credit", "/api/tasks/kling-generation"),
     "berry-1.0": "mulerouterVideo",
     "berry-1.0-pro": "mulerouterVideo",
     "berry-1.0-turbo": "mulerouterVideo",
@@ -181,6 +185,8 @@ PUBLIC_ACCOUNT_FIELDS = ("username", "nickname", "credit", "disabled_models")
 
 
 PUBLIC_TASK_FIELDS = (
+    "draft", "draftExpiresAt", "sourceDraftTaskUniqId", "draftHdTaskUniqId",
+    "imageSize", "imageResolution", "imageAspectRatio", "imageOutputFormat",
     "uniqId",
     "taskId",
     "taskType",

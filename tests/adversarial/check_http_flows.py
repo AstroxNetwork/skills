@@ -35,6 +35,13 @@ for model in ('seedream-5-0-pro-260628', 'seedream-5-0-lite-260128', 'seedream-4
 VECTORS.append(('audio', {'textPrompt': '中文 🦀', 'references': [{'assetId': 'asset1', 'type': 'audio'}]},
                 '/api/tasks/audio-generation', {'textPrompt': '中文 🦀', 'references': [{'assetId': 'asset1', 'type': 'audio'}]}))
 
+for model in ('kling-4.0', 'kling-4.0-flash'):
+    request = {'model':model, 'prompt':'中文 🦀', 'duration':5, 'resolution':'720p', 'ratio':'16:9'}
+    VECTORS.append(('video', request, '/api/tasks/kling-generation', request))
+for model in ('MiniMax-H3-Image', 'MiniMax-H3-Image-Highspeed'):
+    request = {'model':model, 'prompt':'中文 🦀', 'size':'auto', 'resolution':'2k'}
+    VECTORS.append(('image', request, '/api/tasks/image-generation', {**request,'n':1,'outputFormat':'jpeg'}))
+
 
 class HttpWorkflowTests(unittest.TestCase):
     @classmethod
@@ -103,7 +110,7 @@ class HttpWorkflowTests(unittest.TestCase):
         return response['result'].get('structuredContent', {})
 
     def test_all_models_real_http_estimate_create_query_download(self):
-        self.assertEqual(len(VECTORS), 18)
+        self.assertEqual(len(VECTORS), 22)
         for index, (kind, request, route, normalized) in enumerate(VECTORS):
             with self.subTest(model=request.get('model', 'seed-audio-1.0')):
                 self.service.calls.clear()
@@ -297,7 +304,7 @@ class HttpWorkflowTests(unittest.TestCase):
                 self.assertIn(field, value, value)
                 if expected is not None: self.assertEqual(value[field], expected, value)
                 if name == 'generation_attempt_list': self.assertEqual(value[field][0]['attemptId'], 'tools')
-                if name == 'capabilities_list': self.assertEqual(len(value[field]), 18)
+                if name == 'capabilities_list': self.assertEqual(len(value[field]), 22)
                 if name == 'asset_upload_execute':
                     self.assertEqual(value[field][0]['assetUniqId'], 'asset1')
                     self.assertIsNone(value['failedOrUnknown'])

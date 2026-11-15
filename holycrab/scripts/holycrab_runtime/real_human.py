@@ -406,11 +406,21 @@ def delete_real_human_asset(group_id: str, asset_id: str, confirmed: bool,
     return {"deleted": True, "groupUniqId": group_identifier, "assetUniqId": asset_identifier}
 
 
-def get_asset(asset_id: str) -> dict[str, Any]:
+def get_asset(asset_id: str, model: str | None = None) -> dict[str, Any]:
     identifier = _presentation.public_id(asset_id, "assetId")
     data = _presentation.public_asset(_transport.response_data(*_transport.send("GET", f"/api/user-assets/{identifier}")))
     if data.get("uniqId") != identifier:
         raise ValueError("API returned an unexpected asset ID")
+    if model:
+        from . import capabilities
+        selected = capabilities.find_model(model)
+        ark = selected["id"] in {"seedance-2-0", "seedance-2-0-fast", "seedance-2-0-mini", "dreamina-seedance-2-5-260628"}
+        if not ark:
+            data["ready"] = data.get("step") != "DELETING" and bool(data.get("url"))
+            data["eligibility"] = "backend-validation-required" if data["ready"] else "unavailable"
+            data["nextAction"] = _results.next_action("ESTIMATE_GENERATION" if data["ready"] else "WAIT_FOR_ASSET",
+                "Use the generation estimate to validate this material for the selected model; Ark review does not determine eligibility.", None)
+            return data
     data["nextAction"] = asset_next_action(identifier, data.get("step"), data.get("error"))
     return data
 
@@ -453,18 +463,18 @@ def retry_asset_metadata(asset_id: str) -> dict[str, Any]:
     return data
 
 
-def poll_resource(identifier: str, timeout: float, interval: float, *, authorization: bool) -> int:
+def poll_resource(identifier: str, timeout: float, interval: float, *, authorization: bool, model: str | None = None) -> int:
     _tasks.validate_wait_limits(timeout, interval)
     deadline = time.monotonic() + timeout
     previous_state: Any = object()
     data: dict[str, Any] = {}
     while True:
-        data = get_authorization(identifier) if authorization else get_asset(identifier)
+        data = get_authorization(identifier) if authorization else (get_asset(identifier, model=model) if model else get_asset(identifier))
         state = data.get("status") if authorization else data.get("step")
         if state != previous_state:
             _presentation.print_result(data)
             previous_state = state
-        if state == ("SUCCEEDED" if authorization else "UPLOADED_TO_ARK"):
+        if (state == "SUCCEEDED" if authorization else data.get("ready") is True):
             if not sys.stdout.isatty():
                 _presentation.command_progress("Authorization completed; select files to upload next." if authorization else "Asset is ready.")
             return 0

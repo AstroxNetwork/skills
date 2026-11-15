@@ -10,3 +10,5 @@ For one image, estimate and submit one confirmed task. For variants, describe ho
 Deliver completed images with file paths, a short description of each version, and any obvious uncertainty. If the agent can view images, inspect identity, requested text and composition; do not claim visual review otherwise. Revisions create separately approved tasks and preserve previous results.
 
 Example: “Make a clean product listing photo from this bottle.” Preserve the bottle and label, clarify an essential output requirement only if missing, and use a supported image request. Asking for a prompt alone must not create an image.
+
+MiniMax H3 Image and Highspeed support up to 16 owned references and n=1–10 images per task. Default to n=1; use either a multi-image task or separate variant steps without multiplying both. Obtain the model's estimate, and download each completed image by its output index. Use model-specific asset checks; Ark review is not required for MiniMax.

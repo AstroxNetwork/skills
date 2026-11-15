@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "version": "1.0.1",
-  "minCliVersion": "0.7.1",
+  "version": "1.0.2",
+  "minCliVersion": "0.7.2",
   "skills": [
     {
       "name": "holycrab-video",

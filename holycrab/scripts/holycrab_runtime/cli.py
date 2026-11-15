@@ -295,7 +295,7 @@ def command_asset_metadata_retry(args: argparse.Namespace) -> int:
 
 def command_asset_get(args: argparse.Namespace) -> int:
     _presentation.command_progress("Checking the existing asset...")
-    _presentation.print_result(_real_human.get_asset(args.uniq_id))
+    _presentation.print_result(_real_human.get_asset(args.uniq_id, model=getattr(args, "model", None)))
     return 0
 
 
@@ -307,7 +307,7 @@ def command_asset_wait(args: argparse.Namespace) -> int:
     completed = 0
     for index, identifier in enumerate(identifiers, 1):
         _presentation.command_progress(f"Checking asset {index}/{len(identifiers)}: {identifier}; {completed} ready.")
-        code = _real_human.poll_resource(identifier, args.timeout, args.interval, authorization=False)
+        code = _real_human.poll_resource(identifier, args.timeout, args.interval, authorization=False, model=getattr(args, "model", None))
         completed += int(code == 0)
         result = max(result, code)
     _presentation.command_progress(f"Asset wait ended: {completed}/{len(identifiers)} ready.")
@@ -572,6 +572,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload.set_defaults(func=command_upload_asset)
     asset_get = assets_sub.add_parser("get", help="Query one asset and receive its next action")
     asset_get.add_argument("uniq_id", help="Public asset ID")
+    asset_get.add_argument("--model", help="Check availability for this model")
     asset_get.set_defaults(func=command_asset_get)
     metadata = assets_sub.add_parser("metadata", help="Read and retry backend metadata processing")
     metadata_sub = metadata.add_subparsers(dest="metadata_command", required=True)
@@ -580,6 +581,7 @@ def build_parser() -> argparse.ArgumentParser:
     retry.set_defaults(func=command_asset_metadata_retry)
     asset_wait = assets_sub.add_parser("wait", help="Wait for one or more assets; default timeout 600 seconds each")
     asset_wait.add_argument("uniq_id", nargs="+", help="One or more public asset IDs")
+    asset_wait.add_argument("--model", help="Wait for material usable by this model")
     add_wait_arguments(asset_wait)
     asset_wait.set_defaults(func=command_asset_wait)
 

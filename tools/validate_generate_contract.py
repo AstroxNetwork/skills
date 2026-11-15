@@ -181,6 +181,9 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     errors.extend(validate_new_model_snapshot(manifest))
     errors.extend(validate_minimax_v071(generate_root, manifest))
     image = (generate_root / "client/user-front/src/utils/imageGenerationParams.ts").read_text(encoding="utf-8")
+    kling = (generate_root / "client/user-front/src/config/klingModels.ts").read_text(encoding="utf-8")
+    minimax_image = (generate_root / "client/user-front/src/utils/minimaxImage.ts").read_text(encoding="utf-8")
+    image += "\n" + minimax_image
     video_options = (generate_root / "client/user-front/src/utils/generationOptions.ts").read_text(encoding="utf-8")
     task_api = (generate_root / "client/user-front/src/api/tasks.ts").read_text(encoding="utf-8")
     seed_audio = (generate_root / "client/user-front/src/utils/seedAudioRules.ts").read_text(encoding="utf-8")
@@ -209,10 +212,10 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
 
     model_ids = {row["id"] for group in ("videoModels", "imageModels", "audioModels") for row in manifest[group]}
     for model in model_ids - {"seed-audio-1.0"}:
-        if model.lower() not in (image + agnes_options + seedance + minimax + agnes + controller + berry).lower():
+        if model.lower() not in (image + kling + agnes_options + seedance + minimax + agnes + controller + berry).lower():
             errors.append(f"Generate contract drift: model id missing: {model}")
 
-    constants = typescript_constants(video_options + agnes_options)
+    constants = typescript_constants(video_options + agnes_options + kling + minimax_image)
     options_match = re.search(r"VIDEO_MODEL_OPTIONS\s*=\s*\[(.*?)\]\s*as\s+const", video_options, re.DOTALL)
     generate_video_ids = option_model_ids(options_match.group(1), constants, errors) if options_match else set()
     snapshot_video_ids = {row["id"] for row in manifest["videoModels"]}
@@ -221,6 +224,7 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
 
     image_options_match = re.search(r"IMAGE_MODEL_OPTIONS.*?=\s*\[(.*?)\]\s*\n\s*export const DEFAULT_IMAGE_MODEL", image, re.DOTALL)
     generate_image_ids = option_model_ids(image_options_match.group(1), constants, errors) if image_options_match else set()
+    generate_image_ids.update(typescript_array(minimax_image, "MINIMAX_IMAGE_MODELS"))
     snapshot_image_ids = {row["id"] for row in manifest["imageModels"]}
     if generate_image_ids != snapshot_image_ids:
         errors.append("CLI snapshot drift: image model ids")
@@ -354,7 +358,7 @@ def record_evidence(record_path: Path, cli_root: Path, commit: str, expected_mai
     if commit != expected_main or re.fullmatch(r"[0-9a-f]{40}", expected_main) is None:
         raise ValueError("Selected source must match the independently verified remote main SHA")
     record = json.loads(record_path.read_text(encoding="utf-8"))
-    if record.get("version") not in {"v0.6.0", "v0.7.0", "v0.7.1"}:
+    if record.get("version") not in {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2"}:
         raise ValueError("Local evidence recording is authorized only for local v0.6.0/v0.7.0/v0.7.1 candidates")
     fingerprint = candidate_fingerprint(cli_root)
     proof = {"status": "passed", "mode": "local-immutable-main", "verifiedMainCommit": commit,

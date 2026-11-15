@@ -656,6 +656,7 @@ def format_terminal_result(value: Any, *, introduce_onboarding: bool = False, vi
         lines = ["Material status" if "ready" in value else "Task status"]
         details = {key: value[key] for key in
                    ("uniqId", "name", "taskType", "assetType", "model", "progress", "duration", "resolution",
+                    "draft", "draftExpiresAt", "sourceDraftTaskUniqId", "draftHdTaskUniqId",
                     "ratio", "generateAudio", "frozenCredit", "textResult", "error", "durationSeconds",
                     "mediaFormat", "width", "height", "sizeBytes", "frameRate", "videoCodec", "audioCodec",
                     "metadataStatus", "metadataErrorCode", "metadataUpdatedAt") if key in value}

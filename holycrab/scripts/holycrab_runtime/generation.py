@@ -22,6 +22,8 @@ def generation_endpoints(kind: str, payload: dict[str, Any]) -> tuple[str, str]:
         raise SystemExit("Generation kind must be video, image, or audio")
     if kind == "audio":
         return _settings.GENERATION_ROUTES["audioGeneration"]
+    if kind == "video" and "sourceDraftTaskUniqId" in payload:
+        return _settings.GENERATION_ROUTES["seedanceVideo"]
     model_id = payload.get("model")
     if not isinstance(model_id, str):
         raise SystemExit("Generation request must include model")
@@ -35,6 +37,8 @@ def generation_endpoints(kind: str, payload: dict[str, Any]) -> tuple[str, str]:
 
 
 def canonical_request_hash(kind: str, payload: dict[str, Any]) -> str:
+    if kind == "video" and "sourceDraftTaskUniqId" in payload:
+        payload = {k:v for k,v in payload.items() if k != "expectedCredit"}
     raw = json.dumps(
         {"kind": kind, "request": payload}, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
@@ -82,8 +86,31 @@ def validate_estimate_data(data: Any) -> dict[str, Any]:
     return data
 
 
+def existing_draft_final(payload: dict[str, Any]) -> dict[str, Any] | None:
+    source = payload.get("sourceDraftTaskUniqId")
+    if not source:
+        return None
+    data = _transport.response_data(*_transport.send("GET", "/api/tasks/" + source))
+    if not isinstance(data, dict) or data.get("uniqId") != source:
+        raise ValueError("Unexpected source draft response")
+    linked = data.get("draftHdTaskUniqId")
+    if not linked:
+        return None
+    if not isinstance(linked, str) or not re.fullmatch(r"[A-Za-z0-9]{1,64}", linked):
+        raise ValueError("Invalid linked final ID")
+    task = _transport.response_data(*_transport.send("GET", "/api/tasks/" + linked))
+    if not isinstance(task, dict) or task.get("uniqId") != linked or type(task.get("step")) is not int or task["step"] not in (0,1,2,3):
+        raise ValueError("Unexpected linked final response")
+    return task if task["step"] != 3 else None
+
+
 def estimate_generation(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
-    normalized = _capabilities.normalize_generation_request(kind, payload)
+    normalized = _capabilities.normalize_generation_request(kind, payload, for_estimate=True)
+    existing = existing_draft_final(normalized)
+    if existing:
+        return _results.ApprovedEstimate({"kind": kind, "estimate": {"frozenCredit": 0},
+            "existingTaskId": existing["uniqId"], "message": "An existing final is available; no new task is needed."}, canonical_request_hash(kind, normalized))
+    normalized.pop("expectedCredit", None)
     freeze_endpoint, _ = generation_endpoints(kind, normalized)
     status, response = _transport.send("POST", freeze_endpoint, payload=normalized)
     if not _results.response_ok(status, response):
@@ -138,6 +165,13 @@ def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, a
         raise SystemExit(
             f"Local submission attempt {selected_attempt} already exists; query it instead of submitting again"
         )
+    if "sourceDraftTaskUniqId" in payload:
+        existing = existing_draft_final(payload)
+        if existing:
+            return {"attemptId": selected_attempt, "taskId": existing["uniqId"], "state": "created",
+                "reused": True, "estimate": {"frozenCredit": 0}, "response": _presentation.public_task_data(existing),
+                "nextAction": _results.next_action("WAIT_FOR_TASK", "Continue querying the existing final.",
+                    "holycrab tasks wait " + existing["uniqId"] + " --timeout 600")}
     if not approved_estimate and progress:
         progress("Estimating credits; no task has been submitted...")
     estimate = approved_estimate or estimate_generation(kind, payload)
@@ -160,6 +194,10 @@ def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, a
             "confirmationRequired": True,
             "message": "Confirm once before creating this billable task.",
         }, canonical_request_hash(kind, payload))
+    if "sourceDraftTaskUniqId" in payload:
+        if "expectedCredit" in payload and payload["expectedCredit"] != estimate["estimate"]["frozenCredit"]:
+            raise ValueError("Credit estimate changed; review and confirm again")
+        payload = dict(payload, expectedCredit=estimate["estimate"]["frozenCredit"])
     _, create_endpoint = generation_endpoints(kind, payload)
     _state.reserve_attempt(
         selected_attempt,
