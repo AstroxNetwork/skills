@@ -21,6 +21,7 @@ class InstallerTests(unittest.TestCase):
         import textwrap
         from unittest.mock import mock_open, patch
         workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertNotIn("0.7.1", workflow)
         step = workflow.split("      - name: Verify recorded contract fingerprint on native Windows\n", 1)[1].split("      - name:", 1)[0]
         self.assertIn("shell: python", step)
         script = textwrap.dedent(step.split("        run: |\n", 1)[1])

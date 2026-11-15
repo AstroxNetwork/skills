@@ -111,13 +111,13 @@ jobs:
       - name: Install from the checked-out release source
         env:
           HOLYCRAB_NO_UPDATE_CHECK: "1"
-          HOLYCRAB_EXPECTED_VERSION: "0.7.1"
           HOLYCRAB_INSTALL_SOURCE_DIR: ${{ github.workspace }}
           HOLYCRAB_INSTALL_MCP: "0"
           HOLYCRAB_INSTALL_AGENTS: codex,claude
           HOLYCRAB_INSTALL_PREFIX: ${{ runner.temp }}/holycrab-prefix
           HOLYCRAB_CONFIG_DIR: ${{ runner.temp }}/holycrab-config
         run: |
+          HOLYCRAB_EXPECTED_VERSION="$(python3 -c 'import json; print(json.load(open("runtime-files.json"))["version"])')"
           sh install.sh
           test -x "${HOLYCRAB_INSTALL_PREFIX}/bin/holycrab"
           test -f "${HOME}/.agents/skills/holycrab/agents/openai.yaml"
