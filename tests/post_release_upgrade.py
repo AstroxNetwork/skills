@@ -50,6 +50,17 @@ def bundle(version, directory):
     for name,digest in checks.items(): assert hashlib.sha256(values[name]).hexdigest()==digest
     return {name:hashlib.sha256(data).hexdigest() for name,data in values.items()}
 
+def verify_inventory(names, models, source):
+    spec=importlib.util.spec_from_file_location('release_interface',source/'tools/public_interface.py')
+    interface=importlib.util.module_from_spec(spec);spec.loader.exec_module(interface)
+    expected_tools={tool['name'] for tool in interface.public_inventory()['mcpTools']}
+    manifest=json.loads((source/'holycrab/references/capabilities.json').read_text(encoding='utf-8'))
+    expected_models={model['id'] for group in ('videoModels','imageModels','audioModels') for model in manifest[group]}
+    actual_models=[model['id'] for model in models]
+    assert len(names)==len(set(names)) and set(names)==expected_tools, 'Installed MCP tools differ from the release source'
+    assert len(actual_models)==len(set(actual_models)) and set(actual_models)==expected_models, 'Installed models differ from the release source'
+    return len(expected_tools),len(expected_models)
+
 class Run:
     def __init__(self, args):
         self.args=args
@@ -125,13 +136,12 @@ sys.addaudithook(check)
         assert len(replies)==3 and all('error' not in reply for reply in replies)
         assert replies[0]['result']['serverInfo']['version']==VERSION[1:]
         names=[tool['name'] for tool in replies[1]['result']['tools']]
-        assert len(names)==len(set(names))==32
         assert replies[2]['result']['isError'] is False
         caps=replies[2]['result']['structuredContent']
-        assert len(caps['models'])==len({model['id'] for model in caps['models']})==18
+        tool_count,model_count=verify_inventory(names,caps['models'],self.args.source)
         latest=json.loads(self.cli(label+'-latest',env,'update','--check'))
         assert latest['updateAvailable'] is False
-        self.record(label+' health, immutable runtime, 32 MCP tools, 18 models, current stable version')
+        self.record(label+f' health, immutable runtime, {tool_count} MCP tools, {model_count} models, current stable version')
 
     def execute(self):
         latest=json.loads(fetch(f'https://api.github.com/repos/{REPO}/releases/latest'))

@@ -22,6 +22,22 @@ def load(name):
 
 
 class SmokeDriverTests(unittest.TestCase):
+    def test_public_upgrade_checks_model_and_tool_identities_from_source(self):
+        driver = load("post_release_upgrade")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tools").mkdir()
+            (root / "holycrab/references").mkdir(parents=True)
+            (root / "tools/public_interface.py").write_text("def public_inventory(): return {'mcpTools': [{'name': 'query'}]}\n")
+            models = [{'id': 'model' + str(index)} for index in range(22)]
+            (root / "holycrab/references/capabilities.json").write_text(json.dumps({'videoModels': models, 'imageModels': [], 'audioModels': []}))
+            self.assertEqual(driver.verify_inventory(['query'], models, root), (1, 22))
+            for names, actual in [(['query'], models[:-1]), (['query'], models[:-1] + [models[0]]),
+                                  (['query'], models[:-1] + [{'id': 'unexpected'}]), (['wrong'], models),
+                                  (['query', 'query'], models)]:
+                with self.subTest(names=names, models=actual), self.assertRaises(AssertionError):
+                    driver.verify_inventory(names, actual, root)
+
     def test_public_upgrade_driver_targets_the_current_release(self):
         driver = load("post_release_upgrade")
         manifest = json.loads((ROOT / "runtime-files.json").read_text())
