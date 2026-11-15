@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.7.2",
+  "version": "0.7.3",
   "files": [
     {
       "source": "holycrab/scripts/holycrab_cli.py",
@@ -119,7 +119,7 @@
       "stage": "holycrab_runtime/real_human.py",
       "target": "holycrab_runtime/real_human.py",
       "kind": "runtime",
-      "sha256": "7ee0f3574e7f3f04ee892753e8618685e4018462dc67da63c056ed1257f66fc4"
+      "sha256": "8f14046b9efa27c54441a901985de8ca9a6cad718fa827cf2b4b57a5cfb59b68"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/results.py",
@@ -133,7 +133,7 @@
       "stage": "holycrab_runtime/settings.py",
       "target": "holycrab_runtime/settings.py",
       "kind": "runtime",
-      "sha256": "16de5de19dbd35d15dd1011bc1a005d89a7bfcf36da720232404a14c7c0d884b"
+      "sha256": "d7a0ab21dd28308d9b7a57490926be5f427f19668fa15802520e194930009ff3"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/state.py",

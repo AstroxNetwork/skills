@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.7.2"
+VERSION = "0.7.3"
 
 
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"

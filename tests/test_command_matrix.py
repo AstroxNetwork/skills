@@ -91,7 +91,7 @@ class CommandMatrixTests(unittest.TestCase):
         if path == "/api/real-human-groups/group1/assets":
             return ok({"records": [{"uniqId": "asset1", "step": "UPLOADED_TO_ARK"}], "total": 1, "pages": 1})
         if path in {"/api/user-assets/asset1", "/api/user-assets/asset1/metadata/retry"}:
-            return ok({"uniqId": "asset1", "step": "UPLOADED_TO_ARK", "name": "Fixture", "assetType": "IMAGE", "metadataStatus": "PENDING"})
+            return ok({"uniqId": "asset1", "step": "UPLOADED_TO_ARK", "name": "Fixture", "assetType": "IMAGE", "metadataStatus": "PENDING", "url": "https://cdn.example/fixture.jpg"})
         if path.endswith("pre-signed-download-url"):
             return ok({"uniqId": "asset1", "preSignedUrl": "https://storage.example/fixture", "objectKey": "fixture"})
         if path.endswith("/upload"):
