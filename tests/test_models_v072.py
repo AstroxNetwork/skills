@@ -1,5 +1,8 @@
 """Public 0.7.2 requests exercise the runtime with only HTTP replaced."""
 import os
+import io
+import json
+from contextlib import redirect_stdout
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -84,5 +87,78 @@ class Release072Tests(unittest.TestCase):
         from holycrab_runtime.mcp import MCP_TOOLS
         self.assertEqual(len(caps.all_models()),22)
         self.assertFalse(next(t for t in MCP_TOOLS if t['name']=='generation_estimate')['annotations']['readOnlyHint'])
+
+    def test_asset_recovery_actions_preserve_target_model_and_legacy_behavior(self):
+        for model in ['kling-4.0', 'MiniMax-H3-Image', 'seedance-2-0', None]:
+            for step in ['PROCESSING', 'FAILED']:
+                with self.subTest(model=model, step=step), patch.object(transport, 'send', return_value=ok({
+                        'uniqId':'asset1', 'step':step, 'error':'fixture reason'})):
+                    action=real_human.get_asset('asset1',model=model)['nextAction']
+                    self.assertEqual(action['code'], 'WAIT_FOR_ASSET' if step=='PROCESSING' else 'DO_NOT_REUPLOAD_AUTOMATICALLY')
+                    suffix=f' --model {model}' if model else ''
+                    expected=('holycrab assets wait asset1 --timeout 600' if step=='PROCESSING' else 'holycrab assets get asset1')+suffix
+                    self.assertEqual(action['command'],expected)
+        for model in ['kling-4.0', 'MiniMax-H3-Image']:
+            for step in ['PROCESSING','FAILED']:
+                with self.subTest(model=model,step=step),patch.object(transport,'send',return_value=ok({
+                        'uniqId':'asset1','step':step,'url':'https://cdn.example/image.jpg','metadataStatus':'PENDING'})):
+                    asset=real_human.get_asset('asset1',model=model)
+                    self.assertTrue(asset['ready'])
+                    self.assertEqual(asset['nextAction']['code'],'ESTIMATE_GENERATION')
+            with self.subTest(model=model,step='UPLOADED_TO_ARK without URL'),patch.object(transport,'send',return_value=ok({
+                    'uniqId':'asset1','step':'UPLOADED_TO_ARK'})):
+                asset=real_human.get_asset('asset1',model=model)
+                self.assertFalse(asset['ready'])
+                self.assertEqual(asset['nextAction']['code'],'QUERY_ASSET')
+                self.assertEqual(asset['nextAction']['command'],f'holycrab assets get asset1 --model {model}')
+
+    def test_deleting_asset_is_terminal_for_model_aware_queries_and_waits(self):
+        response=ok({'uniqId':'asset1','step':'DELETING','url':'https://cdn.example/image.jpg'})
+        for model in ['kling-4.0','MiniMax-H3-Image','seedance-2-0']:
+            with self.subTest(model=model),patch.object(transport,'send',return_value=response),patch.object(real_human.time,'sleep') as sleep:
+                asset=real_human.get_asset('asset1',model=model)
+                self.assertFalse(asset['ready'])
+                self.assertEqual(asset['nextAction']['code'],'CHOOSE_ANOTHER_ASSET')
+                self.assertIsNone(asset['nextAction']['command'])
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(real_human.poll_resource('asset1',1,1,authorization=False,model=model),1)
+                sleep.assert_not_called()
+        with patch.object(transport,'send',return_value=response):
+            self.assertEqual(real_human.get_asset('asset1')['nextAction']['code'],'QUERY_ASSET')
+
+    def test_asset_wait_timeout_preserves_model_in_followup(self):
+        for model in ['kling-4.0','seedance-2-0',None]:
+            output=io.StringIO()
+            with self.subTest(model=model),patch.object(real_human,'get_asset',return_value={
+                    'uniqId':'asset1','step':'PROCESSING','ready':False}),patch.object(real_human.time,'monotonic',side_effect=[0,2]),redirect_stdout(output):
+                self.assertEqual(real_human.poll_resource('asset1',1,1,authorization=False,model=model),2)
+            records=[];remaining=output.getvalue().strip();decoder=json.JSONDecoder()
+            while remaining:
+                value,end=decoder.raw_decode(remaining);records.append(value);remaining=remaining[end:].strip()
+            self.assertEqual(records[-1]['nextAction']['command'],'holycrab assets get asset1'+(f' --model {model}' if model else ''))
+
+    def test_failed_final_requires_new_estimate_and_confirmation(self):
+        request={'sourceDraftTaskUniqId':'draft1','resolution':'1080p'}
+        source=ok({'uniqId':'draft1','draftHdTaskUniqId':'final1'})
+        failed=ok({'uniqId':'final1','step':3})
+        with patch.object(transport,'send',side_effect=[source,failed,source,failed,ok({'frozenCredit':12})]) as send:
+            result=generation.create_generation('video',request,confirmed=False)
+            self.assertTrue(result['confirmationRequired'])
+            self.assertEqual(result['estimate']['frozenCredit'],12)
+            self.assertNotIn('reused',result)
+            self.assertEqual([c.args[1] for c in send.call_args_list if c.args[0]=='POST'],['/api/tasks/generation/freeze-credit'])
+
+    def test_nonfailed_finals_are_reused_and_kling_sound_modes_are_distinct(self):
+        for step in [0,1,2]:
+            with self.subTest(step=step),patch.object(transport,'send',side_effect=[
+                    ok({'uniqId':'draft1','draftHdTaskUniqId':'final1'}),ok({'uniqId':'final1','step':step})]) as send:
+                self.assertTrue(generation.create_generation('video',{'sourceDraftTaskUniqId':'draft1','resolution':'1080p'},confirmed=True)['reused'])
+                self.assertTrue(all(c.args[0]=='GET' for c in send.call_args_list))
+        image_reference={'type':'refer_image','assetId':'image1','id':'Image1'}
+        caps.normalize_generation_request('video',kling('kling-4.0-flash',audio='native',references=[image_reference]))
+        video={'type':'feature_video','assetId':'video1','id':'Video1'}
+        caps.normalize_generation_request('video',kling(audio='original',references=[video]))
+        with self.assertRaises(SystemExit):
+            caps.normalize_generation_request('video',kling(audio='original',references=[video,{'type':'voice','assetId':'audio1','id':'Voice1'}]))
 
 if __name__=='__main__':unittest.main()

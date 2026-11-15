@@ -414,14 +414,28 @@ def get_asset(asset_id: str, model: str | None = None) -> dict[str, Any]:
     if model:
         from . import capabilities
         selected = capabilities.find_model(model)
+        model = selected["id"]
+        if data.get("step") == "DELETING":
+            data["ready"] = False
+            data["eligibility"] = "unavailable"
+            data["nextAction"] = _results.next_action("CHOOSE_ANOTHER_ASSET",
+                "This asset is being deleted and cannot be used. Choose another existing asset.", None)
+            return data
         ark = selected["id"] in {"seedance-2-0", "seedance-2-0-fast", "seedance-2-0-mini", "dreamina-seedance-2-5-260628"}
         if not ark:
             data["ready"] = data.get("step") != "DELETING" and bool(data.get("url"))
             data["eligibility"] = "backend-validation-required" if data["ready"] else "unavailable"
-            data["nextAction"] = _results.next_action("ESTIMATE_GENERATION" if data["ready"] else "WAIT_FOR_ASSET",
-                "Use the generation estimate to validate this material for the selected model; Ark review does not determine eligibility.", None)
-            return data
+            if data["ready"]:
+                data["nextAction"] = _results.next_action("ESTIMATE_GENERATION",
+                    "Use the generation estimate to validate this material for the selected model; Ark review does not determine eligibility.", None)
+                return data
     data["nextAction"] = asset_next_action(identifier, data.get("step"), data.get("error"))
+    if model and not data["ready"] and data["nextAction"]["code"] == "ESTIMATE_GENERATION":
+        data["nextAction"] = _results.next_action("QUERY_ASSET",
+            "No media URL is available for this asset. Keep the asset ID and query it before generating.",
+            f"holycrab assets get {identifier}")
+    if model and data["nextAction"].get("command"):
+        data["nextAction"]["command"] += f" --model {model}"
     return data
 
 
@@ -487,7 +501,8 @@ def poll_resource(identifier: str, timeout: float, interval: float, *, authoriza
             timeout_action = _results.next_action(
                 "CONTINUE_QUERYING",
                 "The wait timed out; this does not mean failure. Keep the same ID and query again. Nothing was resubmitted.",
-                (f"holycrab real-human get {identifier}" if authorization else f"holycrab assets get {identifier}"),
+                (f"holycrab real-human get {identifier}" if authorization else
+                 f"holycrab assets get {identifier}" + (f" --model {model}" if model else "")),
             )
             _presentation.print_result({"timedOut": True, "id": identifier, "lastStatus": state, "nextAction": timeout_action})
             if not sys.stdout.isatty():

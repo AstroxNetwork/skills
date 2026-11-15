@@ -358,8 +358,8 @@ def record_evidence(record_path: Path, cli_root: Path, commit: str, expected_mai
     if commit != expected_main or re.fullmatch(r"[0-9a-f]{40}", expected_main) is None:
         raise ValueError("Selected source must match the independently verified remote main SHA")
     record = json.loads(record_path.read_text(encoding="utf-8"))
-    if record.get("version") not in {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2"}:
-        raise ValueError("Local evidence recording is authorized only for local v0.6.0/v0.7.0/v0.7.1 candidates")
+    if record.get("version") not in {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2", "v0.7.3"}:
+        raise ValueError("Local evidence recording requires an explicitly supported candidate version")
     fingerprint = candidate_fingerprint(cli_root)
     proof = {"status": "passed", "mode": "local-immutable-main", "verifiedMainCommit": commit,
              "verifiedAt": datetime.now(timezone.utc).isoformat(), "candidateSha256": fingerprint,

@@ -39,7 +39,7 @@ class SmokeDriverTests(unittest.TestCase):
                 gh.assert_called_once_with(['gh', 'api', 'repos/AstroxNetwork/skills/releases/latest'], timeout=60)
             with patch.object(driver.subprocess, "check_output") as gh, patch.object(driver.urllib.request, "urlopen", side_effect=RuntimeError("public download")) as public:
                 with self.assertRaisesRegex(RuntimeError, "public download"):
-                    driver.fetch("https://github.com/AstroxNetwork/skills/releases/download/v0.7.2/install.sh")
+                    driver.fetch("https://github.com/AstroxNetwork/skills/releases/download/v0.7.3/install.sh")
                 gh.assert_not_called()
                 self.assertNotIn("Authorization", dict(public.call_args.args[0].header_items()))
 
@@ -77,7 +77,7 @@ class SmokeDriverTests(unittest.TestCase):
         live = load("live_release_smoke")
         with tempfile.TemporaryDirectory() as root:
             run = live.LiveRun(Path(root))
-            self.assertEqual(run.inventory["version"], "0.7.2")
+            self.assertEqual(run.inventory["version"], "0.7.3")
             self.assertIn("asset_upload_plan_get", {row["name"] for row in run.inventory["mcpTools"]})
             replies = [{"result": {"serverInfo": {"version": run.inventory["version"]}}},
                        {"result": {"tools": run.inventory["mcpTools"]}},
@@ -138,6 +138,6 @@ class SmokeDriverTests(unittest.TestCase):
         smoke = load("local_lifecycle_smoke")
         result = smoke.run_lifecycle()
         self.assertEqual(result["status"], "passed")
-        self.assertEqual(result["candidate"], "holycrab 0.7.2")
+        self.assertEqual(result["candidate"], "holycrab 0.7.3")
         self.assertIn("failed-upgrade-byte-rollback", result["checks"])
         self.assertTrue(result["temporaryHome"])
