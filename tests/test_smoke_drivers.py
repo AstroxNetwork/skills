@@ -8,6 +8,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import argparse
+from types import SimpleNamespace
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
@@ -22,6 +24,41 @@ def load(name):
 
 
 class SmokeDriverTests(unittest.TestCase):
+    def test_public_upgrade_baseline_and_metadata_token_are_scoped(self):
+        driver = load("post_release_upgrade")
+        self.assertEqual(driver.baseline_version("v0.7.1"), "v0.7.1")
+        for tag in ("../v0.7.1", driver.VERSION, "v99.0.0", "v0.7.1;echo bad"):
+            with self.assertRaises(argparse.ArgumentTypeError): driver.baseline_version(tag)
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"GH_TOKEN": "fixture-gh-token", "GITHUB_TOKEN": "fixture-token"}):
+            args = SimpleNamespace(source=ROOT, report=Path(directory)/"report.json", upgrade_method="update", baseline_version="v0.7.1")
+            run = driver.Run(args)
+            self.assertNotIn("GH_TOKEN", run.environment("child"))
+            self.assertNotIn("GITHUB_TOKEN", run.environment("other-child"))
+            with patch.object(driver.subprocess, "check_output", return_value=b'{}') as gh:
+                self.assertEqual(driver.fetch("https://api.github.com/repos/AstroxNetwork/skills/releases/latest"), b'{}')
+                gh.assert_called_once_with(['gh', 'api', 'repos/AstroxNetwork/skills/releases/latest'], timeout=60)
+            with patch.object(driver.subprocess, "check_output") as gh, patch.object(driver.urllib.request, "urlopen", side_effect=RuntimeError("public download")) as public:
+                with self.assertRaisesRegex(RuntimeError, "public download"):
+                    driver.fetch("https://github.com/AstroxNetwork/skills/releases/download/v0.7.2/install.sh")
+                gh.assert_not_called()
+                self.assertNotIn("Authorization", dict(public.call_args.args[0].header_items()))
+
+    def test_public_upgrade_checks_model_and_tool_identities_from_source(self):
+        driver = load("post_release_upgrade")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tools").mkdir()
+            (root / "holycrab/references").mkdir(parents=True)
+            (root / "tools/public_interface.py").write_text("def public_inventory(): return {'mcpTools': [{'name': 'query'}]}\n")
+            models = [{'id': 'model' + str(index)} for index in range(22)]
+            (root / "holycrab/references/capabilities.json").write_text(json.dumps({'videoModels': models, 'imageModels': [], 'audioModels': []}))
+            self.assertEqual(driver.verify_inventory(['query'], models, root), (1, 22))
+            for names, actual in [(['query'], models[:-1]), (['query'], models[:-1] + [models[0]]),
+                                  (['query'], models[:-1] + [{'id': 'unexpected'}]), (['wrong'], models),
+                                  (['query', 'query'], models)]:
+                with self.subTest(names=names, models=actual), self.assertRaises(AssertionError):
+                    driver.verify_inventory(names, actual, root)
+
     def test_public_upgrade_driver_targets_the_current_release(self):
         driver = load("post_release_upgrade")
         manifest = json.loads((ROOT / "runtime-files.json").read_text())
