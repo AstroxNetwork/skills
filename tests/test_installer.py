@@ -17,6 +17,18 @@ REPO_ROOT = Path(__file__).parents[1]
 
 
 class InstallerTests(unittest.TestCase):
+    def test_native_windows_contract_checks_the_candidate_version(self) -> None:
+        import textwrap
+        from unittest.mock import mock_open, patch
+        workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        step = workflow.split("      - name: Verify recorded contract fingerprint on native Windows\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("shell: python", step)
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        for version in ("0.7.2", "0.8.0"):
+            with patch("builtins.open", mock_open(read_data=json.dumps({"version": version}))), patch("subprocess.run") as run:
+                exec(compile(script, "windows-contract-step", "exec"), {})
+            run.assert_called_once_with([sys.executable, "tools/verify_release_acceptance.py", "v" + version, "--contract-only"], check=True)
+
     def test_post_release_downloader_identifies_itself_to_the_website(self) -> None:
         workflow = (REPO_ROOT / ".github/workflows/post-release-smoke.yml").read_text(encoding="utf-8")
         self.assertIn('"User-Agent": "holycrab-release-smoke/" + version', workflow)
