@@ -1,12 +1,24 @@
 {
   "version": "v0.7.4",
   "realHumanCoreFlow": {
-    "status": "pending"
+    "status": "passed",
+    "operator": "Codex under explicit release and one-photo upload authorization",
+    "testedAt": "2026-11-16T15:52:39.722642+00:00",
+    "notes": "Fresh one-shot upload using the v0.7.4 candidate ZIP and the explicitly approved existing photo/person group. Ark and metadata ready, downloaded bytes equal original, prior asset preserved. Installed CLI and MCP model-aware asset queries passed. No new QR/liveness authorization or paid generation. A TLS interruption during read-only status polling was resumed using the same uploaded asset; the photo was not uploaded again. Private IDs, photo and responses remain in ignored build/live-v074.",
+    "newAuthorizationPerformed": false,
+    "newUploadPerformed": true,
+    "cliQuery": true,
+    "mcpQuery": true,
+    "downloadBytesMatch": true,
+    "priorAssetPreserved": true,
+    "candidateZipSha256": "992a5886e37d9471209e15da35a3409925cba960623eb709b7dc4c478950d092"
   },
   "publication": {
-    "status": "not-requested"
+    "status": "approved",
+    "operator": "Ken",
+    "authorization": "Explicit instruction to release v0.7.4; separate consent granted for one private-photo upload."
   },
-  "notes": "Candidate only; main plus scoped Seedance 4K branch. No live generation or native Windows/Linux validation performed in this task.",
+  "notes": "Native Windows/Linux/macOS CI passed in PR run 43897787860. Fresh candidate upload/read/download acceptance passed; no paid generation was submitted.",
   "candidateSha256": "7a76098e4e93f0883b05b6e70c3650f3dea4096f6d3b0fb7bf14efc966876092",
   "generateContractCheck": {
     "status": "passed",
