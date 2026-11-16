@@ -291,6 +291,12 @@ def _reconcile(value):
                 task = transport.response_data(status, response)
                 row["task"] = presentation.public_task_data(task)
                 stage = task.get("step") if isinstance(task, dict) else None
+                request = resolve(step["request"], value)
+                if step["kind"] == "video" and "sourceDraftTaskUniqId" in request and stage in (0, 1, 2):
+                    conflict = generation.final_resolution_conflict(task, request)
+                    if conflict:
+                        row.update(state="failed", result={"state": "created", **conflict})
+                        continue
                 row["state"] = "succeeded" if stage == 2 else "failed" if stage == 3 else "submitted"
                 if stage == 2:
                     row["outputs"] = {"taskId": row["taskId"]}
@@ -389,7 +395,8 @@ def run_next(workflow_id, *, approval_id, confirmed, progress=None):
                 outcome = generation.create_generation(kind, request, confirmed=True,
                     attempt_id=row["attemptId"], approved_credits=item["credits"])
                 row["result"] = dict(outcome)
-                row["state"] = "submitted" if outcome.get("taskId") else outcome.get("state", "unknown")
+                row["state"] = ("failed" if outcome.get("errorCode") else
+                    "submitted" if outcome.get("taskId") else outcome.get("state", "unknown"))
                 if outcome.get("taskId"):
                     row["taskId"] = outcome["taskId"]
             elif kind == "upload":

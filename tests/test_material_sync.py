@@ -284,13 +284,13 @@ class BerryTests(unittest.TestCase):
                 self.assertEqual(len(calls), 5)
 
     def test_catalog_defaults_routes(self):
-        self.assertEqual(len(cli.all_models()), 22)
+        self.assertEqual(len(cli.all_models()), 24)
         for model in BERRY:
             result = cli.normalize_generation_request('video', {'model': model, 'prompt': 'crab'})
             self.assertEqual({k: result[k] for k in ('duration', 'resolution', 'ratio', 'audio')},
                              {'duration': 5, 'resolution': '1080p', 'ratio': 'adaptive', 'audio': True})
             self.assertEqual(cli.generation_endpoints('video', result), ('/api/tasks/mulerouter-generation/freeze-credit', '/api/tasks/mulerouter-generation'))
-            self.assertEqual(cli.find_model(model)['capabilitySnapshotVersion'], '2026-11-15')
+            self.assertEqual(cli.find_model(model)['capabilitySnapshotVersion'], '2026-11-16')
 
     def test_scalar_boundaries_and_utf16_prompt(self):
         for model in BERRY:

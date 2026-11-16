@@ -12,7 +12,7 @@ from pathlib import Path
 
 LOCAL_EVIDENCE_TAG = "v0.4.4"
 LOCAL_EVIDENCE_TAGS = {LOCAL_EVIDENCE_TAG, "v0.5.0"}
-CANDIDATE_CONTRACT_TAGS = {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2", "v0.7.3"}
+CANDIDATE_CONTRACT_TAGS = {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2", "v0.7.3", "v0.7.4"}
 REUSED_CORE_TAG = "v0.5.0"
 REUSED_CORE_HASH = "dde70a8d891d97c6837276e9a3daa32016f7ca987e9cc92adec620e0912da94a"
 MODEL_UPDATE_NODES = {"VERSION", "GENERATION_ROUTES", "MODEL_GENERATION_ROUTES", "PUBLIC_ACCOUNT_FIELDS",
@@ -82,7 +82,8 @@ def evidence_digest(proof):
 def validate_candidate_contract(record, root):
     """Verify recorded local evidence, not a live read of private remote main."""
     proof = record.get("generateContractCheck")
-    if not isinstance(proof, dict) or proof.get("status") != "passed" or proof.get("mode") != "local-immutable-main":
+    expected_mode = 'local-immutable-main-with-seedance-4k' if record.get('version') == 'v0.7.4' else 'local-immutable-main'
+    if not isinstance(proof, dict) or proof.get("status") != "passed" or proof.get("mode") != expected_mode:
         raise ValueError("A passed immutable local Generate contract record is required")
     if proof.get("evidenceSha256") != evidence_digest(proof):
         raise ValueError("Generate contract evidence content changed; rerun the strict check")
@@ -109,6 +110,21 @@ def validate_candidate_contract(record, root):
         raise ValueError("Generate evidence must identify every validated backend source")
     if any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None for value in files.values()):
         raise ValueError("Generate evidence has invalid source hashes")
+    if record.get('version') == 'v0.7.4':
+        try:
+            from tools.validate_generate_contract import SEEDANCE_4K_FILES
+        except ModuleNotFoundError:
+            from validate_generate_contract import SEEDANCE_4K_FILES
+        overlays = proof.get('overlays')
+        if not isinstance(overlays, dict) or set(overlays) != {'seedance4k'}:
+            raise ValueError('Seedance 4K evidence requires its separate source overlay')
+        overlay = overlays['seedance4k']
+        if not isinstance(overlay, dict) or re.fullmatch(r'[0-9a-f]{40}', str(overlay.get('commit', ''))) is None:
+            raise ValueError('Seedance 4K evidence requires an immutable branch commit')
+        hashes = overlay.get('sourceFiles')
+        if not isinstance(hashes, dict) or set(hashes) != set(SEEDANCE_4K_FILES) or any(
+                re.fullmatch(r'[0-9a-f]{64}', str(value)) is None for value in hashes.values()):
+            raise ValueError('Seedance 4K evidence must identify exactly the scoped source files')
 
 def candidate_fingerprint(root):
     """Bind acceptance to all shipped sources and the release/validation machinery."""

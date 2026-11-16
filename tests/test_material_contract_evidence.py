@@ -32,7 +32,7 @@ class EvidenceTests(unittest.TestCase):
 
     def test_offline_contract_proof_does_not_approve_real_person_or_release(self):
         validate(self.record, "v0.7.3", root=ROOT, contract_only=True)
-        with self.assertRaisesRegex(ValueError, "real-person"):
+        with self.assertRaisesRegex(ValueError, "Candidate version|real-person"):
             validate(self.record, "v0.7.3", root=ROOT)
 
     def test_tampered_status_hashes_and_commit_fail(self):

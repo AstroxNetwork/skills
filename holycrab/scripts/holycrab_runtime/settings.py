@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.7.3"
+VERSION = "0.7.4"
 
 
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
@@ -117,6 +117,8 @@ MODEL_GENERATION_ROUTES = {
     "seedance-2-0-fast": "seedanceVideo",
     "seedance-2-0-mini": "seedanceVideo",
     "dreamina-seedance-2-5-260628": "seedanceVideo",
+    "dreamina-seedance-2-5-flash-261115": "seedanceVideo",
+    "dola-seedream-5-5-261028": "imageGeneration",
     "MiniMax-H3": "minimaxVideo",
     "MiniMax-H3-Max": "minimaxVideo",
     "MiniMax-H3-Highspeed": "minimaxVideo",

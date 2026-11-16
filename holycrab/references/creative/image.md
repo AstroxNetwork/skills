@@ -12,3 +12,7 @@ Deliver completed images with file paths, a short description of each version, a
 Example: “Make a clean product listing photo from this bottle.” Preserve the bottle and label, clarify an essential output requirement only if missing, and use a supported image request. Asking for a prompt alone must not create an image.
 
 MiniMax H3 Image and Highspeed support up to 16 owned references and n=1–10 images per task. Default to n=1; use either a multi-image task or separate variant steps without multiplying both. Obtain the model's estimate, and download each completed image by its output index. Use model-specific asset checks; Ark review is not required for MiniMax.
+
+## Seedream 5.5 (CLI 0.7.4)
+
+Choose `dola-seedream-5-5-261028` for 1K/1.5K/2K, PNG by default or JPEG, one image per request. Custom output spans 921,600–4,624,220 pixels, ratio 1:16–16:1, no multiple-of-16 requirement. Use at most 10 reference images via IDs OR URLs; never mix them. Check capabilities and the service quote before executing. Other Seedream models keep their own defaults and limits.

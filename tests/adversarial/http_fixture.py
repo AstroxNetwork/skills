@@ -47,6 +47,8 @@ class Service:
     def __init__(self):
         self.calls = []
         self.mode = 'success'
+        self.linked_final_resolution = None
+        self.final_resolution_override = None
         self.barrier = None
         self.release = threading.Event()
         self.entered = threading.Event()
@@ -90,7 +92,10 @@ class Service:
                             owner.release.wait(timeout=15)
                         self.close_connection = True
                         return
-                    return self.respond({'code': 200, 'data': {'uniqId': 'task1'}})
+                    data = {'uniqId': 'task1'}
+                    if isinstance(body, dict) and body.get('sourceDraftTaskUniqId'):
+                        data.update(resolution=owner.final_resolution_override or body['resolution'], step=0)
+                    return self.respond({'code': 200, 'data': data})
                 if path.startswith('/output'):
                     if owner.mode == 'redirect':
                         self.send_response(302)
@@ -105,7 +110,13 @@ class Service:
                     self.end_headers()
                     self.wfile.write(data)
                     return
-                if path == '/api/user/me': data = {'credit': 100, 'username': 'Fixture'}
+                if path == '/api/tasks/draft1':
+                    data = {'uniqId': 'draft1'}
+                    if owner.linked_final_resolution:
+                        data['draftHdTaskUniqId'] = 'final1'
+                elif path == '/api/tasks/final1':
+                    data = {'uniqId': 'final1', 'step': 2, 'resolution': owner.linked_final_resolution}
+                elif path == '/api/user/me': data = {'credit': 100, 'username': 'Fixture'}
                 elif path == '/api/tasks': data = {'records': [{'uniqId': 'task1', 'step': 2}], 'total': 1, 'pages': 1}
                 elif path == '/api/tasks/task1': data = {'uniqId': 'task1', 'step': 2, 'videoUrl': owner.endpoint + '/output/video'}
                 elif path == '/api/user-assets/pre-signed-download-url': data = {'uniqId': 'asset1', 'preSignedUrl': owner.endpoint + '/storage', 'objectKey': 'private-object'}

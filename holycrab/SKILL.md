@@ -9,7 +9,7 @@ Use the installed `holycrab` CLI or its local MCP tools. Treat its versioned cap
 
 ## Creative requests
 
-For any video, image, audio, storyboard or local editing request, select the guidance below before deciding parameters. Users can describe their goal naturally; they do not need to name a Skill. Read only the relevant guide and its linked references. Requires CLI 0.7.2 or later.
+For any video, image, audio, storyboard or local editing request, select the guidance below before deciding parameters. Users can describe their goal naturally; they do not need to name a Skill. Read only the relevant guide and its linked references. Requires CLI 0.7.4 or later.
 
 - Video, ads, explainers, animation, music videos, short drama or multiple shots: [video workflow](references/creative/video.md).
 - Product photos, posters, visual references or image variants: [image workflow](references/creative/image.md).
@@ -57,6 +57,14 @@ When the CLI writes an update notice, or MCP initialization/tool results include
 Automatic checks use GitHub's latest stable release, cache successful checks for 24 hours and retry failed checks after one hour. Ordinary CLI commands show a reminder at most once per 24 hours for the same version; a newly discovered higher version can be shown immediately. Long-running MCP servers also check the cache before tool calls and include the first notice for each higher version as a separate text block and `result._meta["holycrab/update"]`, without changing the business `structuredContent` or `isError`. MCP initialization does not consume that first tool-result notice. Cached information is not a live release check; expired or failed checks do not produce an automatic reminder until a successful refresh.
 
 `HOLYCRAB_NO_UPDATE_CHECK=1` disables both automatic network checks and automatic reminders, including cached reminders and MCP notices. Explicit `holycrab update --check`, `holycrab update`, and `holycrab doctor --online` still perform the requested check. Cache and lock failures do not fail the user's business command. Without writable storage, throttling can only be retained within the current process; separate CLI processes may check or remind again.
+
+## Current model additions (CLI 0.7.4)
+
+- Seedance 2.5 Flash (`dreamina-seedance-2-5-flash-261115`): 480p/720p, 4–30 seconds; reference/frames/edit/extend. Edit uses duration -1. References: at most 10 images, 5 videos and 5 audio clips, 20 total. It requires Ark asset review and supports no draft or draft final.
+- Seedance 2.5 (`dreamina-seedance-2-5-260628`): ordinary output includes 4k. Drafts remain 480p; final requests contain sourceDraftTaskUniqId and resolution 1080p or 4k, with expectedCredit bound by the CLI. A draft owns one final. Reuse requires the same known resolution; a conflict returns the existing task ID and stops, including concurrent reuse. Never resubmit automatically.
+- Seedream 5.5 (`dola-seedream-5-5-261028`): 1K/1.5K/2K or custom 921,600–4,624,220 pixels, aspect ratio 1:16–16:1, no multiple-of-16 requirement. Default PNG, optional JPEG, one image per request. Use up to 10 imageAssetIds OR imageUrls; no Ark review requirement.
+
+These are release-local capabilities derived from Generate main plus the Seedance 4K branch. Account permission and deployed backend support are determined by estimates; never substitute another model or resolution on rejection. Read the exact selected capability rather than applying flagship limits to Flash.
 
 ## Safe workflow
 

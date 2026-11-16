@@ -21,6 +21,17 @@ try:
 except ModuleNotFoundError:
     from material_contract import SOURCE_FILES, validate_material_contract
 
+# Only Seedance 4K implementation is overlaid on the independently pinned main.
+# No other branch capabilities or frontend-only changes become CLI features.
+SEEDANCE_4K_FILES = (
+    "server/user/src/main/java/com/astrox/seedance/user/service/SeedanceGenerationRequestValidator.java",
+    "server/user/src/main/java/com/astrox/seedance/user/service/DraftFinalGenerationService.java",
+    "server/user/src/main/java/com/astrox/seedance/user/service/UserTaskService.java",
+    "server/user/src/main/java/com/astrox/seedance/user/config/SeedanceCreditProperties.java",
+    "server/common/src/main/java/com/astrox/seedance/common/integration/ark/SeedanceService.java",
+    "server/user/src/main/resources/application.yml",
+)
+
 
 def require(text: str, pattern: str, label: str, errors: list[str]) -> None:
     if re.search(pattern, text, re.MULTILINE | re.DOTALL) is None:
@@ -125,7 +136,7 @@ def validate_central_asset_rules(rules: str, errors: list[str]) -> None:
         (r'maxVideos\s*=\s*SEEDANCE_25.equals\(model\)\s*\?\s*10[^;]*"agnes-image-2.5-flash".equals\(model\)\s*\?\s*0\s*:\s*agnes\(model\)\s*\?\s*1', "Seedance and Agnes video reference limits"),
         (r'maxAudios\s*=\s*SEEDANCE_25.equals\(model\)\s*\?\s*10[^;]*"agnes-image-2.5-flash".equals\(model\)\s*\?\s*0\s*:\s*3', "Seedance and Agnes audio reference limits"),
         (r'if\s*\(\(first\s*\|\|\s*last\)\s*&&\s*references\).*?throw combination', "frame/reference exclusivity"),
-        (r'if\s*\(SEEDANCE_25.equals\(model\)\)\s*range\([^;]*0,\s*50,\s*true,\s*true', "Seedance combined reference limit"),
+        (r'if\s*\(SEEDANCE_25.equals\(model\)(?:\s*\|\|\s*SEEDANCE_25_FLASH.equals\(model\))?\)\s*range\([^;]*0,\s*(?:SEEDANCE_25_FLASH.equals\(model\)\s*\?\s*20\s*:\s*)?50,\s*true,\s*true', "Seedance combined reference limit"),
     ):
         require(rules, pattern, label, errors)
     for name in ("maxImages", "maxVideos", "maxAudios"):
@@ -215,7 +226,7 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
         if model.lower() not in (image + kling + agnes_options + seedance + minimax + agnes + controller + berry).lower():
             errors.append(f"Generate contract drift: model id missing: {model}")
 
-    constants = typescript_constants(video_options + agnes_options + kling + minimax_image)
+    constants = typescript_constants(video_options + agnes_options + kling + minimax_image + image)
     options_match = re.search(r"VIDEO_MODEL_OPTIONS\s*=\s*\[(.*?)\]\s*as\s+const", video_options, re.DOTALL)
     generate_video_ids = option_model_ids(options_match.group(1), constants, errors) if options_match else set()
     snapshot_video_ids = {row["id"] for row in manifest["videoModels"]}
@@ -316,6 +327,55 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     require(controller, r'@PostMapping\("/agnes-generation"\)', "Agnes submit route", errors)
     require(controller, r'@PostMapping\("/agnes-generation/freeze-credit"\)', "Agnes estimate route", errors)
     errors.extend(validate_material_contract(generate_root, cli_root, manifest))
+    errors.extend(validate_release074(generate_root, manifest))
+    return errors
+
+
+def validate_release074(root: Path, manifest: dict) -> list[str]:
+    """Audited additions, including 4K branches that are not yet in main."""
+    errors = []
+    models = {m['id']: m for group in ('videoModels', 'imageModels') for m in manifest[group]}
+    flash = models.get('dreamina-seedance-2-5-flash-261115', {})
+    image = models.get('dola-seedream-5-5-261028', {})
+    for actual, expected, label in (
+        (flash.get('resolutions'), ['480p', '720p'], 'Flash resolutions'),
+        (flash.get('durationSeconds'), {'min': 4, 'max': 30}, 'Flash duration'),
+        (flash.get('taskTypes'), ['reference', 'frames', 'edit', 'extend'], 'Flash modes'),
+        (flash.get('draftSupported'), False, 'Flash draft restriction'),
+        (image.get('sizes'), ['1K', '1.5K', '2K'], 'Seedream 5.5 sizes'),
+        (image.get('outputFormatDefault'), 'png', 'Seedream 5.5 default format'),
+        (image.get('customSize', {}).get('minPixels'), 921600, 'Seedream 5.5 min pixels'),
+        (image.get('customSize', {}).get('maxPixels'), 4624220, 'Seedream 5.5 max pixels'),
+    ):
+        if actual != expected: errors.append('CLI snapshot drift: ' + label)
+    if 'dimensionMultiple' in image.get('customSize', {}):
+        errors.append('CLI snapshot drift: Seedream 5.5 dimension multiple')
+    for key, limit in (('images', 10), ('videos', 5), ('audio', 5), ('total', 20)):
+        if flash.get('referenceLimits', {}).get(key) != limit:
+            errors.append('CLI snapshot drift: Flash reference ' + key)
+    if image.get('referenceLimits', {}).get('images') != 10:
+        errors.append('CLI snapshot drift: Seedream 5.5 reference images')
+    server = root / 'server/user/src/main/java/com/astrox/seedance/user'
+    validator = (server / 'service/SeedanceGenerationRequestValidator.java').read_text()
+    materials = (server / 'service/TaskAssetValidator.java').read_text()
+    final = (server / 'service/DraftFinalGenerationService.java').read_text()
+    upstream = (root / SEEDANCE_4K_FILES[4]).read_text()
+    for text, pattern, label in (
+        (validator, r'"4k".equals\(resolution\).*?!Set.of\("seedance-2-0",\s*SEEDANCE_25_MODEL\).contains\(model\)', 'Seedance 2.5 normal 4K'),
+        (validator, r'"1080p".equals\(resolution\).*?!Set.of\("seedance-2-0",\s*SEEDANCE_25_MODEL\).contains\(model\)', 'Flash excludes 1080p'),
+        (validator, r'Boolean.TRUE.equals\(request.getDraft\(\)\).*?!SEEDANCE_25_MODEL.equals\(model\).*?!"480p".equals\(resolution\)', 'Flash excludes drafts'),
+        (validator, r'SEEDREAM_55_MODEL\s*=\s*"dola-seedream-5-5-261028"', 'Seedream 5.5 identifier'),
+        (validator, r'Set.of\("1K",\s*"1.5K",\s*"2K"\)', 'Seedream 5.5 sizes'),
+        (validator, r'width\s*>\s*4624220L\s*/\s*height', 'Seedream 5.5 output pixels'),
+        (validator, r'imageStrings\(body.get\("imageUrls"\)\).size\(\)\s*>\s*10', 'Seedream 5.5 reference count'),
+        (final, r'Set.of\("1080p",\s*"4k"\).contains\(request.getResolution\(\)\)', 'draft final resolutions'),
+        (final, r'child.setResolution\(request.getResolution\(\)\)', 'draft final task resolution'),
+        (upstream, r'payload.put\("resolution",\s*resolution\)', 'upstream final resolution forwarding'),
+        (materials, r'SEEDANCE_25_FLASH.equals\(model\)\s*\?\s*10', 'Flash image limit'),
+        (materials, r'SEEDANCE_25_FLASH.equals\(model\)\s*\?\s*5', 'Flash video/audio limit'),
+        (materials, r'seedream55\s*&&\s*image.*?maxBytes\s*=\s*30_000_000L;\s*inclusive\s*=\s*true', 'Seedream 5.5 material bytes'),
+    ):
+        require(text, pattern, label, errors)
     return errors
 
 
@@ -325,7 +385,23 @@ def source_paths() -> tuple[str, ...]:
              if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
              and isinstance(node.left, ast.Name) and node.left.id == "generate_root"
              and isinstance(node.right, ast.Constant) and isinstance(node.right.value, str)}
-    return tuple(sorted(paths | set(SOURCE_FILES)))
+    return tuple(sorted(paths | set(SOURCE_FILES) | set(SEEDANCE_4K_FILES)))
+
+
+@contextmanager
+def immutable_sources(repository: Path, main_ref: str, seedance_4k_ref: str):
+    """A main snapshot plus an explicitly scoped overlay, with separate hashes."""
+    with immutable_source(repository, main_ref) as (root, commit, inputs):
+        overlay_commit = subprocess.check_output(['git', '-C', str(repository), 'rev-parse',
+            '--verify', seedance_4k_ref + '^{commit}'], text=True).strip()
+        if re.fullmatch(r'[0-9a-f]{40}', overlay_commit) is None:
+            raise ValueError('Expected an immutable Seedance 4K commit')
+        overlay_files = {}
+        for name in SEEDANCE_4K_FILES:
+            data = subprocess.check_output(['git', '-C', str(repository), 'show', overlay_commit + ':' + name])
+            (root / name).write_bytes(data)
+            overlay_files[name] = hashlib.sha256(data).hexdigest()
+        yield root, commit, inputs, {'seedance4k': {'commit': overlay_commit, 'sourceFiles': overlay_files}}
 
 
 @contextmanager
@@ -350,7 +426,8 @@ def immutable_source(repository: Path, ref: str):
         yield root, commit, inputs
 
 
-def record_evidence(record_path: Path, cli_root: Path, commit: str, expected_main: str, inputs: dict) -> None:
+def record_evidence(record_path: Path, cli_root: Path, commit: str, expected_main: str, inputs: dict,
+                    *, overlays: dict | None = None, expected_4k: str | None = None) -> None:
     try:
         from tools.verify_release_acceptance import candidate_fingerprint, evidence_digest
     except ModuleNotFoundError:
@@ -358,12 +435,17 @@ def record_evidence(record_path: Path, cli_root: Path, commit: str, expected_mai
     if commit != expected_main or re.fullmatch(r"[0-9a-f]{40}", expected_main) is None:
         raise ValueError("Selected source must match the independently verified remote main SHA")
     record = json.loads(record_path.read_text(encoding="utf-8"))
-    if record.get("version") not in {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2", "v0.7.3"}:
+    if record.get("version") not in {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2", "v0.7.3", "v0.7.4"}:
         raise ValueError("Local evidence recording requires an explicitly supported candidate version")
+    if record.get('version') == 'v0.7.4':
+        if not overlays or overlays.get('seedance4k', {}).get('commit') != expected_4k or not expected_4k:
+            raise ValueError('Seedance 4K evidence must match the independently verified branch SHA')
     fingerprint = candidate_fingerprint(cli_root)
     proof = {"status": "passed", "mode": "local-immutable-main", "verifiedMainCommit": commit,
              "verifiedAt": datetime.now(timezone.utc).isoformat(), "candidateSha256": fingerprint,
              "sourceFiles": inputs, "validatorSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+    if overlays:
+        proof.update(mode='local-immutable-main-with-seedance-4k', overlays=overlays)
     proof["evidenceSha256"] = evidence_digest(proof)
     record["candidateSha256"] = fingerprint
     record["generateContractCheck"] = proof
@@ -379,12 +461,23 @@ def main() -> int:
     parser.add_argument("--ref", help="Read an immutable snapshot of this Git ref instead of the working tree")
     parser.add_argument("--write-evidence", type=Path, help="Record a successful strict check for this exact candidate")
     parser.add_argument("--expected-main-sha", help="Remote main SHA independently verified before recording evidence")
+    parser.add_argument('--seedance-4k-ref', help='Overlay only the audited Seedance 4K source files from this ref')
+    parser.add_argument('--expected-4k-sha', help='Independently verified remote 2.5-4k SHA for recording evidence')
     args = parser.parse_args()
     if args.write_evidence and (not args.ref or not args.expected_main_sha):
         parser.error("--write-evidence requires --ref and --expected-main-sha")
+    if args.seedance_4k_ref and not args.ref:
+        parser.error('--seedance-4k-ref requires --ref')
     cli_root = Path(__file__).resolve().parents[1]
     try:
-        if args.ref:
+        if args.seedance_4k_ref:
+            with immutable_sources(args.generate_root.resolve(), args.ref, args.seedance_4k_ref) as (root, commit, inputs, overlays):
+                errors = validate(root, cli_root)
+                if not errors and args.write_evidence:
+                    record_evidence(args.write_evidence, cli_root, commit, args.expected_main_sha, inputs,
+                                    overlays=overlays, expected_4k=args.expected_4k_sha)
+                print('Validated Generate main: ' + commit + '; Seedance 4K overlay: ' + overlays['seedance4k']['commit'])
+        elif args.ref:
             with immutable_source(args.generate_root.resolve(), args.ref) as (root, commit, inputs):
                 errors = validate(root, cli_root)
                 if not errors and args.write_evidence:

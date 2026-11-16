@@ -32,7 +32,7 @@ Before handing back a finished prompt, check it against these — most apply onl
 - One-click video: if image order or character mapping matters, it must be stated explicitly — the model won't infer it.
 - Seamless transitions aim for visual/audio continuity, not pixel-identical preservation of both source videos.
 
-## Reference material technical limits (official BytePlus specs, 2026-08)
+## Upstream creative reference limits (2026-08; select the current model capability for execution)
 
 | Type | Hard limit | Recommended range |
 |---|---|---|
@@ -45,6 +45,6 @@ Video and audio totals are counted **separately** — each modality can reach 30
 
 Asset-mix guidance (official): when the main references are video/audio, keep subjects ≤5 (6-10 testable); when images, keep subjects ≤8 (9-12 testable). With ≤5 subjects, multi-view references are fine; above 5, use single views — and always separate view images rather than collages. Clip length 5-10s is the recognition sweet spot (~2s too little signal, ~30s dilutes traits). Prioritize assets: **core characters > key products/props > scene environment > overall style**.
 
-Duration: any integer 4-30s (smart duration supported), 24 FPS, output MP4 or MOV (MOV better preserves color/brightness/AV consistency for extension and editing chains). Single extension: up to 30s; nested extensions: up to 60s total. Ultra Long Video mode: up to 180s. Output resolution: 480p or 720p.
+Duration: any integer 4-30s (smart duration supported), 24 FPS, output MP4 or MOV (MOV better preserves color/brightness/AV consistency for extension and editing chains). Single extension: up to 30s; nested extensions: up to 60s total. Ultra Long Video mode: up to 180s. HolyCrab output resolution depends on the model: flagship Seedance 2.5 supports 480p/720p/1080p/4k; Flash supports 480p/720p. The table above describes flagship reference counts; Flash limits are 10 images, 5 videos and 5 audio clips, 20 total. Drafts are flagship-only at 480p; a final is 1080p or 4k.
 
 Aspect ratios: 21:9, 16:9, 4:3, 1:1, 3:4, 9:16, plus Smart Aspect Ratio; unlike 2.0's six fixed ratios, any output ratio in [0.4, 2.5] is achievable by controlling input assets. Editing/extension/first-frame tasks force Smart (inherit the input's ratio). Timestamps: 2.5 honors integer-second timestamps (2.0 only responds to shot numbers).

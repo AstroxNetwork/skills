@@ -25,7 +25,7 @@ class InstallerTests(unittest.TestCase):
         step = workflow.split("      - name: Verify recorded contract fingerprint on native Windows\n", 1)[1].split("      - name:", 1)[0]
         self.assertIn("shell: python", step)
         script = textwrap.dedent(step.split("        run: |\n", 1)[1])
-        for version in ("0.7.3", "0.8.0"):
+        for version in ("0.7.4", "0.8.0"):
             with patch("builtins.open", mock_open(read_data=json.dumps({"version": version}))), patch("subprocess.run") as run:
                 exec(compile(script, "windows-contract-step", "exec"), {})
             run.assert_called_once_with([sys.executable, "tools/verify_release_acceptance.py", "v" + version, "--contract-only"], check=True)
@@ -137,9 +137,9 @@ class InstallerTests(unittest.TestCase):
             result = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             version = subprocess.run([str(root / "prefix/bin/holycrab"), "--version"], env=env, text=True, capture_output=True)
-            self.assertEqual(version.stdout.strip(), "holycrab 0.7.3")
+            self.assertEqual(version.stdout.strip(), "holycrab 0.7.4")
             self.assertIn("Next: connect your account\n  holycrab setup", result.stdout)
-            self.assertIn("HolyCrab 0.7.3 installed", result.stdout)
+            self.assertIn("HolyCrab 0.7.4 installed", result.stdout)
             self.assertNotIn("For Agents:", result.stdout)
             self.assertNotIn("Available workflows after account verification:", result.stdout)
             self.assertNotIn("account is connected", result.stdout)
@@ -158,8 +158,8 @@ class InstallerTests(unittest.TestCase):
     def test_public_install_uses_the_branded_stable_entrypoint(self) -> None:
         installer = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         powershell_installer = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
-        self.assertIn("VERSION=v0.7.3", installer)
-        self.assertIn('$Version = "v0.7.3"', powershell_installer)
+        self.assertIn("VERSION=v0.7.4", installer)
+        self.assertIn('$Version = "v0.7.4"', powershell_installer)
 
         stable_urls = (
             "https://holycrab.ai/cli/install.sh",
@@ -307,7 +307,7 @@ class InstallerTests(unittest.TestCase):
             env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
             interrupted = subprocess.run(["sh", str(REPO_ROOT / "install.sh")], env=env, text=True, capture_output=True, timeout=15)
             self.assertEqual(interrupted.returncode, 130, interrupted.stdout + interrupted.stderr)
-            self.assertNotIn("HolyCrab 0.7.3 installed", interrupted.stdout)
+            self.assertNotIn("HolyCrab 0.7.4 installed", interrupted.stdout)
             self.assertEqual((root / "prefix/lib/holycrab/holycrab_cli.py").read_bytes(), old)
             self.assertIn("restored", interrupted.stderr)
 
@@ -445,7 +445,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-relative=${url#*/v0.7.3/}
+relative=${url#*/v0.7.4/}
 cp "$FAKE_RELEASE_ROOT/$relative" "$destination"
 if [ "$relative" = "holycrab/scripts/holycrab_cli.py" ]; then
   printf '\\n# tampered\\n' >> "$destination"
@@ -524,7 +524,7 @@ fi
                     result = subprocess.run([sys.executable, str(script), str(REPO_ROOT / "holycrab/scripts/holycrab_cli.py"), upgrading, "onboarding"],
                                             input=bom + json.dumps(value), text=True, encoding="utf-8", capture_output=True)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn("HolyCrab 0.7.3 installed", result.stdout)
+                    self.assertIn("HolyCrab 0.7.4 installed", result.stdout)
                     self.assertNotIn("PRIVATE_INTERNAL_RULE", result.stdout)
                     self.assertNotIn("account connected", result.stdout)
                     self.assertEqual("Create product listing images" in result.stdout, upgrading == "0")
@@ -630,7 +630,7 @@ fi
         # No version-specific skip may bypass validation of the current record.
         self.assertNotIn("        if:", contract_job)
         from tools.verify_release_acceptance import validate
-        for tag in ("v0.7.3", "v0.6.1", "v0.7.0"):
+        for tag in ("v0.7.4", "v0.6.1", "v0.7.0"):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
                 validate({"version": tag}, tag, root=REPO_ROOT, contract_only=True)
 

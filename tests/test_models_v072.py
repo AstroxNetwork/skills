@@ -56,7 +56,7 @@ class Release072Tests(unittest.TestCase):
         caps.normalize_generation_request('video',draft)
         with self.assertRaises(SystemExit):caps.normalize_generation_request('video',{**draft,'resolution':'720p'})
         req={'sourceDraftTaskUniqId':'draft1','resolution':'1080p'}
-        with patch.object(transport,'send',side_effect=[ok({'uniqId':'draft1'}),ok({'uniqId':'draft1'}),ok({'frozenCredit':12}),ok({'uniqId':'final1','step':0,'sourceDraftTaskUniqId':'draft1'})]) as send:
+        with patch.object(transport,'send',side_effect=[ok({'uniqId':'draft1'}),ok({'uniqId':'draft1'}),ok({'frozenCredit':12}),ok({'uniqId':'final1','step':0,'resolution':'1080p','sourceDraftTaskUniqId':'draft1'})]) as send:
             result=generation.create_generation('video',req,confirmed=True,approved_credits=12)
             self.assertNotIn('expectedCredit',send.call_args_list[2].kwargs['payload'])
             self.assertEqual(send.call_args_list[3].kwargs['payload'],dict(req,expectedCredit=12))
@@ -68,7 +68,7 @@ class Release072Tests(unittest.TestCase):
 
     def test_existing_final_is_reused_even_when_draft_expired(self):
         req={'sourceDraftTaskUniqId':'draft1','resolution':'1080p'}
-        with patch.object(transport,'send',side_effect=[ok({'uniqId':'draft1','draftHdTaskUniqId':'final1','draftExpiresAt':'2000-01-01T00:00:00Z'}),ok({'uniqId':'final1','step':2})]) as send:
+        with patch.object(transport,'send',side_effect=[ok({'uniqId':'draft1','draftHdTaskUniqId':'final1','draftExpiresAt':'2000-01-01T00:00:00Z'}),ok({'uniqId':'final1','step':2,'resolution':'1080p'})]) as send:
             result=generation.create_generation('video',req,confirmed=True)
             self.assertTrue(result['reused'])
             self.assertTrue(all(c.args[0]=='GET' for c in send.call_args_list))
@@ -85,7 +85,7 @@ class Release072Tests(unittest.TestCase):
 
     def test_new_discovery_and_estimate_annotation(self):
         from holycrab_runtime.mcp import MCP_TOOLS
-        self.assertEqual(len(caps.all_models()),22)
+        self.assertEqual(len(caps.all_models()),24)
         self.assertFalse(next(t for t in MCP_TOOLS if t['name']=='generation_estimate')['annotations']['readOnlyHint'])
 
     def test_asset_recovery_actions_preserve_target_model_and_legacy_behavior(self):
@@ -140,7 +140,7 @@ class Release072Tests(unittest.TestCase):
     def test_failed_final_requires_new_estimate_and_confirmation(self):
         request={'sourceDraftTaskUniqId':'draft1','resolution':'1080p'}
         source=ok({'uniqId':'draft1','draftHdTaskUniqId':'final1'})
-        failed=ok({'uniqId':'final1','step':3})
+        failed=ok({'uniqId':'final1','step':3,'resolution':'1080p'})
         with patch.object(transport,'send',side_effect=[source,failed,source,failed,ok({'frozenCredit':12})]) as send:
             result=generation.create_generation('video',request,confirmed=False)
             self.assertTrue(result['confirmationRequired'])
@@ -151,7 +151,7 @@ class Release072Tests(unittest.TestCase):
     def test_nonfailed_finals_are_reused_and_kling_sound_modes_are_distinct(self):
         for step in [0,1,2]:
             with self.subTest(step=step),patch.object(transport,'send',side_effect=[
-                    ok({'uniqId':'draft1','draftHdTaskUniqId':'final1'}),ok({'uniqId':'final1','step':step})]) as send:
+                    ok({'uniqId':'draft1','draftHdTaskUniqId':'final1'}),ok({'uniqId':'final1','step':step,'resolution':'1080p'})]) as send:
                 self.assertTrue(generation.create_generation('video',{'sourceDraftTaskUniqId':'draft1','resolution':'1080p'},confirmed=True)['reused'])
                 self.assertTrue(all(c.args[0]=='GET' for c in send.call_args_list))
         image_reference={'type':'refer_image','assetId':'image1','id':'Image1'}

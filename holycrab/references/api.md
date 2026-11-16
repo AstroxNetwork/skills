@@ -244,7 +244,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `prompt` | string | 是 | 提示词 |
-| `model` | string | 是 | `seedance-2-0`、`seedance-2-0-fast`、`seedance-2-0-mini`、`dreamina-seedance-2-5-260628` |
+| `model` | string | 是 | `seedance-2-0`、`seedance-2-0-fast`、`seedance-2-0-mini`、`dreamina-seedance-2-5-260628`、`dreamina-seedance-2-5-flash-261115` |
 | `ratio` | string | 否 | `source`、`adaptive` 或具体画幅；受模型和任务模式限制 |
 | `duration` | integer | 是 | 普通生成 `4`–`15` 秒；Seedance 2.5 可到 `30` 秒；智能编辑固定为 `-1` |
 | `resolution` | string | 是 | `480p`、`720p`、`1080p`、`4k`；受模型限制 |
@@ -261,7 +261,7 @@ curl -sS 'https://abgzfc.holycrab.ai/api/user/me' \
 
 通用规则：
 
-1. `seedance-2-0` 支持 `480p`、`720p`、`1080p`、`4k`；Seedance 2.5 支持 `480p`、`720p`、`1080p`；Fast 和 Mini 支持 `480p`、`720p`。
+1. `seedance-2-0` 支持 `480p`、`720p`、`1080p`、`4k`；Seedance 2.5 旗舰支持 `480p`、`720p`、`1080p`、`4k`；Seedance 2.5 Flash、Fast 和 Mini 支持 `480p`、`720p`。
 2. 有尾帧必须同时有首帧；首尾帧不能和图片、视频、音频参考列表同时使用。
 3. `frames` 必须提供首帧；`edit`、`extend` 必须且只能配合 `sourceVideoAssetId`，并且不能使用首尾帧。
 4. 素材 ID 必须属于当前 API Key 对应账户，并且素材类型与字段一致。
@@ -272,7 +272,7 @@ Seedance 2.0 / Fast / Mini：
 - 最多 9 张图片、3 段视频、3 段音频；音频不能是唯一参考类型。
 - 参考视频和参考音频的合计时长分别不能超过 15 秒。
 
-Seedance 2.5（`dreamina-seedance-2-5-260628`）：
+Seedance 2.5 旗舰（`dreamina-seedance-2-5-260628`）：
 
 - `reference`、`frames`、`extend` 的 `duration` 为 `4`–`30` 秒；`edit` 必须传 `-1`。
 - 支持最多 30 张图片、10 段视频、10 段音频，三类合计不超过 50 个；允许仅音频参考。
@@ -401,10 +401,10 @@ holycrab generate estimate --kind image --json '{"model":"agnes-image-2.5-flash"
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `prompt` | string | 是 | 提示词 |
-| `model` | string | 是 | `seedream-5-0-pro-260628`、`seedream-5-0-lite-260128`、`seedream-4-5-251128` |
+| `model` | string | 是 | `dola-seedream-5-5-261028`、`seedream-5-0-pro-260628`、`seedream-5-0-lite-260128`、`seedream-4-5-251128` |
 | `size` | string | 否 | 模型支持的分辨率档位或 `宽x高` |
 | `aspectRatio` | string | 否 | `auto`、`21:9`、`16:9`、`3:2`、`4:3`、`1:1`、`3:4`、`2:3`、`9:16`；作为 UI 元数据保存 |
-| `resolution` | string | 否 | `1k`、`2k`、`3k`、`4k`；必须为所选模型支持的档位，作为 UI 元数据保存 |
+| `resolution` | string | 否 | `1k`、`1.5k`、`2k`、`3k`、`4k`；必须为所选模型支持的档位，作为 UI 元数据保存 |
 | `imageUrls` | string[] | 否 | 公开可访问的 HTTPS 参考图片 URL |
 | `outputFormat` | string | 否 | 支持时为 `jpeg` 或 `png` |
 
@@ -414,14 +414,15 @@ holycrab generate estimate --kind image --json '{"model":"agnes-image-2.5-flash"
 
 | 模型 | 参考图上限 | 支持档位 | 自定义尺寸像素范围 |
 | --- | --- | --- | --- |
+| Seedream 5.5 | 10 | 1K、1.5K、2K | 921,600–4,624,220 |
 | Seedream 5.0 Pro | 10 | 1K、2K | 921,600–4,624,220 |
 | Seedream 5.0 Lite | 14 | 2K、3K、4K | 3,686,400–16,777,216 |
 | Seedream 4.5 | 14 | 2K、4K | 3,686,400–16,777,216 |
 
-- Seedream 5.0 Pro 自定义宽高必须是 16 的倍数；Lite 和 4.5 没有此限制。三者比例范围均为 1:16–16:1。
+- Seedream 5.0 Pro 自定义宽高必须是 16 的倍数；5.5、Lite 和 4.5 没有此限制。上述 Seedream 比例范围均为 1:16–16:1。
 - 参考图支持 `jpeg`、`png`、`webp`、`bmp`、`tiff`、`gif`、`heic`、`heif`。
-- 参考图片信息以服务端实测为准；当前统一图片规则为小于 30 MiB、宽高 300–6000 px。元数据未知不由 CLI 推断为不合规。
-- `outputFormat` 仅适用于 Seedream 5.0 Pro / Lite；可选 `jpeg`、`png`。Seedream 4.5 不使用该字段；省略或无效值时使用 `jpeg`。
+- 参考图片信息以服务端实测为准；5.0 Pro / Lite / 4.5 使用小于 30 MiB、宽高 300–6000 px；5.5 使用不超过 30,000,000 字节、单边 15–6000 px、总像素 196–36,000,000 和比例 1:16–16:1。元数据未知不由 CLI 推断为不合规。
+- `outputFormat` 适用于 Seedream 5.5 / 5.0 Pro / Lite，可选 `jpeg`、`png`。5.5 默认 `png` 并拒绝无效格式；5.0 Pro / Lite 默认 `jpeg`。Seedream 4.5 不使用该字段。
 
 ```bash
 curl -sS 'https://abgzfc.holycrab.ai/api/tasks/image-generation' \
@@ -702,3 +703,23 @@ Kling models `kling-4.0` (720p/1080p, integer 3–30 seconds) and `kling-4.0-fla
 Seedance 2.5 supports `draft:true` at 480p. Ordinary 480p is not a draft. To create a final, use `{"sourceDraftTaskUniqId":"TASK_ID","resolution":"1080p"}` with video estimate/create. The CLI supplies the approved expectedCredit on submission; do not copy prompt, model or materials into this request. Drafts and finals are billed separately. Tasks expose draft, draftExpiresAt, sourceDraftTaskUniqId and draftHdTaskUniqId. Expiry and eligibility are determined by the backend. Query existing linked finals rather than recreating them; never automatically resubmit an uncertain request.
 
 `holycrab assets get ID --model MODEL` and `assets wait ID --model MODEL` check model-specific availability. Seedance requires Ark approval. Other models may use pending/rejected Ark assets with valid media; the generation estimate still checks ownership, metadata and file limits. Without --model, the legacy Ark readiness behavior is retained.
+
+## v0.7.4 Flash, 4K and Seedream 5.5
+
+The release snapshot contains 24 models (16 video, 7 image, 1 audio). Audio 1.5 and video upscale remain outside this CLI release.
+
+`dreamina-seedance-2-5-flash-261115` uses the existing Seedance estimate/create endpoints and requires Ark-reviewed assets. Resolutions: 480p/720p. Modes: reference/frames/edit/extend, 4–30 integer seconds except edit=-1. Frames/edit/extend inherit the input ratio through backend normalization. References: 10 images / 5 videos / 5 audio, 20 total; combined video and audio duration each <=30 seconds. Audio-only references are supported. Draft and draft-final requests are unsupported for Flash.
+
+Flagship `dreamina-seedance-2-5-260628` adds ordinary 4k output. Draft generation stays 480p. Final quote body is `{ "sourceDraftTaskUniqId": "DRAFT_ID", "resolution": "4k" }`; create adds the just-approved expectedCredit only. 1080p remains available. The backend owns prices and settlement; the CLI copies neither token rates nor fixed credits. One draft owns one final. Matching resolutions reuse the existing final, including after expiry. Mismatched or unknown linked-final resolution raises DRAFT_FINAL_RESOLUTION_MISMATCH with taskId, requestedResolution and actualResolution, and no create request. If concurrent submission returns another resolution, the created attempt/task is retained but the operation reports failure and must be reviewed, never resubmitted automatically.
+
+`dola-seedream-5-5-261028` uses the existing image endpoints. Supported size: 1K/1.5K/2K or positive WIDTHxHEIGHT, 921,600–4,624,220 pixels and 1:16–16:1, without a multiple-of-16 requirement. Default outputFormat is png, alternative jpeg. One output per request; n, rgba and layers are not supported. Quote may omit prompt; creation requires it. Use at most 10 imageAssetIds OR imageUrls, never both. Its references use JPEG/PNG/WebP/BMP/TIFF/GIF/HEIC/HEIF, <=30,000,000 bytes, each side 15–6000 px, 196–36,000,000 pixels, ratio 1:16–16:1. This model does not require Ark approval. Material limits are described by the capability and enforced by the backend, rather than duplicated as a local metadata gate.
+
+CLI example (estimate only):
+
+```sh
+holycrab generate estimate --kind video --json '{"model":"dreamina-seedance-2-5-flash-261115","prompt":"A crab walks along a beach","duration":5,"resolution":"720p"}'
+holycrab generate estimate --kind video --json '{"sourceDraftTaskUniqId":"DRAFT_ID","resolution":"4k"}'
+holycrab generate estimate --kind image --json '{"model":"dola-seedream-5-5-261028","prompt":"A crab on a white background","size":"1.5K","outputFormat":"png"}'
+```
+
+4K is derived from the separately pinned 2.5-4k branch. The snapshot is not proof that a target environment has deployed that branch. An unsupported backend or account error must not trigger model substitution or resolution downgrade.
