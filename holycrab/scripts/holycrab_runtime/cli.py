@@ -170,7 +170,7 @@ def command_generation_create(args: argparse.Namespace) -> int:
     if not sys.stdout.isatty():
         _presentation.command_progress("Task created. Next: " + result["nextAction"]["command"] if result.get("state") == "created"
                          else "Creation not confirmed. Query existing tasks; do not resubmit.")
-    return 0 if result.get("state") == "created" else 1
+    return 0 if result.get("state") == "created" and not result.get("errorCode") else 1
 
 
 def command_attempts_list(args: argparse.Namespace) -> int:

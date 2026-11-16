@@ -19,14 +19,14 @@ class CapabilityManifestTests(unittest.TestCase):
     def test_records_verified_platform_revision(self) -> None:
         self.assertEqual(self.manifest["schemaVersion"], 1)
         self.assertEqual(self.manifest["source"]["name"], "HolyCrab Public Capability Registry")
-        self.assertEqual(self.manifest["source"]["version"], "2026-11-15")
-        self.assertEqual(self.manifest["source"]["publishedAt"], "2026-11-15")
+        self.assertEqual(self.manifest["source"]["version"], "2026-11-16")
+        self.assertEqual(self.manifest["source"]["publishedAt"], "2026-11-16")
 
     def test_exposes_complete_public_request_schemas(self) -> None:
         schemas = self.manifest["requestSchemas"]
         self.assertEqual(
             set(schemas),
-            {"seedanceVideo", "minimaxVideo", "minimaxMaxVideo", "minimaxHighspeedVideo", "minimaxLiteVideo", "agnesVideo", "agnesImage", "imageGeneration", "audioGeneration", "mulerouterVideo", "klingVideo", "klingFlashVideo", "minimaxImage", "minimaxImageHighspeed", "seedanceDraftFinal"},
+            {"seedanceVideo", "minimaxVideo", "minimaxMaxVideo", "minimaxHighspeedVideo", "minimaxLiteVideo", "agnesVideo", "agnesImage", "imageGeneration", "audioGeneration", "mulerouterVideo", "klingVideo", "klingFlashVideo", "minimaxImage", "minimaxImageHighspeed", "seedanceDraftFinal", "seedream55Image"},
         )
         for name, schema in schemas.items():
             with self.subTest(name=name):
@@ -43,6 +43,7 @@ class CapabilityManifestTests(unittest.TestCase):
                 "seedance-2-0-fast",
                 "seedance-2-0-mini",
                 "dreamina-seedance-2-5-260628",
+                "dreamina-seedance-2-5-flash-261115",
                 "MiniMax-H3",
                 "MiniMax-H3-Max", "MiniMax-H3-Highspeed", "MiniMax-H3-Lite",
                 "agnes-video-2.5", "kling-4.0", "kling-4.0-flash",
@@ -53,7 +54,7 @@ class CapabilityManifestTests(unittest.TestCase):
         seedance_25 = models["dreamina-seedance-2-5-260628"]
         self.assertNotIn("endpoints", seedance_25)
         self.assertEqual(seedance_25["requestSchemaRef"], "seedanceVideo")
-        self.assertEqual(seedance_25["resolutions"], ["480p", "720p", "1080p"])
+        self.assertEqual(seedance_25["resolutions"], ["480p", "720p", "1080p", "4k"])
         self.assertEqual(seedance_25["durationSeconds"], {"min": 4, "max": 30})
         self.assertEqual(seedance_25["taskTypes"], ["reference", "frames", "edit", "extend"])
         self.assertEqual(seedance_25["referenceLimits"]["total"], 50)
@@ -77,7 +78,7 @@ class CapabilityManifestTests(unittest.TestCase):
         image_models = {item["id"]: item for item in self.manifest["imageModels"]}
         self.assertEqual(
             set(image_models),
-            {"seedream-5-0-pro-260628", "seedream-5-0-lite-260128", "seedream-4-5-251128", "agnes-image-2.5-flash", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"},
+            {"dola-seedream-5-5-261028", "seedream-5-0-pro-260628", "seedream-5-0-lite-260128", "seedream-4-5-251128", "agnes-image-2.5-flash", "MiniMax-H3-Image", "MiniMax-H3-Image-Highspeed"},
         )
         pro = image_models["seedream-5-0-pro-260628"]
         self.assertEqual(pro["sizes"], ["1K", "2K"])

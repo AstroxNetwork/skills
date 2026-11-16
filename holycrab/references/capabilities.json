@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "source": {
     "name": "HolyCrab Public Capability Registry",
-    "version": "2026-11-15",
-    "publishedAt": "2026-11-15"
+    "version": "2026-11-16",
+    "publishedAt": "2026-11-16"
   },
   "requestSchemas": {
     "seedanceVideo": {
@@ -22,7 +22,8 @@
             "seedance-2-0",
             "seedance-2-0-fast",
             "seedance-2-0-mini",
-            "dreamina-seedance-2-5-260628"
+            "dreamina-seedance-2-5-260628",
+            "dreamina-seedance-2-5-flash-261115"
           ]
         },
         "prompt": {
@@ -1092,11 +1093,79 @@
         },
         "resolution": {
           "type": "string",
-          "const": "1080p"
+          "enum": [
+            "1080p",
+            "4k"
+          ]
         },
         "expectedCredit": {
           "type": "integer",
           "minimum": 0
+        }
+      }
+    },
+    "seedream55Image": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "dola-seedream-5-5-261028"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "string",
+          "description": "Use a named size listed on the selected capability or WIDTHxHEIGHT."
+        },
+        "aspectRatio": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "21:9",
+            "16:9",
+            "3:2",
+            "4:3",
+            "1:1",
+            "3:4",
+            "2:3",
+            "9:16"
+          ]
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "1k",
+            "1.5k",
+            "2k"
+          ]
+        },
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "outputFormat": {
+          "type": "string",
+          "enum": [
+            "png",
+            "jpeg"
+          ],
+          "default": "png"
+        },
+        "imageAssetIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     }
@@ -1411,7 +1480,8 @@
       "resolutions": [
         "480p",
         "720p",
-        "1080p"
+        "1080p",
+        "4k"
       ],
       "durationSeconds": {
         "min": 4,
@@ -1554,6 +1624,154 @@
       "draftSupported": true,
       "draftResolution": "480p",
       "finalRequestSchemaRef": "seedanceDraftFinal"
+    },
+    {
+      "id": "dreamina-seedance-2-5-flash-261115",
+      "label": "Seedance 2.5 Flash",
+      "requestSchemaRef": "seedanceVideo",
+      "resolutions": [
+        "480p",
+        "720p"
+      ],
+      "durationSeconds": {
+        "min": 4,
+        "max": 30
+      },
+      "taskTypes": [
+        "reference",
+        "frames",
+        "edit",
+        "extend"
+      ],
+      "generateAudioSupported": true,
+      "generateAudioDefault": true,
+      "ratios": [
+        "source",
+        "adaptive",
+        "16:9",
+        "4:3",
+        "1:1",
+        "3:4",
+        "9:16",
+        "21:9"
+      ],
+      "forcedAdaptiveTaskTypes": [
+        "frames",
+        "edit",
+        "extend"
+      ],
+      "referenceLimits": {
+        "images": 10,
+        "videos": 5,
+        "audio": 5,
+        "total": 20,
+        "combinedVideoSeconds": 30,
+        "combinedAudioSeconds": 30
+      },
+      "sourceVideoRules": {
+        "edit": {
+          "sourceMinSeconds": 4,
+          "sourceMaxSeconds": 30,
+          "requestDuration": -1
+        },
+        "extend": {
+          "sourceMinSeconds": 2,
+          "sourceMaxSeconds": 30,
+          "requestDurationMin": 4,
+          "requestDurationMax": 30
+        }
+      },
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 31457280,
+            "maxInclusive": false
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          }
+        },
+        "video": {
+          "formats": [
+            "mp4",
+            "mov"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 209715200,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 30
+          },
+          "width": {
+            "min": 300,
+            "max": 6000
+          },
+          "height": {
+            "min": 300,
+            "max": 6000
+          },
+          "aspectRatio": {
+            "min": 0.4,
+            "max": 2.5
+          },
+          "pixelCount": {
+            "min": 409600,
+            "max": 8295044
+          },
+          "frameRate": {
+            "min": 24,
+            "max": 60
+          }
+        },
+        "audio": {
+          "formats": [
+            "wav",
+            "mp3"
+          ],
+          "sizeBytes": {
+            "min": 0,
+            "minInclusive": false,
+            "max": 15728640,
+            "maxInclusive": false
+          },
+          "durationSeconds": {
+            "min": 2,
+            "max": 30
+          }
+        }
+      },
+      "rules": {
+        "framesAndReferencesMutuallyExclusive": true
+      },
+      "draftSupported": false
     },
     {
       "id": "MiniMax-H3",
@@ -2718,6 +2936,81 @@
     }
   ],
   "imageModels": [
+    {
+      "id": "dola-seedream-5-5-261028",
+      "label": "Seedream 5.5",
+      "requestSchemaRef": "seedream55Image",
+      "sizes": [
+        "1K",
+        "1.5K",
+        "2K"
+      ],
+      "customSize": {
+        "minPixels": 921600,
+        "maxPixels": 4624220,
+        "minAspectRatio": "1:16",
+        "maxAspectRatio": "16:1"
+      },
+      "referenceLimits": {
+        "images": 10,
+        "maxBytesEach": 30000000
+      },
+      "referenceFormats": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "bmp",
+        "tiff",
+        "gif",
+        "heic",
+        "heif"
+      ],
+      "outputFormatSupported": true,
+      "outputFormats": [
+        "png",
+        "jpeg"
+      ],
+      "outputFormatDefault": "png",
+      "materialRules": {
+        "enforcedBy": "backend",
+        "unknownMetadataBlocksGeneration": false,
+        "image": {
+          "formats": [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "bmp",
+            "tiff",
+            "gif",
+            "heic",
+            "heif"
+          ],
+          "sizeBytes": {
+            "max": 30000000,
+            "maxInclusive": true
+          },
+          "width": {
+            "min": 15,
+            "max": 6000
+          },
+          "height": {
+            "min": 15,
+            "max": 6000
+          },
+          "pixelCount": {
+            "min": 196,
+            "max": 36000000
+          },
+          "aspectRatio": {
+            "min": 0.0625,
+            "max": 16
+          }
+        }
+      },
+      "referenceSelectionPriority": "imageAssetIds or imageUrls, never both"
+    },
     {
       "id": "seedream-5-0-pro-260628",
       "label": "Seedream 5.0 Pro",

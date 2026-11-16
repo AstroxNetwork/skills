@@ -1,5 +1,13 @@
 # HolyCrab CLI 使用指南
 
+
+## v0.7.4 新增能力（候选）
+
+- 视频选择 Seedance 2.5 Flash 时支持 480p/720p、4–30 秒，以及参考、首尾帧、编辑和延长；不支持样片。
+- Seedance 2.5 支持普通 4K，以及 480p 样片转 1080p/4K 正片。每个样片只关联一个正片；已有正片分辨率不同会停止并提示任务 ID。
+- 图片选择 Seedream 5.5 时支持 1K/1.5K/2K、PNG（默认）或 JPEG。参考图使用素材 ID 或 URL，不能混用。
+- 使用 `holycrab models show MODEL_ID` 查看所选模型参数，先预估后确认；不支持的服务环境会明确拒绝，不自动换模型或降分辨率。
+
 这份指南让你从一台普通 Mac、Linux 或 Windows 电脑出发，装好 HolyCrab CLI、Skill 和本地 MCP，然后完成 API Key 配置、真人授权、素材上传、估价、生成和下载。
 
 整套工具直接使用 HolyCrab 现有正式服务，不需要等待新 OAuth 或新 MCP 后端上线。

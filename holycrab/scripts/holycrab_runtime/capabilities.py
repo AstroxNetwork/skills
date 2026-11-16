@@ -246,6 +246,8 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
         if payload.get("disablePromptEnhanced") and (edit_mode or (not fixed and payload.get("aspectRatio","auto")=="auto")): raise SystemExit("Disabling enhancement requires text-to-image with concrete dimensions or ratio")
         return
     if kind == "image":
+        if model_id == "dola-seedream-5-5-261028" and payload.get("imageAssetIds") and payload.get("imageUrls"):
+            raise SystemExit("Seedream 5.5 requires imageAssetIds or imageUrls, not both")
         size = payload.get("size")
         if isinstance(size, str) and size:
             named = {str(item).lower() for item in model.get("sizes", [])}
@@ -298,6 +300,14 @@ def normalize_generation_request(kind: str, payload: dict[str, Any], *, for_esti
     if kind == "video" and "sourceDraftTaskUniqId" in normalized:
         validate_generation_request(kind, normalized)
         return normalized
+    if kind == "image" and normalized.get("model") == "dola-seedream-5-5-261028":
+        if isinstance(normalized.get("size"), str):
+            size = normalized["size"].strip()
+            normalized["size"] = size.upper() if size.lower() in {"1k", "1.5k", "2k"} else size
+        normalized.setdefault("outputFormat", "png")
+        if for_estimate and "prompt" not in normalized:
+            validate_generation_request(kind, dict(normalized, prompt="credit-estimate"))
+            return normalized
     if kind == "image" and str(normalized.get("model", "")).lower() in {"minimax-h3-image", "minimax-h3-image-highspeed"}:
         normalized["model"] = "MiniMax-H3-Image" + ("-Highspeed" if normalized["model"].lower().endswith("highspeed") else "")
         normalized.setdefault("size", "auto")

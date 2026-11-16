@@ -421,7 +421,7 @@ def get_asset(asset_id: str, model: str | None = None) -> dict[str, Any]:
             data["nextAction"] = _results.next_action("CHOOSE_ANOTHER_ASSET",
                 "This asset is being deleted and cannot be used. Choose another existing asset.", None)
             return data
-        ark = selected["id"] in {"seedance-2-0", "seedance-2-0-fast", "seedance-2-0-mini", "dreamina-seedance-2-5-260628"}
+        ark = selected["id"] in {"seedance-2-0", "seedance-2-0-fast", "seedance-2-0-mini", "dreamina-seedance-2-5-260628", "dreamina-seedance-2-5-flash-261115"}
         if not ark:
             data["ready"] = data.get("step") != "DELETING" and bool(data.get("url"))
             data["eligibility"] = "backend-validation-required" if data["ready"] else "unavailable"

@@ -15,7 +15,7 @@ from tests.adversarial.http_fixture import ROOT, Service, environment
 
 # Independent protocol vectors: do not compute expectations using runtime schemas/routes.
 VECTORS = []
-for model in ('seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini', 'dreamina-seedance-2-5-260628'):
+for model in ('seedance-2-0', 'seedance-2-0-fast', 'seedance-2-0-mini', 'dreamina-seedance-2-5-260628', 'dreamina-seedance-2-5-flash-261115'):
     request = {'model': model, 'prompt': '中文 🦀', 'duration': 5, 'resolution': '720p'}
     VECTORS.append(('video', request, '/api/tasks/generation', {**request, 'generateAudio': True}))
 for model in ('MiniMax-H3', 'MiniMax-H3-Max', 'MiniMax-H3-Highspeed', 'MiniMax-H3-Lite'):
@@ -41,6 +41,9 @@ for model in ('kling-4.0', 'kling-4.0-flash'):
 for model in ('MiniMax-H3-Image', 'MiniMax-H3-Image-Highspeed'):
     request = {'model':model, 'prompt':'中文 🦀', 'size':'auto', 'resolution':'2k'}
     VECTORS.append(('image', request, '/api/tasks/image-generation', {**request,'n':1,'outputFormat':'jpeg'}))
+
+
+VECTORS.append(('image', {'model':'dola-seedream-5-5-261028','prompt':'中文 🦀','size':'1.5k'}, '/api/tasks/image-generation', {'model':'dola-seedream-5-5-261028','prompt':'中文 🦀','size':'1.5K','outputFormat':'png'}))
 
 
 class HttpWorkflowTests(unittest.TestCase):
@@ -110,7 +113,7 @@ class HttpWorkflowTests(unittest.TestCase):
         return response['result'].get('structuredContent', {})
 
     def test_all_models_real_http_estimate_create_query_download(self):
-        self.assertEqual(len(VECTORS), 22)
+        self.assertEqual(len(VECTORS), 24)
         for index, (kind, request, route, normalized) in enumerate(VECTORS):
             with self.subTest(model=request.get('model', 'seed-audio-1.0')):
                 self.service.calls.clear()
@@ -129,6 +132,36 @@ class HttpWorkflowTests(unittest.TestCase):
                 self.assertEqual(downloaded.returncode, 0, downloaded.stderr)
                 self.assertEqual(output.read_bytes(), b'complete video bytes')
                 self.assertIsNone(self.service.calls[-1]['token'], 'API credential must not be sent to output storage')
+
+    def test_4k_draft_final_and_conflicts_across_cli_and_mcp(self):
+        request = {'sourceDraftTaskUniqId': 'draft1', 'resolution': '4k'}
+        result = self.cli('generate', 'create', '--kind', 'video', '--json', self.request_file(request),
+            '--yes', '--approved-credits', '7', '--attempt-id', 'final4k')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout)['response']['resolution'], '4k')
+        creates = [c for c in self.service.calls if c['path'] == '/api/tasks/generation']
+        self.assertEqual([c['body'] for c in creates], [dict(request, expectedCredit=7)])
+        self.service.calls.clear()
+        self.service.linked_final_resolution = '1080p'
+        conflict = self.mcp('generation_estimate', {'kind': 'video', 'request': request}, error=True)
+        self.assertEqual(conflict['errorCode'], 'DRAFT_FINAL_RESOLUTION_MISMATCH')
+        self.assertEqual(conflict['taskId'], 'final1')
+        self.assertTrue(all(c['method'] == 'GET' for c in self.service.calls))
+        self.service.calls.clear()
+        self.service.linked_final_resolution = None
+        self.service.final_resolution_override = '1080p'
+        conflict = self.mcp('generation_create', {'kind': 'video', 'request': request,
+            'confirmed': True, 'approvedCredits': 7, 'attemptId': 'concurrent4k'}, error=True)
+        self.assertEqual(conflict['state'], 'created')
+        self.assertEqual(conflict['taskId'], 'task1')
+        self.assertEqual(conflict['actualResolution'], '1080p')
+        self.assertEqual(sum(c['path'] == '/api/tasks/generation' for c in self.service.calls), 1)
+
+    def test_normal_4k_transports_exact_resolution(self):
+        request = {'model':'dreamina-seedance-2-5-260628','prompt':'crab','duration':5,'resolution':'4k'}
+        self.mcp('generation_create', {'kind':'video','request':request,'confirmed':True,
+            'approvedCredits':7,'attemptId':'normal4k'})
+        self.assertEqual([c['body'] for c in self.service.calls], [dict(request,generateAudio=True)] * 2)
 
     def test_refused_estimate_exits_nonzero_and_never_creates(self):
         self.service.mode = 'reject'
@@ -304,7 +337,7 @@ class HttpWorkflowTests(unittest.TestCase):
                 self.assertIn(field, value, value)
                 if expected is not None: self.assertEqual(value[field], expected, value)
                 if name == 'generation_attempt_list': self.assertEqual(value[field][0]['attemptId'], 'tools')
-                if name == 'capabilities_list': self.assertEqual(len(value[field]), 22)
+                if name == 'capabilities_list': self.assertEqual(len(value[field]), 24)
                 if name == 'asset_upload_execute':
                     self.assertEqual(value[field][0]['assetUniqId'], 'asset1')
                     self.assertIsNone(value['failedOrUnknown'])

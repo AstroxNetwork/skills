@@ -86,6 +86,21 @@ def validate_estimate_data(data: Any) -> dict[str, Any]:
     return data
 
 
+def final_resolution_conflict(task: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any] | None:
+    """A draft owns one final; a linked task is not proof of the requested resolution."""
+    actual = task.get("resolution")
+    actual = actual.strip().lower() if isinstance(actual, str) else None
+    if actual == payload["resolution"]:
+        return None
+    task_id = extract_task_id({"data": task})
+    return {"errorCode": "DRAFT_FINAL_RESOLUTION_MISMATCH", "taskId": task_id,
+        "requestedResolution": payload["resolution"], "actualResolution": actual,
+        "message": f"Existing final {task_id} has resolution {actual or 'unknown'}, requested {payload['resolution']}. A draft can have only one final; do not resubmit.",
+        "nextAction": _results.next_action("REVIEW_EXISTING_FINAL",
+            "Query the existing final and review its resolution. No replacement will be submitted automatically.",
+            f"holycrab tasks get {task_id}")}
+
+
 def existing_draft_final(payload: dict[str, Any]) -> dict[str, Any] | None:
     source = payload.get("sourceDraftTaskUniqId")
     if not source:
@@ -101,7 +116,12 @@ def existing_draft_final(payload: dict[str, Any]) -> dict[str, Any] | None:
     task = _transport.response_data(*_transport.send("GET", "/api/tasks/" + linked))
     if not isinstance(task, dict) or task.get("uniqId") != linked or type(task.get("step")) is not int or task["step"] not in (0,1,2,3):
         raise ValueError("Unexpected linked final response")
-    return task if task["step"] != 3 else None
+    if task["step"] == 3:
+        return None
+    conflict = final_resolution_conflict(task, payload)
+    if conflict:
+        raise _results.ApiError({"state": "failed", **conflict})
+    return task
 
 
 def estimate_generation(kind: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -141,7 +161,8 @@ def create_generation(
                                     approved_estimate=approved_estimate, approved_credits=approved_credits, progress=progress, context=context)
         if isinstance(result, _results.ApprovedEstimate):
             return result
-        return _results.OperationResult(result, result.get("state") if result.get("state") in {"failed", "unknown"} else "success")
+        return _results.OperationResult(result, "failed" if result.get("errorCode") else
+            result.get("state") if result.get("state") in {"failed", "unknown"} else "success")
     except KeyboardInterrupt:
         if not context.get("reserved"):
             raise
@@ -271,6 +292,14 @@ def _create_generation(kind: str, payload: dict[str, Any], *, confirmed: bool, a
         "nextAction": _results.next_action("WAIT_FOR_TASK", "The task was created. Wait for this same task; do not submit it again.",
                                   f"holycrab tasks wait {task_id} --timeout 600"),
     }
+    if "sourceDraftTaskUniqId" in payload:
+        conflict = final_resolution_conflict(_transport.response_data(status, response), payload)
+        if conflict:
+            result.update(conflict)
+            # Keep the known task and created attempt even if a concurrent request
+            # won the backend's single-final lock with another resolution.
+            saved = persist_outcome(selected_attempt, errorCode=conflict["errorCode"],
+                requestedResolution=payload["resolution"], actualResolution=conflict["actualResolution"]) and saved
     if not saved:
         result.update(localStateSaved=False, warning="The task was created but its local record could not be saved. Keep the task ID and query it; do not resubmit.")
     return result

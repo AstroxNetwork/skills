@@ -1,0 +1,69 @@
+{
+  "version": "v0.7.4",
+  "realHumanCoreFlow": {
+    "status": "pending"
+  },
+  "publication": {
+    "status": "not-requested"
+  },
+  "notes": "Candidate only; main plus scoped Seedance 4K branch. No live generation or native Windows/Linux validation performed in this task.",
+  "candidateSha256": "7a76098e4e93f0883b05b6e70c3650f3dea4096f6d3b0fb7bf14efc966876092",
+  "generateContractCheck": {
+    "status": "passed",
+    "mode": "local-immutable-main-with-seedance-4k",
+    "verifiedMainCommit": "a1143060a83d0ac3eb6ba6c26795694f22a78e0d",
+    "verifiedAt": "2026-11-16T14:24:01.384425+00:00",
+    "candidateSha256": "7a76098e4e93f0883b05b6e70c3650f3dea4096f6d3b0fb7bf14efc966876092",
+    "sourceFiles": {
+      "client/user-front/src/api/tasks.ts": "f109eaaa610903a9b1a861a9873e753de18d0f73cf91ebd235e1ef32b4eaf08d",
+      "client/user-front/src/config/klingModels.ts": "ff171a456c113239320c877f3b28bb00cd67f9b445d26f2b01ff0c7863df2900",
+      "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
+      "client/user-front/src/utils/agnesModels.ts": "16a84634fc4bc1a9b2c93318516840e618ee29dddf9eb7ae6b79456d95984509",
+      "client/user-front/src/utils/assetUploadLimits.ts": "c0f4c29317ec53e2b099e882218dd8c4ec314661ad1e63603810fe5d4caea95f",
+      "client/user-front/src/utils/generationOptions.ts": "6567ecdf9b85da703a2b300980beab3d5a0dbaa2dd4ba1d95e97bc77e77b75c2",
+      "client/user-front/src/utils/imageGenerationParams.ts": "2067477ecf57f08cf656ff06f23b81d163d57ba1591c464107688ae18511695a",
+      "client/user-front/src/utils/minimaxImage.ts": "e31215fd9e6de0dc7b6403c77a6ea17b8c3fecb47c14ff564c20a22f6e6fc2a0",
+      "client/user-front/src/utils/seedAudioRules.ts": "b48e8bcce144496b032837124152a20fe40cf564a24e26bb5a93c8fc49e0a0ed",
+      "server/common/src/main/java/com/astrox/seedance/common/integration/ark/SeedanceService.java": "e64cd71db409cbf518f830a7157be7ff92135e804d25147f57600c187102114c",
+      "server/user/src/main/java/com/astrox/seedance/user/api/ApiResult.java": "df005905953bde4a9cb59e560c4eb8f4f5a4db48243daeb01721226adebeae82",
+      "server/user/src/main/java/com/astrox/seedance/user/api/AssetValidationError.java": "21f43810dc145342834dd85bb655e4edf0f53ad3cf30c4b1e791bc5933506acd",
+      "server/user/src/main/java/com/astrox/seedance/user/api/GlobalExceptionHandler.java": "f56ea4044bfaf7489d98811d3ed3d208a21fcc4016158f6fd884ea3c143e6734",
+      "server/user/src/main/java/com/astrox/seedance/user/config/SeedanceCreditProperties.java": "21b789600fd4ceeee926b573a270143c7343c050d40b8edc3fe25fc8a313b0c3",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserAssetController.java": "c47ece1d6574cee8589aabcc55d2d8d6e36202503614868953a5dacf8524641f",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserTaskController.java": "8322d0e438cb034d95a29d13551f7f773d2fd95fc46408ebeb706a5ebe0f34b6",
+      "server/user/src/main/java/com/astrox/seedance/user/serialization/AssetSerializer.java": "c567ac5e5ee0d5eede0b0ab1cf4ad322a3bc87de6e7a054d9032c2b090c18237",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AgnesGenerationRequestValidator.java": "bae266c7162eb7bf8483eacb03e4b86194fb68f2e193e3d5d06cb2cdda9d4202",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java": "7d44d4e8be33ea663f65240dadcaf61ba88f9565837603a937f6cd5c6ba65178",
+      "server/user/src/main/java/com/astrox/seedance/user/service/DraftFinalGenerationService.java": "4368e6ff1a8ef9447a7e22202b7cd1ae9a8765f03b5c1059d99e0ebaabd3a699",
+      "server/user/src/main/java/com/astrox/seedance/user/service/KlingAssetValidator.java": "54555357cb2acc9cfc0a1d86368c237bf9b20bfb018f1e026853eab56ce8009a",
+      "server/user/src/main/java/com/astrox/seedance/user/service/KlingGenerationRequestValidator.java": "4ebcfce89a4b191d8b0d5096f4d416917be718d8797c4b47644ee3f51b85c983",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxGenerationRequestValidator.java": "210d8330a685f70eb0b8f1e0b43ae7b43a03e2a61bd63497f960f7b0952398c2",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxImageRequestValidator.java": "01b1c6baf83ba28cedd65951cf2d83d2a62395cb4126502498208cb851901015",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MulerouterGenerationRequestValidator.java": "6d5ff7041475ce6461e70c203621c3f694a924f0d70e475a3bd9d99820f3eeaa",
+      "server/user/src/main/java/com/astrox/seedance/user/service/SeedanceGenerationRequestValidator.java": "356348b3454834e1eb58e747be6b72937537b3491c0e9aa5c8886487e77385eb",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java": "69e7dceea793fd0117ff90a792fd5e2f19bf9832fde2dea85222c111d7ddf7de",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java": "8fe0bcf751af9504eab114ae164b5363554d59833270916639bcd99940f41adf",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java": "5ac63dbb83d8d4ed647dc2ea1dfa629787c001669e3bb7d1a053505c1ac3dcef",
+      "server/user/src/main/java/com/astrox/seedance/user/service/UserAssetService.java": "6af4f5f368b0305b249b245c150045c26c5872a0260fe37771e2a9d3c3eddd4b",
+      "server/user/src/main/java/com/astrox/seedance/user/service/UserTaskService.java": "04b8aee0a83fdc00b25cd54112b4dbc91217f3bd7b1e64916e6f5b439176801e",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/AssetVO.java": "52fe355480e4dd715c8796de2e45002747dc2e960779e98154133b236d54e962",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da",
+      "server/user/src/main/resources/application.yml": "920fc07165acbafdfe9dd658dec9a29738d1202aef2ab2e45c9d06a499c4c92a"
+    },
+    "validatorSha256": "c7ef4de596b63b38ba1cbaa54f5ff8524402079da2dfa42a3c7fc70867dbec11",
+    "overlays": {
+      "seedance4k": {
+        "commit": "7d0339bbdc768f00249d8a32867863f6cbc0b603",
+        "sourceFiles": {
+          "server/user/src/main/java/com/astrox/seedance/user/service/SeedanceGenerationRequestValidator.java": "d9785ddce9885adf6d9ba4ccb0e59b6e315dc2e638f8141429553d6fa300e45b",
+          "server/user/src/main/java/com/astrox/seedance/user/service/DraftFinalGenerationService.java": "4fc7433947929d96ca3afcb0e30f6aab14fb2d7893236ab496de86e09b4a233d",
+          "server/user/src/main/java/com/astrox/seedance/user/service/UserTaskService.java": "0602f957d4f045f27b9d789ea98aaf2237874269a6365bcf4074778db2ccd12e",
+          "server/user/src/main/java/com/astrox/seedance/user/config/SeedanceCreditProperties.java": "1ef482c2e0bdd2abe4c17b5601a7255cf51cae8b4ab60f94e8a60311772e7a14",
+          "server/common/src/main/java/com/astrox/seedance/common/integration/ark/SeedanceService.java": "632e3ddd12fba8543e332df5d25883f0f276fd25fad69cbca5ebf587b58ab8c4",
+          "server/user/src/main/resources/application.yml": "2b6afe7dd395247078057b79095dedb87fdb00080811509c51326ef2a704ff2f"
+        }
+      }
+    },
+    "evidenceSha256": "f973b702438bb2acdfdbbc8fc0b1ee961f600c2849d4d1ecb771deea5646768f"
+  }
+}
