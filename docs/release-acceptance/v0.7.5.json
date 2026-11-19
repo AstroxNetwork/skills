@@ -1,19 +1,25 @@
 {
   "version": "v0.7.5",
   "realHumanCoreFlow": {
-    "status": "pending"
+    "status": "previously-accepted",
+    "retestWaived": true,
+    "operator": "Ken",
+    "confirmedAt": "2026-11-19T14:53:39Z",
+    "baselineVersion": "v0.7.4",
+    "baselineCommit": "c5838ae836fb1f8482951dbc404a8329d98e5cf5",
+    "notes": "Ken authorized reuse for v0.7.5 only. The v0.7.4 production test uploaded one photo to an existing authorized group and verified CLI and MCP queries, a byte-identical download, and preservation of the previous asset. This candidate matches the pinned real-person core files. No new authorization or photo upload was performed."
   },
   "publication": {
     "status": "awaiting-user-confirmation"
   },
-  "notes": "Independent offline regression passed the pinned Generate contract, the installed HTTP suite, and the v0.7.4 upgrade/rollback. After the production deployment, both estimates and submissions were accepted. The Kling Image task completed and the CLI downloaded a valid 2048x2048 PNG. The WAN task reached a terminal failure with Mulerouter HTTP 402. Production WAN acceptance remains pending.",
-  "candidateSha256": "e8e9816a93e44f54c0135ce994a64b63083d5a86525c76562754194ef8eded21",
+  "notes": "Independent offline regression passed the pinned Generate contract, the installed HTTP suite, and the v0.7.4 upgrade/rollback. Production Kling Image 4.0 completed from a 9-credit quote and the CLI downloaded a valid 2048x2048 PNG. The first WAN attempt reached terminal failure with Mulerouter HTTP 402. One explicitly authorized retry after replenishment completed from an 8-credit quote. The CLI downloaded an 854x480 MP4 with a two-second video track and its first frame decoded successfully.",
+  "candidateSha256": "1d4195d43770906f94b5f9811c6812c9228bf6013c60ffea2d5a59c9b9e8cf75",
   "generateContractCheck": {
     "status": "passed",
     "mode": "local-immutable-main",
     "verifiedMainCommit": "39d891166438a00faf49b18d4c4032e68afade7e",
-    "verifiedAt": "2026-11-19T14:04:58.837022+00:00",
-    "candidateSha256": "e8e9816a93e44f54c0135ce994a64b63083d5a86525c76562754194ef8eded21",
+    "verifiedAt": "2026-11-19T14:54:52.612455+00:00",
+    "candidateSha256": "1d4195d43770906f94b5f9811c6812c9228bf6013c60ffea2d5a59c9b9e8cf75",
     "sourceFiles": {
       "client/user-front/src/api/tasks.ts": "29cb854ad7749056c17a346b858beb102772ac13635a49fb47d8cb35333c70d3",
       "client/user-front/src/config/klingModels.ts": "ff171a456c113239320c877f3b28bb00cd67f9b445d26f2b01ff0c7863df2900",
@@ -56,6 +62,6 @@
       "server/user/src/main/resources/application.yml": "5580919b50054d60cbea058812763e4ccf8e1bd2a44069a80afde39e62422614"
     },
     "validatorSha256": "ee2781a377a71917b501ec7f9acdb95e6bfa49f455878f9320e336524f0dae36",
-    "evidenceSha256": "cf0fec88b40ddf81b8ced0277c5e80cfe00a3944286cac3baf1ae43499fb7f8e"
+    "evidenceSha256": "f1e4f2f585dda21444fa0b7d93f21d700065b4fb6921f61b2cca37a0137a109f"
   }
 }

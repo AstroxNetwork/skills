@@ -15,6 +15,25 @@ LOCAL_EVIDENCE_TAGS = {LOCAL_EVIDENCE_TAG, "v0.5.0"}
 CANDIDATE_CONTRACT_TAGS = {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2", "v0.7.3", "v0.7.4", "v0.7.5"}
 REUSED_CORE_TAG = "v0.5.0"
 REUSED_CORE_HASH = "dde70a8d891d97c6837276e9a3daa32016f7ca987e9cc92adec620e0912da94a"
+V075_BASELINE_VERSION = "v0.7.4"
+V075_BASELINE_COMMIT = "c5838ae836fb1f8482951dbc404a8329d98e5cf5"
+V075_BASELINE_RECORD = "docs/release-acceptance/v0.7.4.json"
+V075_BASELINE_RECORD_SHA256 = "08dc20a5c1abd6559202cae95925f98394de67243c6ee1d8fd46525b58acf8fa"
+V075_BASELINE_CORE_SHA256 = "85531df53bbeea2e7d669190c5398cf2c8528d19d8f1a9dc5c226f3117eccbac"
+V075_REVIEWED_SHARED_SHA256 = "efe913197209f92a6f4a754b9c4ea7a0b260a0cc70d3e3a8f240aa6dcdaac41a"
+V075_RUNTIME = "holycrab/scripts/holycrab_runtime"
+V075_FIXED_CORE_FILES = (
+    "bin/holycrab", "holycrab/scripts/holycrab_cli.py",
+    "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl",
+) + tuple(
+    f"{V075_RUNTIME}/{module}.py" for module in (
+        "__init__", "cli", "downloads", "exports", "lifecycle", "mcp", "media", "presentation",
+        "real_human", "results", "skills", "state", "tasks", "transport", "uploads", "workflows",
+    )
+)
+V075_REVIEWED_SHARED_FILES = tuple(
+    f"{V075_RUNTIME}/{module}.py" for module in ("capabilities", "generation", "settings")
+)
 MODEL_UPDATE_NODES = {"VERSION", "GENERATION_ROUTES", "MODEL_GENERATION_ROUTES", "PUBLIC_ACCOUNT_FIELDS",
                       "public_account_data", "format_terminal_result", "validate_generation_request", "generation_endpoints"}
 
@@ -49,6 +68,31 @@ def validate_unchanged_core(flow, root):
     actual = unchanged_core_fingerprint((root / "holycrab/scripts/holycrab_cli.py").read_text(encoding="utf-8"))
     if actual != REUSED_CORE_HASH:
         raise ValueError("Real-person/upload or other non-model core code changed; fresh acceptance is required")
+
+
+def _file_set_sha256(root: Path, names: tuple[str, ...]) -> str:
+    hashes = {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names}
+    return hashlib.sha256(json.dumps(hashes, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def validate_v075_reused_core(flow, root: Path) -> None:
+    if not all(isinstance(flow.get(key), str) and flow[key].strip() for key in ("operator", "confirmedAt", "notes")):
+        raise ValueError("v0.7.5 reuse requires explicit operator confirmation")
+    if flow.get("baselineVersion") != V075_BASELINE_VERSION or flow.get("baselineCommit") != V075_BASELINE_COMMIT:
+        raise ValueError("v0.7.5 reuse requires its pinned v0.7.4 baseline")
+    historical = (root / V075_BASELINE_RECORD).read_bytes()
+    if hashlib.sha256(historical).hexdigest() != V075_BASELINE_RECORD_SHA256:
+        raise ValueError("Pinned v0.7.4 real-person acceptance record changed")
+    baseline = json.loads(historical)
+    tested = datetime.fromisoformat(baseline["realHumanCoreFlow"]["testedAt"].replace("Z", "+00:00"))
+    confirmed = datetime.fromisoformat(flow["confirmedAt"].replace("Z", "+00:00"))
+    if confirmed.tzinfo is None or not tested <= confirmed <= datetime.now(timezone.utc) + timedelta(minutes=5):
+        raise ValueError("v0.7.5 reuse requires a valid confirmation time after the original test")
+    if _file_set_sha256(root, V075_FIXED_CORE_FILES) != V075_BASELINE_CORE_SHA256:
+        raise ValueError("Real-person core code changed since v0.7.4")
+    if _file_set_sha256(root, V075_REVIEWED_SHARED_FILES) != V075_REVIEWED_SHARED_SHA256:
+        raise ValueError("Reviewed v0.7.5 shared generation or settings code changed")
+
 
 CONTRACT_FILES = ("holycrab/scripts/holycrab_cli.py", "holycrab/references/capabilities.json",
                   "tools/validate_generate_contract.py")
@@ -182,6 +226,9 @@ def validate(record, tag, *, root=None, contract_only=False):
             raise ValueError("Reused acceptance requires explicit operator confirmation")
         datetime.fromisoformat(flow["confirmedAt"].replace("Z", "+00:00"))
         validate_unchanged_core(flow, root)
+        return
+    if tag == "v0.7.5" and flow.get("status") == "previously-accepted" and flow.get("retestWaived") is True:
+        validate_v075_reused_core(flow, Path(root))
         return
     if flow.get("status") != "passed":
         raise ValueError("Actual real-person authorization and upload acceptance is still pending; do not release")
