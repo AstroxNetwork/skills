@@ -85,7 +85,7 @@ class Release072Tests(unittest.TestCase):
 
     def test_new_discovery_and_estimate_annotation(self):
         from holycrab_runtime.mcp import MCP_TOOLS
-        self.assertEqual(len(caps.all_models()),24)
+        self.assertEqual(len(caps.all_models()),25)
         self.assertFalse(next(t for t in MCP_TOOLS if t['name']=='generation_estimate')['annotations']['readOnlyHint'])
 
     def test_asset_recovery_actions_preserve_target_model_and_legacy_behavior(self):

@@ -163,27 +163,25 @@ class V050LocalContractTests(LocalContractEvidenceTests):
 
 class CandidateAcceptanceTests(unittest.TestCase):
     def test_new_candidate_requires_fresh_bound_acceptance(self):
-        from tools.verify_release_acceptance import candidate_fingerprint
-        root = Path(__file__).parents[1]
-        record = {'version': 'v0.7.4', 'candidateSha256': candidate_fingerprint(root), 'realHumanCoreFlow': {
-            'status': 'passed', 'operator': 'offline fixture only', 'testedAt': '2026-10-23T00:00:00Z', 'notes': 'Not actual acceptance'}}
         from tests.test_material_contract_evidence import evidence_for
+        root = Path(__file__).parents[1]
+        tag = 'v0.7.5'
         proof = evidence_for(root)
-        from tools.validate_generate_contract import SEEDANCE_4K_FILES
-        from tools.verify_release_acceptance import evidence_digest
-        proof.update(mode='local-immutable-main-with-seedance-4k', overlays={
-            'seedance4k': {'commit':'c'*40, 'sourceFiles':{name:'d'*64 for name in SEEDANCE_4K_FILES}}})
-        proof['evidenceSha256'] = evidence_digest(proof)
-        record['generateContractCheck'] = proof
-        validate(record, 'v0.7.4', root=root)
+        record = {'version': tag, 'candidateSha256': proof['candidateSha256'],
+                  'generateContractCheck': proof, 'realHumanCoreFlow': {
+            'status': 'passed', 'operator': 'offline fixture only', 'testedAt': '2026-11-19T00:00:00Z',
+            'notes': 'Not actual acceptance'}}
+        validate(record, tag, root=root, contract_only=True)
+        validate(record, tag, root=root)
         for status in ('pending', 'previously-accepted'):
             changed = copy.deepcopy(record)
             changed['realHumanCoreFlow']['status'] = status
             changed['realHumanCoreFlow']['retestWaived'] = True
-            with self.assertRaises(ValueError): validate(changed, 'v0.7.4', root=root)
+            with self.subTest(status=status), self.assertRaisesRegex(ValueError, 'real-person'):
+                validate(changed, tag, root=root)
         record['candidateSha256'] = '0' * 64
         with self.assertRaisesRegex(ValueError, 'exact candidate'):
-            validate(record, 'v0.7.4', root=root)
+            validate(record, tag, root=root)
 
     def test_module_change_invalidates_candidate_fingerprint(self):
         import shutil

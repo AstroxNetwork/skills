@@ -20,9 +20,9 @@ class Contract074Tests(unittest.TestCase):
         self.record = {'version': 'v0.7.4', 'candidateSha256': proof['candidateSha256'],
             'generateContractCheck': proof, 'realHumanCoreFlow': {'status': 'pending'}}
 
-    def test_valid_double_source_proof_still_does_not_approve_release(self):
+    def test_valid_double_source_proof_does_not_approve_a_new_candidate(self):
         validate(self.record, 'v0.7.4', root=ROOT, contract_only=True)
-        with self.assertRaisesRegex(ValueError, 'real-person'):
+        with self.assertRaisesRegex(ValueError, 'Candidate version'):
             validate(self.record, 'v0.7.4', root=ROOT)
 
     def test_missing_overlay_or_unrelated_files_fail_even_after_rehash(self):

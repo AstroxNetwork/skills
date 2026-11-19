@@ -1,4 +1,4 @@
-"""Backend-owned material policy and Berry request regressions; no network or paid jobs."""
+"""Backend-owned material policy and WAN request regressions; no network or paid jobs."""
 from __future__ import annotations
 
 import argparse
@@ -15,7 +15,7 @@ from tests.network_fixtures import getaddrinfo
 
 from tests.test_cli import holycrab as cli
 
-BERRY = ('berry-1.0', 'berry-1.0-pro', 'berry-1.0-turbo', 'berry-1.0-pro-turbo')
+WAN = ('wan3-stand', 'wan3-stand-pro', 'wan3-prime', 'wan3-prime-pro')
 REJECTION = {'code': 400, 'message': 'Material rejected', 'errorCode': 'TASK_ASSET_SIZE_INVALID',
              'requestId': 'request123', 'apiKey': 'private-test-key',
              'errors': [{'code': 'TASK_ASSET_SIZE_INVALID', 'scope': 'asset', 'assetId': 'asset1',
@@ -71,14 +71,14 @@ class MaterialSyncTests(unittest.TestCase):
         with patch.object(cli._owner('send'), 'send', return_value=(400, REJECTION)) as send:
             response = cli.mcp_dispatch({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
                 'name': 'generation_estimate', 'arguments': {'kind': 'video', 'request': {
-                    'model': BERRY[0], 'prompt': 'a crab'}}}})['result']
+                    'model': WAN[0], 'prompt': 'a crab'}}}})['result']
         self.assertTrue(response['isError'])
         self.assertEqual(response['structuredContent']['errors'][0]['actual'], 0)
         self.assertEqual(send.call_count, 1)
         self.assertEqual(cli.attempt_records(), [])
 
     def test_cli_api_failure_prints_json_and_returns_nonzero(self):
-        argv = ['holycrab', 'generate', 'estimate', '--kind', 'video', '--json', json.dumps({'model': BERRY[0], 'prompt': 'crab'})]
+        argv = ['holycrab', 'generate', 'estimate', '--kind', 'video', '--json', json.dumps({'model': WAN[0], 'prompt': 'crab'})]
         output = io.StringIO()
         with patch('sys.argv', argv), patch.object(cli._owner('send'), 'send', return_value=(400, REJECTION)), \
                 patch.object(cli._owner('startup_maintenance'), 'startup_maintenance'), redirect_stdout(output), redirect_stderr(io.StringIO()):
@@ -86,7 +86,7 @@ class MaterialSyncTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())['requestId'], 'request123')
 
     def test_rejected_submission_records_details_and_never_retries(self):
-        request = {'model': BERRY[0], 'prompt': 'crab'}
+        request = {'model': WAN[0], 'prompt': 'crab'}
         with patch.object(cli._owner('send'), 'send', side_effect=[(200, {'code': 200, 'data': {'frozenCredit': 1}}), (400, REJECTION)]) as send:
             result = cli.create_generation('video', request, confirmed=True, attempt_id='materialRejected')
         self.assertEqual(send.call_count, 2)
@@ -99,7 +99,7 @@ class MaterialSyncTests(unittest.TestCase):
             send.assert_not_called()
 
     def test_material_counts_combinations_and_mentions_are_backend_owned(self):
-        for model in ('seedance-2-0', 'MiniMax-H3', BERRY[0]):
+        for model in ('seedance-2-0', 'MiniMax-H3', WAN[0]):
             request = {'model': model, 'prompt': 'crab', 'duration': 5,
                        'resolution': '768P' if model == 'MiniMax-H3' else '720p',
                        'imageAssetIds': ['same'] * 101, 'videoAssetIds': ['video'] * 101,
@@ -109,7 +109,7 @@ class MaterialSyncTests(unittest.TestCase):
             request = {'textPrompt': prompt, 'references': [{'assetId': 'a', 'type': 'audio'}, {'image_url': 'https://cdn.example/a.png'}] * 10}
             self.assertEqual(cli.normalize_generation_request('audio', request), request)
         with self.assertRaises(SystemExit):
-            cli.normalize_generation_request('video', {'model': BERRY[0], 'prompt': 'crab', 'imageAssetIds': [1]})
+            cli.normalize_generation_request('video', {'model': WAN[0], 'prompt': 'crab', 'imageAssetIds': [1]})
 
     def test_audio_new_sources_migration_and_estimate_body(self):
         for reference in ({'assetId': 'audio1', 'type': 'audio'}, {'assetId': 'image1', 'type': 'image'},
@@ -245,14 +245,14 @@ class MaterialSyncTests(unittest.TestCase):
         self.assertEqual(args.uniq_id, 'asset1')
 
 
-class BerryTests(unittest.TestCase):
+class WanTests(unittest.TestCase):
     setUp = MaterialSyncTests.setUp
 
     def test_each_model_estimate_confirm_create_query_and_download(self):
         class Remote(io.BytesIO):
             headers = {'Content-Length': '5'}
-        for index, model in enumerate(BERRY):
-            task_id = 'berryTask' + str(index)
+        for index, model in enumerate(WAN):
+            task_id = 'wanTask' + str(index)
             request = {'model': model, 'prompt': 'crab'}
             task = {'uniqId': task_id, 'step': 2, 'videoUrl': 'https://cdn.example/result.mp4'}
             calls = []
@@ -268,7 +268,7 @@ class BerryTests(unittest.TestCase):
                 estimate = cli.create_generation('video', request, confirmed=False)
                 self.assertTrue(estimate['confirmationRequired'])
                 self.assertEqual(len(calls), 1)
-                created = cli.create_generation('video', request, confirmed=True, attempt_id='berryFlow' + str(index), approved_estimate=estimate)
+                created = cli.create_generation('video', request, confirmed=True, attempt_id='wanFlow' + str(index), approved_estimate=estimate)
                 self.assertEqual(created['taskId'], task_id)
                 self.assertEqual(created['state'], 'created')
                 queried = cli.mcp_tool_call('generation_get', {'taskId': task_id})
@@ -280,20 +280,20 @@ class BerryTests(unittest.TestCase):
                 self.assertEqual(sum(method == 'POST' and not path.endswith('/freeze-credit') for method, path, _ in calls), 1)
                 self.assertEqual(sum(path.endswith('/freeze-credit') for _, path, _ in calls), 2)
                 with self.assertRaises(SystemExit):
-                    cli.create_generation('video', request, confirmed=True, attempt_id='berryFlow' + str(index))
+                    cli.create_generation('video', request, confirmed=True, attempt_id='wanFlow' + str(index))
                 self.assertEqual(len(calls), 5)
 
     def test_catalog_defaults_routes(self):
-        self.assertEqual(len(cli.all_models()), 24)
-        for model in BERRY:
+        self.assertEqual(len(cli.all_models()), 25)
+        for model in WAN:
             result = cli.normalize_generation_request('video', {'model': model, 'prompt': 'crab'})
             self.assertEqual({k: result[k] for k in ('duration', 'resolution', 'ratio', 'audio')},
                              {'duration': 5, 'resolution': '1080p', 'ratio': 'adaptive', 'audio': True})
-            self.assertEqual(cli.generation_endpoints('video', result), ('/api/tasks/mulerouter-generation/freeze-credit', '/api/tasks/mulerouter-generation'))
-            self.assertEqual(cli.find_model(model)['capabilitySnapshotVersion'], '2026-11-16')
+            self.assertEqual(cli.generation_endpoints('video', result), ('/api/tasks/wan/freeze-credit', '/api/tasks/wan'))
+            self.assertEqual(cli.find_model(model)['capabilitySnapshotVersion'], '2026-11-19')
 
     def test_scalar_boundaries_and_utf16_prompt(self):
-        for model in BERRY:
+        for model in WAN:
             base = {'model': model, 'prompt': 'crab'}
             for duration in (2, 30): cli.normalize_generation_request('video', {**base, 'duration': duration})
             for resolution in (('1080p', '2k', '4k') if '-pro' in model else ('480p', '720p', '1080p')):

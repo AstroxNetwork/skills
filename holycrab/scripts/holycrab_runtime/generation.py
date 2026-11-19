@@ -30,7 +30,7 @@ def generation_endpoints(kind: str, payload: dict[str, Any]) -> tuple[str, str]:
     model = _capabilities.find_model(model_id)
     if model["kind"] != kind:
         raise SystemExit(f"Model {model_id} is a {model['kind']} model, not {kind}")
-    route = _settings.MODEL_GENERATION_ROUTES.get(model_id)
+    route = _settings.MODEL_GENERATION_ROUTES.get(model["id"])
     if route is None:
         raise SystemExit(f"No generation route for public model: {model_id}")
     return _settings.GENERATION_ROUTES[route]

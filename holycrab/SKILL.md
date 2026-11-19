@@ -9,7 +9,7 @@ Use the installed `holycrab` CLI or its local MCP tools. Treat its versioned cap
 
 ## Creative requests
 
-For any video, image, audio, storyboard or local editing request, select the guidance below before deciding parameters. Users can describe their goal naturally; they do not need to name a Skill. Read only the relevant guide and its linked references. Requires CLI 0.7.4 or later.
+For any video, image, audio, storyboard or local editing request, select the guidance below before deciding parameters. Users can describe their goal naturally; they do not need to name a Skill. Read only the relevant guide and its linked references. Requires CLI 0.7.5 or later.
 
 - Video, ads, explainers, animation, music videos, short drama or multiple shots: [video workflow](references/creative/video.md).
 - Product photos, posters, visual references or image variants: [image workflow](references/creative/image.md).
@@ -58,13 +58,16 @@ Automatic checks use GitHub's latest stable release, cache successful checks for
 
 `HOLYCRAB_NO_UPDATE_CHECK=1` disables both automatic network checks and automatic reminders, including cached reminders and MCP notices. Explicit `holycrab update --check`, `holycrab update`, and `holycrab doctor --online` still perform the requested check. Cache and lock failures do not fail the user's business command. Without writable storage, throttling can only be retained within the current process; separate CLI processes may check or remind again.
 
-## Current model additions (CLI 0.7.4)
+## Current model additions
+
+- WAN 3.0 uses `wan3-stand`, `wan3-stand-pro`, `wan3-prime` and `wan3-prime-pro`. Legacy Berry IDs are accepted as inputs and may still appear on task or account records. Use the new IDs for new requests.
+- Kling Image 4.0 (`kling-image-4.0`) supports 2k/4k/8k, independent images or a related series, and owned reference images. Use `n` for single mode or `seriesAmount` for series mode. Estimate the selected resolution and output count before asking for confirmation.
 
 - Seedance 2.5 Flash (`dreamina-seedance-2-5-flash-261115`): 480p/720p, 4–30 seconds; reference/frames/edit/extend. Edit uses duration -1. References: at most 10 images, 5 videos and 5 audio clips, 20 total. It requires Ark asset review and supports no draft or draft final.
 - Seedance 2.5 (`dreamina-seedance-2-5-260628`): ordinary output includes 4k. Drafts remain 480p; final requests contain sourceDraftTaskUniqId and resolution 1080p or 4k, with expectedCredit bound by the CLI. A draft owns one final. Reuse requires the same known resolution; a conflict returns the existing task ID and stops, including concurrent reuse. Never resubmit automatically.
 - Seedream 5.5 (`dola-seedream-5-5-261028`): 1K/1.5K/2K or custom 921,600–4,624,220 pixels, aspect ratio 1:16–16:1, no multiple-of-16 requirement. Default PNG, optional JPEG, one image per request. Use up to 10 imageAssetIds OR imageUrls; no Ark review requirement.
 
-These are release-local capabilities derived from Generate main plus the Seedance 4K branch. Account permission and deployed backend support are determined by estimates; never substitute another model or resolution on rejection. Read the exact selected capability rather than applying flagship limits to Flash.
+These capabilities come from the Generate main snapshot used for this CLI release. Use the estimate to verify account permission and deployed backend support. Read the exact selected capability before building the request.
 
 ## Safe workflow
 
@@ -136,4 +139,4 @@ Display known metadata and preserve unknowns. Use `asset_metadata_retry` or `hol
 
 Image requests accept `imageAssetIds` and `imageUrls`; nonempty IDs take precedence. Audio references accept `{assetId,type:"audio"|"image"}`, `{audio_url}` or `{image_url}`; omit `model` from the Seed Audio request body. Legacy inline Base64/speaker sources require an explicitly confirmed upload and a new ID/URL request; never upload implicitly.
 
-Berry models are `berry-1.0`, `berry-1.0-turbo`, `berry-1.0-pro`, and `berry-1.0-pro-turbo`. Use the selected schema: `audio` controls output audio, defaults are 5 seconds / 1080p / adaptive / audio enabled. All support 2–30 integer seconds. Ordinary/Turbo support 480p/720p/1080p; Pro/Pro Turbo support 1080p/2k/4k. Do not substitute `generateAudio`, `seconds` or `size`.
+WAN 3.0 uses `audio` to control output audio. Defaults are 5 seconds, 1080p, adaptive and audio enabled. All support 2–30 integer seconds. Stand and Prime support 480p/720p/1080p. Stand Pro and Prime Pro support 1080p/2k/4k.

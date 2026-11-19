@@ -13,6 +13,10 @@ Example: “Make a clean product listing photo from this bottle.” Preserve the
 
 MiniMax H3 Image and Highspeed support up to 16 owned references and n=1–10 images per task. Default to n=1; use either a multi-image task or separate variant steps without multiplying both. Obtain the model's estimate, and download each completed image by its output index. Use model-specific asset checks; Ark review is not required for MiniMax.
 
+## Kling Image 4.0
+
+Use `kling-image-4.0` with `resultType: "single"` and `n` from 1 to 9 for independent images, or `resultType: "series"` and a string `seriesAmount` from `"2"` to `"10"` or `"auto"` for related images. Choose 2k, 4k or 8k. Reference entries use `{type: "refer_image", assetId, id}`. Give each reference a distinct ID and refer to it in the prompt as `@id`. Estimate the selected mode and resolution, then download the returned images in output-index order.
+
 ## Seedream 5.5 (CLI 0.7.4)
 
 Choose `dola-seedream-5-5-261028` for 1K/1.5K/2K, PNG by default or JPEG, one image per request. Custom output spans 921,600–4,624,220 pixels, ratio 1:16–16:1, no multiple-of-16 requirement. Use at most 10 reference images via IDs OR URLs; never mix them. Check capabilities and the service quote before executing. Other Seedream models keep their own defaults and limits.

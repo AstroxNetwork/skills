@@ -1,0 +1,61 @@
+{
+  "version": "v0.7.5",
+  "realHumanCoreFlow": {
+    "status": "pending"
+  },
+  "publication": {
+    "status": "awaiting-user-confirmation"
+  },
+  "notes": "Independent offline regression passed the pinned Generate contract, the installed HTTP suite, and the v0.7.4 upgrade/rollback. After the production deployment, both estimates and submissions were accepted. The Kling Image task completed and the CLI downloaded a valid 2048x2048 PNG. The WAN task reached a terminal failure with Mulerouter HTTP 402. Production WAN acceptance remains pending.",
+  "candidateSha256": "e8e9816a93e44f54c0135ce994a64b63083d5a86525c76562754194ef8eded21",
+  "generateContractCheck": {
+    "status": "passed",
+    "mode": "local-immutable-main",
+    "verifiedMainCommit": "39d891166438a00faf49b18d4c4032e68afade7e",
+    "verifiedAt": "2026-11-19T14:04:58.837022+00:00",
+    "candidateSha256": "e8e9816a93e44f54c0135ce994a64b63083d5a86525c76562754194ef8eded21",
+    "sourceFiles": {
+      "client/user-front/src/api/tasks.ts": "29cb854ad7749056c17a346b858beb102772ac13635a49fb47d8cb35333c70d3",
+      "client/user-front/src/config/klingModels.ts": "ff171a456c113239320c877f3b28bb00cd67f9b445d26f2b01ff0c7863df2900",
+      "client/user-front/src/config/wan3Models.ts": "b716e019d398f759a79edb6cba3ebff3c16ab5e03b64b047dfd82163818f375c",
+      "client/user-front/src/utils/agnesModels.ts": "16a84634fc4bc1a9b2c93318516840e618ee29dddf9eb7ae6b79456d95984509",
+      "client/user-front/src/utils/assetUploadLimits.ts": "c0f4c29317ec53e2b099e882218dd8c4ec314661ad1e63603810fe5d4caea95f",
+      "client/user-front/src/utils/generationOptions.ts": "10a90e616406bfa09a5d5b118ffb57fe100503225c79cc4b4e474b4a14587e2f",
+      "client/user-front/src/utils/imageGenerationParams.ts": "0f91ca26586b59f8d6231b4642e979f14a0b1287de28ab831a603b53b3a9676c",
+      "client/user-front/src/utils/klingImage.ts": "d45076e17b87445036771c79496885ad9e485283e0b0c196686b3457556c1d0f",
+      "client/user-front/src/utils/minimaxImage.ts": "e31215fd9e6de0dc7b6403c77a6ea17b8c3fecb47c14ff564c20a22f6e6fc2a0",
+      "client/user-front/src/utils/seedAudioRules.ts": "b48e8bcce144496b032837124152a20fe40cf564a24e26bb5a93c8fc49e0a0ed",
+      "server/common/src/main/java/com/astrox/seedance/common/integration/ark/SeedanceService.java": "632e3ddd12fba8543e332df5d25883f0f276fd25fad69cbca5ebf587b58ab8c4",
+      "server/user/src/main/java/com/astrox/seedance/user/api/ApiResult.java": "df005905953bde4a9cb59e560c4eb8f4f5a4db48243daeb01721226adebeae82",
+      "server/user/src/main/java/com/astrox/seedance/user/api/AssetValidationError.java": "21f43810dc145342834dd85bb655e4edf0f53ad3cf30c4b1e791bc5933506acd",
+      "server/user/src/main/java/com/astrox/seedance/user/api/GlobalExceptionHandler.java": "f56ea4044bfaf7489d98811d3ed3d208a21fcc4016158f6fd884ea3c143e6734",
+      "server/user/src/main/java/com/astrox/seedance/user/config/SeedanceCreditProperties.java": "ce97a226c1f44f7bf03114f85633df06b2f1fdee77546fc25418b16b1bcc7e60",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserAssetController.java": "c47ece1d6574cee8589aabcc55d2d8d6e36202503614868953a5dacf8524641f",
+      "server/user/src/main/java/com/astrox/seedance/user/controller/UserTaskController.java": "49bd796d3fbd276bd3157d5eb4b4e658acb218fe36821a2a60234281d20123ca",
+      "server/user/src/main/java/com/astrox/seedance/user/serialization/AssetSerializer.java": "c567ac5e5ee0d5eede0b0ab1cf4ad322a3bc87de6e7a054d9032c2b090c18237",
+      "server/user/src/main/java/com/astrox/seedance/user/serialization/TaskSerializer.java": "af01a4cfc2c18adc2408c2331c81169929984e8457301eab05291d9050f0aad5",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AgnesGenerationRequestValidator.java": "bae266c7162eb7bf8483eacb03e4b86194fb68f2e193e3d5d06cb2cdda9d4202",
+      "server/user/src/main/java/com/astrox/seedance/user/service/AssetRuleValidator.java": "7d44d4e8be33ea663f65240dadcaf61ba88f9565837603a937f6cd5c6ba65178",
+      "server/user/src/main/java/com/astrox/seedance/user/service/DraftFinalGenerationService.java": "9c39b4c32ed0e12e777abe6eb7b2b88693025f58f48163e6845fd50be8d70974",
+      "server/user/src/main/java/com/astrox/seedance/user/service/KlingAssetValidator.java": "54555357cb2acc9cfc0a1d86368c237bf9b20bfb018f1e026853eab56ce8009a",
+      "server/user/src/main/java/com/astrox/seedance/user/service/KlingGenerationRequestValidator.java": "4ebcfce89a4b191d8b0d5096f4d416917be718d8797c4b47644ee3f51b85c983",
+      "server/user/src/main/java/com/astrox/seedance/user/service/KlingImageRequestValidator.java": "480ac04f700ea8ec3e20922b50e2a68bdaed9afc5975723dd68fb6e69a999f8b",
+      "server/user/src/main/java/com/astrox/seedance/user/service/KlingImageTaskService.java": "5d093fb5d827d83c65ab8288644bc730a26aa9a584210b7239601a19520a50e3",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxGenerationRequestValidator.java": "210d8330a685f70eb0b8f1e0b43ae7b43a03e2a61bd63497f960f7b0952398c2",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MinimaxImageRequestValidator.java": "01b1c6baf83ba28cedd65951cf2d83d2a62395cb4126502498208cb851901015",
+      "server/user/src/main/java/com/astrox/seedance/user/service/MulerouterGenerationRequestValidator.java": "6d5ff7041475ce6461e70c203621c3f694a924f0d70e475a3bd9d99820f3eeaa",
+      "server/user/src/main/java/com/astrox/seedance/user/service/SeedanceGenerationRequestValidator.java": "d9785ddce9885adf6d9ba4ccb0e59b6e315dc2e638f8141429553d6fa300e45b",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetParameterValidator.java": "69e7dceea793fd0117ff90a792fd5e2f19bf9832fde2dea85222c111d7ddf7de",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetResolver.java": "dc5443131bddf9162bd85898489a1bdaff26ced153d6ce24260f527836f679dd",
+      "server/user/src/main/java/com/astrox/seedance/user/service/TaskAssetValidator.java": "5ac63dbb83d8d4ed647dc2ea1dfa629787c001669e3bb7d1a053505c1ac3dcef",
+      "server/user/src/main/java/com/astrox/seedance/user/service/UserAssetService.java": "6af4f5f368b0305b249b245c150045c26c5872a0260fe37771e2a9d3c3eddd4b",
+      "server/user/src/main/java/com/astrox/seedance/user/service/UserTaskService.java": "8aeb35af327155f3a7080e740407697e8752ccf58792bb019a8ab66e0c29b727",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/AssetVO.java": "52fe355480e4dd715c8796de2e45002747dc2e960779e98154133b236d54e962",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/KlingImageRequest.java": "06ab4f68f1eac2aefb4eb0ba5c91b62c7aee6373ab50832defc948340d8ccce2",
+      "server/user/src/main/java/com/astrox/seedance/user/vo/MulerouterGenerationRequest.java": "fd955fddfedd88f08ae138c397ecb183817ffdac808af3fc3b12da005d7755da",
+      "server/user/src/main/resources/application.yml": "5580919b50054d60cbea058812763e4ccf8e1bd2a44069a80afde39e62422614"
+    },
+    "validatorSha256": "ee2781a377a71917b501ec7f9acdb95e6bfa49f455878f9320e336524f0dae36",
+    "evidenceSha256": "cf0fec88b40ddf81b8ced0277c5e80cfe00a3944286cac3baf1ae43499fb7f8e"
+  }
+}

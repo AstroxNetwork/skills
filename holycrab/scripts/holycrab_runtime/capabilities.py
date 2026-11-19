@@ -103,7 +103,13 @@ def capability_snapshot() -> dict[str, Any]:
     }
 
 
+def _canonical_model_id(model_id: str) -> str:
+    candidate = model_id.strip().lower()
+    return _settings.WAN_MODEL_ALIASES.get(candidate, candidate if candidate in _settings.WAN_MODEL_IDS else model_id)
+
+
 def find_model(model_id: str) -> dict[str, Any]:
+    model_id = _canonical_model_id(model_id)
     cache = _settings._CAPABILITY_OPERATION.get()
     if cache is not None:
         if "modelIndex" not in cache:
@@ -165,7 +171,7 @@ def _validate_schema_value(name: str, value: Any, rule: dict[str, Any]) -> None:
             raise SystemExit(f"Generation field {name} does not match a supported form")
 
 
-def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
+def validate_generation_request(kind: str, payload: dict[str, Any], *, for_estimate: bool = False) -> None:
     if kind == "video" and "sourceDraftTaskUniqId" in payload:
         _validate_schema_value("request", payload, load_capabilities()["requestSchemas"]["seedanceDraftFinal"])
         if not re.fullmatch(r"[A-Za-z0-9]{1,64}", payload["sourceDraftTaskUniqId"]):
@@ -185,7 +191,9 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
     unknown = set(payload) - set(allowed)
     if schema.get("additionalProperties") is False and unknown:
         raise SystemExit(f"Unsupported generation field: {sorted(unknown)[0]}")
-    missing = [name for name in schema.get("required", []) if name not in payload]
+    kling_image = model["id"] == "kling-image-4.0"
+    missing = [name for name in schema.get("required", []) if name not in payload
+               and not (kling_image and for_estimate and name == "prompt")]
     if missing:
         raise SystemExit(f"Missing required generation field: {missing[0]}")
     if kind == "audio" and isinstance(payload.get("references"), list):
@@ -207,6 +215,20 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
                 raise SystemExit("Use type only with an audio reference assetId")
 
     model_id = model["id"]
+    if kling_image:
+        prompt = payload.get("prompt", "").strip()
+        ascii_count = sum(ord(character) < 128 for character in prompt)
+        if (not for_estimate and not prompt) or ascii_count * 21 + (len(prompt) - ascii_count) * 50 > 1_050_000:
+            raise SystemExit("Kling Image prompt is blank or exceeds its weighted length limit")
+        count_field = "n" if payload.get("resultType", "single") == "series" else "seriesAmount"
+        if count_field in payload:
+            raise SystemExit(f"Kling Image {count_field} conflicts with the selected resultType")
+        references = payload.get("references", [])
+        ids = [reference["id"] for reference in references]
+        if (len(set(ids)) != len(ids) or any(not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", identifier) for identifier in ids)
+                or any(not reference["assetId"].strip() for reference in references)):
+            raise SystemExit("Kling Image references require nonempty asset IDs and unique reference IDs starting with an ASCII letter")
+        return
     if model_id.startswith("kling-"):
         prompt = payload["prompt"].strip()
         english = sum(ord(c) < 128 for c in prompt)
@@ -289,8 +311,8 @@ def validate_generation_request(kind: str, payload: dict[str, Any]) -> None:
                 raise SystemExit("Video duration is outside the selected model limit")
         if model.get("rules", {}).get("size1KRequiresSquareRatio") and resolution == "1K" and payload.get("ratio") != "1:1":
             raise SystemExit("Agnes Video 2.5 size 1K requires ratio 1:1")
-        if model["id"].startswith("berry-") and not payload.get("prompt", "").strip():
-            raise SystemExit("Berry prompt must not be blank")
+        if model_id in _settings.WAN_MODEL_IDS and not payload.get("prompt", "").strip():
+            raise SystemExit("WAN 3.0 prompt must not be blank")
 
 
 def normalize_generation_request(kind: str, payload: dict[str, Any], *, for_estimate: bool = False) -> dict[str, Any]:
@@ -325,6 +347,16 @@ def normalize_generation_request(kind: str, payload: dict[str, Any], *, for_esti
     if kind == "image" and for_estimate and str(normalized.get("model", "")).startswith("seedream-") and not normalized.get("prompt"):
         validate_generation_request(kind, dict(normalized, prompt="credit-estimate"))
         return normalized
+    if kind == "image" and normalized.get("model") == "kling-image-4.0":
+        normalized.setdefault("resultType", "single")
+        normalized.setdefault("resolution", "2k")
+        normalized.setdefault("aspectRatio", "auto")
+        if normalized["resultType"] == "single":
+            normalized.setdefault("n", 1)
+        elif normalized["resultType"] == "series":
+            normalized.setdefault("seriesAmount", "4")
+        if isinstance(normalized.get("prompt"), str):
+            normalized["prompt"] = normalized["prompt"].strip()
     if kind == "video" and str(normalized.get("model", "")).startswith("kling-"):
         normalized["model"] = normalized["model"].strip()
         for field in ("prompt", "ratio", "audio"):
@@ -332,8 +364,8 @@ def normalize_generation_request(kind: str, payload: dict[str, Any], *, for_esti
         if isinstance(normalized.get("resolution"), str): normalized["resolution"] = normalized["resolution"].strip().lower()
     if kind == "video":
         model_id = normalized.get("model")
-        if isinstance(model_id, str) and model_id.strip().lower().startswith("berry-"):
-            model_id = normalized["model"] = model_id.strip().lower()
+        if isinstance(model_id, str) and _canonical_model_id(model_id) in _settings.WAN_MODEL_IDS:
+            model_id = normalized["model"] = _canonical_model_id(model_id)
             if isinstance(normalized.get("resolution"), str):
                 normalized["resolution"] = normalized["resolution"].strip().lower()
         if not isinstance(model_id, str):
@@ -353,10 +385,10 @@ def normalize_generation_request(kind: str, payload: dict[str, Any], *, for_esti
             if not frames and (not references or model["rules"]["referenceRequiresConcreteRatio"]):
                 if normalized.get("ratio") not in model["ratios"] or normalized["ratio"] == "adaptive":
                     raise SystemExit(f"{model_id} requires a concrete ratio for this request")
-        if model_id.startswith("berry-"):
+        if model_id in _settings.WAN_MODEL_IDS:
             for name, default in {"duration": 5, "resolution": "1080p", "ratio": "adaptive", "audio": True}.items():
                 normalized.setdefault(name, default)
         if model.get("generateAudioSupported") is True and model.get("generateAudioDefault") is True:
             normalized.setdefault("generateAudio", True)
-    validate_generation_request(kind, normalized)
+    validate_generation_request(kind, normalized, for_estimate=for_estimate)
     return normalized
