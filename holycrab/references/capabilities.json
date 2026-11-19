@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "source": {
     "name": "HolyCrab Public Capability Registry",
-    "version": "2026-11-16",
-    "publishedAt": "2026-11-16"
+    "version": "2026-11-19",
+    "publishedAt": "2026-11-19"
   },
   "requestSchemas": {
     "seedanceVideo": {
@@ -534,7 +534,7 @@
         }
       }
     },
-    "mulerouterVideo": {
+    "wanVideo": {
       "type": "object",
       "required": [
         "model",
@@ -545,10 +545,10 @@
         "model": {
           "type": "string",
           "enum": [
-            "berry-1.0",
-            "berry-1.0-pro",
-            "berry-1.0-turbo",
-            "berry-1.0-pro-turbo"
+            "wan3-stand",
+            "wan3-stand-pro",
+            "wan3-prime",
+            "wan3-prime-pro"
           ]
         },
         "prompt": {
@@ -1165,6 +1165,107 @@
           "type": "array",
           "items": {
             "type": "string"
+          }
+        }
+      }
+    },
+    "klingImage": {
+      "type": "object",
+      "required": [
+        "model",
+        "prompt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "string",
+          "const": "kling-image-4.0"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Required for creation. Optional for estimates. Weighted limit: 50,000 ASCII or 21,000 non-ASCII code points, or the equivalent combination."
+        },
+        "resultType": {
+          "type": "string",
+          "enum": [
+            "single",
+            "series"
+          ],
+          "default": "single"
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9,
+          "default": 1,
+          "description": "Independent images in single mode. Omit in series mode."
+        },
+        "seriesAmount": {
+          "type": "string",
+          "enum": [
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10",
+            "auto"
+          ],
+          "default": "4",
+          "description": "Related images in series mode. Omit in single mode."
+        },
+        "resolution": {
+          "type": "string",
+          "enum": [
+            "2k",
+            "4k",
+            "8k"
+          ],
+          "default": "2k"
+        },
+        "aspectRatio": {
+          "type": "string",
+          "enum": [
+            "16:9",
+            "9:16",
+            "1:1",
+            "4:3",
+            "3:4",
+            "3:2",
+            "2:3",
+            "21:9",
+            "auto"
+          ],
+          "default": "auto"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "assetId",
+              "id"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "refer_image"
+              },
+              "assetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$",
+                "description": "Unique within the request. Use @id in the prompt."
+              }
+            }
           }
         }
       }
@@ -2398,9 +2499,9 @@
       }
     },
     {
-      "id": "berry-1.0",
-      "label": "Berry 1.0",
-      "requestSchemaRef": "mulerouterVideo",
+      "id": "wan3-stand",
+      "label": "WAN 3.0 Stand",
+      "requestSchemaRef": "wanVideo",
       "resolutions": [
         "480p",
         "720p",
@@ -2511,9 +2612,9 @@
       }
     },
     {
-      "id": "berry-1.0-pro",
-      "label": "Berry 1.0 Pro",
-      "requestSchemaRef": "mulerouterVideo",
+      "id": "wan3-stand-pro",
+      "label": "WAN 3.0 Stand Pro",
+      "requestSchemaRef": "wanVideo",
       "resolutions": [
         "1080p",
         "2k",
@@ -2624,9 +2725,9 @@
       }
     },
     {
-      "id": "berry-1.0-turbo",
-      "label": "Berry 1.0 Turbo",
-      "requestSchemaRef": "mulerouterVideo",
+      "id": "wan3-prime",
+      "label": "WAN 3.0 Prime",
+      "requestSchemaRef": "wanVideo",
       "resolutions": [
         "480p",
         "720p",
@@ -2737,9 +2838,9 @@
       }
     },
     {
-      "id": "berry-1.0-pro-turbo",
-      "label": "Berry 1.0 Pro Turbo",
-      "requestSchemaRef": "mulerouterVideo",
+      "id": "wan3-prime-pro",
+      "label": "WAN 3.0 Prime Pro",
+      "requestSchemaRef": "wanVideo",
       "resolutions": [
         "1080p",
         "2k",
@@ -3342,6 +3443,48 @@
             "heic",
             "heif"
           ]
+        }
+      },
+      "rules": {
+        "arkReviewRequired": false
+      }
+    },
+    {
+      "id": "kling-image-4.0",
+      "label": "Kling Image 4.0",
+      "requestSchemaRef": "klingImage",
+      "resolutions": [
+        "2k",
+        "4k",
+        "8k"
+      ],
+      "ratios": [
+        "16:9",
+        "9:16",
+        "1:1",
+        "4:3",
+        "3:4",
+        "3:2",
+        "2:3",
+        "21:9",
+        "auto"
+      ],
+      "outputFormatSupported": false,
+      "referenceLimits": {
+        "images": 10
+      },
+      "materialRules": {
+        "images": {
+          "extensions": [
+            "jpg",
+            "jpeg",
+            "png"
+          ],
+          "maxBytes": 31457280,
+          "minWidth": 300,
+          "minHeight": 300,
+          "minAspectRatio": 0.4,
+          "maxAspectRatio": 2.5
         }
       },
       "rules": {

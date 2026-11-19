@@ -1,7 +1,12 @@
 # HolyCrab CLI 使用指南
 
 
-## v0.7.4 新增能力（候选）
+## v0.7.5 新增能力（候选）
+
+- WAN 3.0 使用 `wan3-stand`、`wan3-stand-pro`、`wan3-prime`、`wan3-prime-pro`。旧 `berry-*` 请求和已保存的工作流仍可使用，待执行的步骤可重新估算后确认。
+- Kling Image 4.0 支持 2K / 4K / 8K、独立图片和连贯组图。先用 `holycrab models show kling-image-4.0` 查看参数，再通过 `holycrab generate estimate --kind image` 获取服务端报价。组图完成后按结果顺序下载。
+
+## v0.7.4 新增能力
 
 - 视频选择 Seedance 2.5 Flash 时支持 480p/720p、4–30 秒，以及参考、首尾帧、编辑和延长；不支持样片。
 - Seedance 2.5 支持普通 4K，以及 480p 样片转 1080p/4K 正片。每个样片只关联一个正片；已有正片分辨率不同会停止并提示任务 ID。
@@ -433,10 +438,10 @@ holycrab assets uploads get PLAN_ID
 `doctor` 会将损坏的任务记录报告为异常，但重装程序不会删除这些记录。重装能修复程序，无法证明不明确的线上任务是否创建成功。
 
 
-## v0.6.0 素材信息和 Berry 模型
+## 素材信息和 WAN 3.0 模型
 
 `holycrab assets get ASSET_ID` 现在显示服务端返回的精确时长、格式、宽高、大小、帧率、编码和元数据状态。需要重新读取时运行 `holycrab assets metadata retry ASSET_ID`，MCP 对应 `asset_metadata_retry`。这项请求只执行一次；服务端冷却期内可能仍返回原状态，不代表重试已经完成。
 
 图片请求可使用 `imageAssetIds`，同时存在非空 ID 和 `imageUrls` 时以 ID 为准。音频参考支持 `{assetId,type:"audio"}`、`{assetId,type:"image"}`、`audio_url` 或 `image_url`；旧 Base64/speaker 写法先显式上传，再改用 ID 或 URL。音频估算会发送完整请求，提前获取后端错误。
 
-新增 `berry-1.0`、`berry-1.0-turbo`、`berry-1.0-pro`、`berry-1.0-pro-turbo`。普通版/Turbo 支持 480p/720p/1080p，Pro/Pro Turbo 支持 1080p/2k/4k；均为 2–30 整数秒，默认 5 秒、1080p、adaptive、输出音频开启。先用 `holycrab models show berry-1.0` 获取参数，再估算和确认生成。
+WAN 3.0 Stand / Prime 支持 480p、720p、1080p，Stand Pro / Prime Pro 支持 1080p、2k、4k。时长为 2–30 整数秒，默认 5 秒、1080p、adaptive，输出音频开启。先用 `holycrab models show wan3-stand` 获取参数，再估算和确认生成。

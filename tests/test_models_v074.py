@@ -133,7 +133,7 @@ class Release074Tests(unittest.TestCase):
 
     def test_discovery_has_24_models_without_deferred_features(self):
         models = caps.all_models()
-        self.assertEqual(len(models), 24)
+        self.assertEqual(len(models), 25)
         self.assertEqual({FLASH, IMAGE} & {m['id'] for m in models}, {FLASH, IMAGE})
         self.assertNotIn('seed-audio-1.5', {m['id'] for m in models})
 

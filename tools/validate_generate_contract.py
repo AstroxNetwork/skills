@@ -17,9 +17,9 @@ from pathlib import Path
 
 
 try:
-    from tools.material_contract import SOURCE_FILES, validate_material_contract
+    from tools.material_contract import SOURCE_FILES, validate_material_contract, wan_model_aliases
 except ModuleNotFoundError:
-    from material_contract import SOURCE_FILES, validate_material_contract
+    from material_contract import SOURCE_FILES, validate_material_contract, wan_model_aliases
 
 # Only Seedance 4K implementation is overlaid on the independently pinned main.
 # No other branch capabilities or frontend-only changes become CLI features.
@@ -193,6 +193,7 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     errors.extend(validate_minimax_v071(generate_root, manifest))
     image = (generate_root / "client/user-front/src/utils/imageGenerationParams.ts").read_text(encoding="utf-8")
     kling = (generate_root / "client/user-front/src/config/klingModels.ts").read_text(encoding="utf-8")
+    kling_image = (generate_root / "client/user-front/src/utils/klingImage.ts").read_text(encoding="utf-8")
     minimax_image = (generate_root / "client/user-front/src/utils/minimaxImage.ts").read_text(encoding="utf-8")
     image += "\n" + minimax_image
     video_options = (generate_root / "client/user-front/src/utils/generationOptions.ts").read_text(encoding="utf-8")
@@ -226,9 +227,11 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
         if model.lower() not in (image + kling + agnes_options + seedance + minimax + agnes + controller + berry).lower():
             errors.append(f"Generate contract drift: model id missing: {model}")
 
-    constants = typescript_constants(video_options + agnes_options + kling + minimax_image + image)
+    constants = typescript_constants(video_options + agnes_options + kling + kling_image + minimax_image + image)
+    aliases = wan_model_aliases(controller)
     options_match = re.search(r"VIDEO_MODEL_OPTIONS\s*=\s*\[(.*?)\]\s*as\s+const", video_options, re.DOTALL)
     generate_video_ids = option_model_ids(options_match.group(1), constants, errors) if options_match else set()
+    generate_video_ids = {aliases.get(model, model) for model in generate_video_ids}
     snapshot_video_ids = {row["id"] for row in manifest["videoModels"]}
     if generate_video_ids != snapshot_video_ids:
         errors.append("CLI snapshot drift: video model ids (missing in CLI: " + ", ".join(sorted(generate_video_ids - snapshot_video_ids)) + "; absent from Generate: " + ", ".join(sorted(snapshot_video_ids - generate_video_ids)) + ")")
@@ -328,11 +331,74 @@ def validate(generate_root: Path, cli_root: Path) -> list[str]:
     require(controller, r'@PostMapping\("/agnes-generation/freeze-credit"\)', "Agnes estimate route", errors)
     errors.extend(validate_material_contract(generate_root, cli_root, manifest))
     errors.extend(validate_release074(generate_root, manifest))
+    errors.extend(validate_wan(cli_root, manifest, controller, task_api, aliases))
+    errors.extend(validate_kling_image(generate_root, manifest, controller))
+    return errors
+
+
+def validate_wan(cli_root: Path, manifest: dict, controller: str, task_api: str,
+                 aliases: dict[str, str]) -> list[str]:
+    errors: list[str] = []
+    settings = ast.parse((cli_root / "holycrab/scripts/holycrab_runtime/settings.py").read_text(encoding="utf-8"))
+    assignments = {target.id: node.value for node in settings.body if isinstance(node, ast.Assign)
+                   for target in node.targets if isinstance(target, ast.Name)}
+    cli_aliases = ast.literal_eval(assignments["WAN_MODEL_ALIASES"])
+    cli_routes = ast.literal_eval(assignments["GENERATION_ROUTES"])
+    frontend_mapping = re.search(r'const WAN3_API_MODEL_IDS\s*=\s*\{([^}]+)\}', task_api)
+    frontend_aliases = dict(re.findall(r"'([^']+)':\s*'([^']+)'", frontend_mapping[1])) if frontend_mapping else {}
+    wan_schema = manifest["requestSchemas"].get("wanVideo", {}).get("properties", {})
+    if (len(aliases) != 4 or aliases != frontend_aliases or aliases != cli_aliases
+            or set(aliases.values()) != set(wan_schema.get("model", {}).get("enum", []))):
+        errors.append("Generate contract drift: WAN public model mapping")
+    if cli_routes.get("wanVideo") != ("/api/tasks/wan/freeze-credit", "/api/tasks/wan"):
+        errors.append("CLI snapshot drift: WAN estimate and submit routes")
+    for route, handler in (("wan", "submitMulerouterGeneration"),
+                           ("wan/freeze-credit", "mulerouterGenerationFreezeCredit")):
+        require(controller, rf'@PostMapping\("/{route}"\)\s*public [^\n]* {handler}\('
+                r'[^}]*?translateWanModel\(body\);[^}]*?modelAccessService.requireAccess',
+                "WAN " + route + " route and translation", errors)
+    require(controller, r'@GetMapping\("/wan/\{uniqId:', "WAN result route", errors)
+    return errors
+
+
+def validate_kling_image(generate_root: Path, manifest: dict, controller: str) -> list[str]:
+    errors: list[str] = []
+    validator = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/service/KlingImageRequestValidator.java").read_text(encoding="utf-8")
+    dto = (generate_root / "server/user/src/main/java/com/astrox/seedance/user/vo/KlingImageRequest.java").read_text(encoding="utf-8")
+    schema = manifest["requestSchemas"].get("klingImage", {})
+    model = next((row for row in manifest["imageModels"] if row["id"] == "kling-image-4.0"), {})
+    properties = schema.get("properties", {})
+    refs = properties.get("references", {}).get("items", {})
+    for name, fields in (("KlingImageRequest", properties), ("Reference", refs.get("properties", {}))):
+        record = re.search(rf'record {name}\(([^)]+)\)', dto)
+        if not record or {param.split()[-1] for param in record[1].split(",")} != set(fields):
+            errors.append("CLI snapshot drift: Kling Image " + name + " fields")
+    if (model.get("requestSchemaRef") != "klingImage" or schema.get("additionalProperties") is not False
+            or set(schema.get("required", [])) != {"model", "prompt"}
+            or properties.get("model", {}).get("const") != "kling-image-4.0"
+            or refs.get("properties", {}).get("type", {}).get("const") != "refer_image"
+            or set(refs.get("required", [])) != {"type", "assetId", "id"}
+            or set(model.get("ratios", [])) != java_string_set(validator, "RATIOS")
+            or set(properties.get("aspectRatio", {}).get("enum", [])) != set(model.get("ratios", []))
+            or set(properties.get("resolution", {}).get("enum", [])) != {"2k", "4k", "8k"}
+            or set(model.get("resolutions", [])) != {"2k", "4k", "8k"}
+            or set(properties.get("resultType", {}).get("enum", [])) != {"single", "series"}
+            or set(properties.get("seriesAmount", {}).get("enum", [])) != {"auto", *(str(n) for n in range(2, 11))}
+            or (properties.get("n", {}).get("minimum"), properties.get("n", {}).get("maximum")) != (1, 9)
+            or model.get("referenceLimits", {}).get("images") != 10):
+        errors.append("CLI snapshot drift: Kling Image request limits")
+    defaults = {"resultType": "single", "resolution": "2k", "aspectRatio": "auto", "n": 1, "seriesAmount": "4"}
+    if any(properties.get(field, {}).get("default") != value for field, value in defaults.items()):
+        errors.append("CLI snapshot drift: Kling Image request defaults")
+    for route, handler in (("image-generation", "create"), ("image-generation/freeze-credit", "preview")):
+        require(controller, rf'@PostMapping\("/{route}"\)\s*public [^{{]+'
+                rf'\{{\s*if \(isKlingImage\(body\)\).*?klingImageTaskService\.{handler}\(',
+                "Kling Image " + handler + " route", errors)
     return errors
 
 
 def validate_release074(root: Path, manifest: dict) -> list[str]:
-    """Audited additions, including 4K branches that are not yet in main."""
+    """Audited Flash, Seedream 5.5 and Seedance 4K behavior."""
     errors = []
     models = {m['id']: m for group in ('videoModels', 'imageModels') for m in manifest[group]}
     flash = models.get('dreamina-seedance-2-5-flash-261115', {})
@@ -429,17 +495,19 @@ def immutable_source(repository: Path, ref: str):
 def record_evidence(record_path: Path, cli_root: Path, commit: str, expected_main: str, inputs: dict,
                     *, overlays: dict | None = None, expected_4k: str | None = None) -> None:
     try:
-        from tools.verify_release_acceptance import candidate_fingerprint, evidence_digest
+        from tools.verify_release_acceptance import CANDIDATE_CONTRACT_TAGS, candidate_fingerprint, evidence_digest
     except ModuleNotFoundError:
-        from verify_release_acceptance import candidate_fingerprint, evidence_digest
+        from verify_release_acceptance import CANDIDATE_CONTRACT_TAGS, candidate_fingerprint, evidence_digest
     if commit != expected_main or re.fullmatch(r"[0-9a-f]{40}", expected_main) is None:
         raise ValueError("Selected source must match the independently verified remote main SHA")
     record = json.loads(record_path.read_text(encoding="utf-8"))
-    if record.get("version") not in {"v0.6.0", "v0.7.0", "v0.7.1", "v0.7.2", "v0.7.3", "v0.7.4"}:
+    if record.get("version") not in CANDIDATE_CONTRACT_TAGS:
         raise ValueError("Local evidence recording requires an explicitly supported candidate version")
     if record.get('version') == 'v0.7.4':
         if not overlays or overlays.get('seedance4k', {}).get('commit') != expected_4k or not expected_4k:
             raise ValueError('Seedance 4K evidence must match the independently verified branch SHA')
+    elif record.get("version") == "v0.7.5" and overlays:
+        raise ValueError("CLI v0.7.5 requires a main-only source snapshot")
     fingerprint = candidate_fingerprint(cli_root)
     proof = {"status": "passed", "mode": "local-immutable-main", "verifiedMainCommit": commit,
              "verifiedAt": datetime.now(timezone.utc).isoformat(), "candidateSha256": fingerprint,

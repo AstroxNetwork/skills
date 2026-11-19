@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-VERSION = "0.7.4"
+VERSION = "0.7.5"
 
 
 DEFAULT_BASE_URL = "https://abgzfc.holycrab.ai"
@@ -79,6 +79,15 @@ INSTALLATION_MANAGER = "holycrab-installer"
 MANAGED_SKILL_FILES = ('SKILL.md', 'references/capabilities.json', 'agents/openai.yaml', 'references/creative/SOURCES.md', 'references/creative/audio.md', 'references/creative/catalog.json', 'references/creative/composition.md', 'references/creative/execution.md', 'references/creative/h3.md', 'references/creative/h3/base-en.txt', 'references/creative/h3/ref-en.txt', 'references/creative/image.md', 'references/creative/seedance.md', 'references/creative/seedance/advanced-techniques.md', 'references/creative/seedance/checklist-and-limits.md', 'references/creative/seedance/editing-and-extension.md', 'references/creative/seedance/long-video-and-timing.md', 'references/creative/seedance/multi-reference.md', 'references/creative/video.md', 'references/creative/workflows.md')
 
 
+WAN_MODEL_ALIASES = {
+    "berry-1.0-pro-turbo": "wan3-prime-pro",
+    "berry-1.0-turbo": "wan3-prime",
+    "berry-1.0-pro": "wan3-stand-pro",
+    "berry-1.0": "wan3-stand",
+}
+WAN_MODEL_IDS = frozenset(WAN_MODEL_ALIASES.values())
+
+
 GENERATION_ROUTES = {
     "klingVideo": ("/api/tasks/kling-generation/freeze-credit", "/api/tasks/kling-generation"),
     "seedanceVideo": ("/api/tasks/generation/freeze-credit", "/api/tasks/generation"),
@@ -94,9 +103,9 @@ GENERATION_ROUTES = {
         "/api/tasks/audio-generation/freeze-credit",
         "/api/tasks/audio-generation",
     ),
-    "mulerouterVideo": (
-        "/api/tasks/mulerouter-generation/freeze-credit",
-        "/api/tasks/mulerouter-generation",
+    "wanVideo": (
+        "/api/tasks/wan/freeze-credit",
+        "/api/tasks/wan",
     ),
     "agnesGeneration": (
         "/api/tasks/agnes-generation/freeze-credit",
@@ -109,10 +118,8 @@ MODEL_GENERATION_ROUTES = {
     "kling-4.0": "klingVideo", "kling-4.0-flash": "klingVideo",
     "MiniMax-H3-Image": "imageGeneration", "MiniMax-H3-Image-Highspeed": "imageGeneration",
     "klingVideo": ("/api/tasks/kling-generation/freeze-credit", "/api/tasks/kling-generation"),
-    "berry-1.0": "mulerouterVideo",
-    "berry-1.0-pro": "mulerouterVideo",
-    "berry-1.0-turbo": "mulerouterVideo",
-    "berry-1.0-pro-turbo": "mulerouterVideo",
+    **dict.fromkeys(WAN_MODEL_IDS, "wanVideo"),
+    "kling-image-4.0": "imageGeneration",
     "seedance-2-0": "seedanceVideo",
     "seedance-2-0-fast": "seedanceVideo",
     "seedance-2-0-mini": "seedanceVideo",

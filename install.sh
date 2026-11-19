@@ -2,7 +2,7 @@
 set -eu
 
 REPOSITORY=AstroxNetwork/skills
-VERSION=v0.7.4
+VERSION=v0.7.5
 SOURCE_REF=${HOLYCRAB_INSTALL_REF:-$VERSION}
 SOURCE_DIR=${HOLYCRAB_INSTALL_SOURCE_DIR:-}
 INSTALL_MCP=${HOLYCRAB_INSTALL_MCP-}
@@ -27,9 +27,9 @@ PATH_REG_ADDED=0
 PATH_REG_ADDED_THIS_RUN=0
 PREVIOUS_PATH_PROFILE=
 SHA256_HOLYCRAB_CLI=ce732cda8548c77b53b513321fad5a52d5c695a02b04a9d5f45b240f302ab2fb
-SHA256_CAPABILITIES=874203d868c0b62c6810c9a1a40cf949cb88201907f2c2f2ee2955e0892736e3
+SHA256_CAPABILITIES=e8a921585d38be654a43be0470860f1a63c9b0f5003e3c91729159c10bfc1bbd
 SHA256_LAUNCHER=e3b4bce3b4b64d32ccefbbe50990c8bb100d9b88bb16cf5cbe821ef3856ef2f1
-SHA256_SKILL=a3ec76dcaa35f574756d817b1d511b6668aafdf29255343e9e06e73c03233852
+SHA256_SKILL=035caf3892a06524e92e5860ababf0e78df335f786af1b46c220fd69240b4e60
 SHA256_OPENAI_YAML=dbd2fc02cf5625a67f6af88837ed208d8de63e85359dfc923d1c9d465f7557ad
 SHA256_SEGNO=28c7d081ed0cf935e0411293a465efd4d500704072cdb039778a2ab8736190c7
 SHA256_SEGNO_LICENSE=de6c85fccf5d52902aa13dfe2dc6d2a2a106fc3419ed438f3460f0d4b76a6935
@@ -193,22 +193,22 @@ fetch "holycrab/agents/openai.yaml" "$TEMP_DIR/openai.yaml" "$SHA256_OPENAI_YAML
 fetch "holycrab/scripts/vendor/segno-1.6.6-py3-none-any.whl" "$TEMP_DIR/segno.whl" "$SHA256_SEGNO"
 fetch "holycrab/scripts/vendor/LICENSE.segno" "$TEMP_DIR/LICENSE.segno" "$SHA256_SEGNO_LICENSE"
 # BEGIN GENERATED RUNTIME DOWNLOADS
-fetch "runtime-files.json" "$TEMP_DIR/runtime-files.json" "3287733e0afc4535ea1be519edad1f9fe8a6719db673dc0976ec149c93df62de"
+fetch "runtime-files.json" "$TEMP_DIR/runtime-files.json" "93bee6457d10e92b8a15dc1890849c6d4f35a68eb73074e53f98d4266db97554"
 mkdir -p "$TEMP_DIR/holycrab_runtime"
 mkdir -p "$TEMP_DIR/references/creative"
 mkdir -p "$TEMP_DIR/references/creative/h3"
 mkdir -p "$TEMP_DIR/references/creative/seedance"
 fetch "holycrab/scripts/holycrab_runtime/__init__.py" "$TEMP_DIR/holycrab_runtime/__init__.py" "a957b310045f02b36e31a8fd60f5a3808b0838b59fd353c2a5318d0cceeb2ffe"
-fetch "holycrab/scripts/holycrab_runtime/capabilities.py" "$TEMP_DIR/holycrab_runtime/capabilities.py" "6d1effd038f417c314371fd47ad5f02323f54437d19d1cbbc49fcbfe67ff56c3"
+fetch "holycrab/scripts/holycrab_runtime/capabilities.py" "$TEMP_DIR/holycrab_runtime/capabilities.py" "f72ab4a9548e99e66ec865f753d72422a44cd3f3fd7aa781c0900da51068bd3c"
 fetch "holycrab/scripts/holycrab_runtime/cli.py" "$TEMP_DIR/holycrab_runtime/cli.py" "e881c133bd71d6dc5c7944d54e23955b36c1e68b9b07a645ec82281d37ca59b3"
 fetch "holycrab/scripts/holycrab_runtime/exports.py" "$TEMP_DIR/holycrab_runtime/exports.py" "d0dcf10cb10a719b2d8a5d32510c3a20608d5dd88fb14a4225d2d51d23c4a7c6"
-fetch "holycrab/scripts/holycrab_runtime/generation.py" "$TEMP_DIR/holycrab_runtime/generation.py" "100675546a113f0b4bcda7c08ad79e56730329b096ced5fc47edc34aafe31b58"
+fetch "holycrab/scripts/holycrab_runtime/generation.py" "$TEMP_DIR/holycrab_runtime/generation.py" "15749f6d15f36d0a0603fd44e4b4053531cbdf435863f8ae4b38a5f1f9dbf1f2"
 fetch "holycrab/scripts/holycrab_runtime/lifecycle.py" "$TEMP_DIR/holycrab_runtime/lifecycle.py" "6e193f20bdd1a6d2782640e513b1d870bf1a2e421a4bb90105e71ef04d7e6e19"
 fetch "holycrab/scripts/holycrab_runtime/mcp.py" "$TEMP_DIR/holycrab_runtime/mcp.py" "ed63c5b6854629dfe3fe26bcdebafd4b96c931e6808fe714b0fa9ebeb936a117"
 fetch "holycrab/scripts/holycrab_runtime/presentation.py" "$TEMP_DIR/holycrab_runtime/presentation.py" "4b1d41e17d4c6ea23121b509bd8bf25518e6dc2e3fd4c050ad0aa5db11823210"
 fetch "holycrab/scripts/holycrab_runtime/real_human.py" "$TEMP_DIR/holycrab_runtime/real_human.py" "e16b0ff8889ec4e545d47cd724a3a305d311d9efbe2420843985c62819854d76"
 fetch "holycrab/scripts/holycrab_runtime/results.py" "$TEMP_DIR/holycrab_runtime/results.py" "8e985392bef51aa6231389b9efc60bcd50f83b803ec5b41002f662b53f2f05a2"
-fetch "holycrab/scripts/holycrab_runtime/settings.py" "$TEMP_DIR/holycrab_runtime/settings.py" "4242cc6d4d0e6da046596124b8b6ffe31b134dec185d89291db0fea962e11b90"
+fetch "holycrab/scripts/holycrab_runtime/settings.py" "$TEMP_DIR/holycrab_runtime/settings.py" "91296f85c309d68a166a457d2c9b8fec6cda885c05be1f31cd8fd251526a361e"
 fetch "holycrab/scripts/holycrab_runtime/state.py" "$TEMP_DIR/holycrab_runtime/state.py" "c87236d05ecdcefa64249aa3cf3fa4003918a887751f5469386531fefa330946"
 fetch "holycrab/scripts/holycrab_runtime/tasks.py" "$TEMP_DIR/holycrab_runtime/tasks.py" "2936d1574e9cb6caa5d7e6a21af5a2a55042972620ccf271264ae35d2fa7bc27"
 fetch "holycrab/scripts/holycrab_runtime/transport.py" "$TEMP_DIR/holycrab_runtime/transport.py" "0020469744a96b96959e1df42e7234b964909a90388ba165234cd380e81ca432"
@@ -219,13 +219,13 @@ fetch "holycrab/scripts/holycrab_runtime/skills.py" "$TEMP_DIR/holycrab_runtime/
 fetch "holycrab/scripts/holycrab_runtime/workflows.py" "$TEMP_DIR/holycrab_runtime/workflows.py" "838e61677ac949679e4880aebe35bc88076dd94de2a956a30d9a9ece21d1e718"
 fetch "holycrab/references/creative/SOURCES.md" "$TEMP_DIR/references/creative/SOURCES.md" "c3410ef2b72003d9f6bfe0ca5d07d6afa91f0352aa21f27c6e9b672b5f33c814"
 fetch "holycrab/references/creative/audio.md" "$TEMP_DIR/references/creative/audio.md" "f6226800c0f6868188538d7db08e8cabbfbba938d5633e5e4f923fcc123c850a"
-fetch "holycrab/references/creative/catalog.json" "$TEMP_DIR/references/creative/catalog.json" "b1c5513745705195c66329dcdb8641a94eb5e5bae5de8aa84408f14b8e5bc1a1"
+fetch "holycrab/references/creative/catalog.json" "$TEMP_DIR/references/creative/catalog.json" "f98806f73917060e4180f0372fa3b00dd689194999dd60cd6f1f5eeb35787f7d"
 fetch "holycrab/references/creative/composition.md" "$TEMP_DIR/references/creative/composition.md" "6abb8c32e9c4cae7365774b397860374c98117c1b2746abaeedb1230acf706df"
 fetch "holycrab/references/creative/execution.md" "$TEMP_DIR/references/creative/execution.md" "56a232e01c5034287202e84981653108398647802308d7dc3f76e163ded10bc4"
 fetch "holycrab/references/creative/h3.md" "$TEMP_DIR/references/creative/h3.md" "edbebbf73281c90f65518d68e1a9bb27f1ec10bd520f34dea6b81cba812cccb2"
 fetch "holycrab/references/creative/h3/base-en.txt" "$TEMP_DIR/references/creative/h3/base-en.txt" "2cfebc096a6e08370f288d468d90b60f7f9bcb938f94bf090816e910e48e75fc"
 fetch "holycrab/references/creative/h3/ref-en.txt" "$TEMP_DIR/references/creative/h3/ref-en.txt" "1e574f356716ad55612247ffb7bbccbcdb484ad96599d63c7dca1af186b1fab7"
-fetch "holycrab/references/creative/image.md" "$TEMP_DIR/references/creative/image.md" "92d0e7489f23638816aa4db9431a080ed0dac9dfa5a1db35805ae98cca0bf8de"
+fetch "holycrab/references/creative/image.md" "$TEMP_DIR/references/creative/image.md" "f9bdaeaaab4ac93d021ceecf1d4af078f4ddf0fa2e500b8b471e5f87437f9f60"
 fetch "holycrab/references/creative/seedance.md" "$TEMP_DIR/references/creative/seedance.md" "9866ad48dc47f11ae5b9eda91fe7b68e15012b09cb72b2157dd82702a864e909"
 fetch "holycrab/references/creative/seedance/advanced-techniques.md" "$TEMP_DIR/references/creative/seedance/advanced-techniques.md" "ba96d48c29eb211328894b885e091137a874ea0b71bff6dd49c822340ed0d54a"
 fetch "holycrab/references/creative/seedance/checklist-and-limits.md" "$TEMP_DIR/references/creative/seedance/checklist-and-limits.md" "3540f755158839fd74f68558eb5a25865b9f897c9076a91ede55572e4b488f56"

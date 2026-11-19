@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "version": "0.7.4",
+  "version": "0.7.5",
   "files": [
     {
       "source": "holycrab/scripts/holycrab_cli.py",
@@ -16,7 +16,7 @@
       "target": "references/capabilities.json",
       "kind": "runtime",
       "legacyVariable": "CAPABILITIES",
-      "sha256": "874203d868c0b62c6810c9a1a40cf949cb88201907f2c2f2ee2955e0892736e3"
+      "sha256": "e8a921585d38be654a43be0470860f1a63c9b0f5003e3c91729159c10bfc1bbd"
     },
     {
       "source": "bin/holycrab",
@@ -32,7 +32,7 @@
       "target": "SKILL.md",
       "kind": "skill",
       "legacyVariable": "SKILL",
-      "sha256": "a3ec76dcaa35f574756d817b1d511b6668aafdf29255343e9e06e73c03233852"
+      "sha256": "035caf3892a06524e92e5860ababf0e78df335f786af1b46c220fd69240b4e60"
     },
     {
       "source": "holycrab/agents/openai.yaml",
@@ -70,7 +70,7 @@
       "stage": "holycrab_runtime/capabilities.py",
       "target": "holycrab_runtime/capabilities.py",
       "kind": "runtime",
-      "sha256": "6d1effd038f417c314371fd47ad5f02323f54437d19d1cbbc49fcbfe67ff56c3"
+      "sha256": "f72ab4a9548e99e66ec865f753d72422a44cd3f3fd7aa781c0900da51068bd3c"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/cli.py",
@@ -91,7 +91,7 @@
       "stage": "holycrab_runtime/generation.py",
       "target": "holycrab_runtime/generation.py",
       "kind": "runtime",
-      "sha256": "100675546a113f0b4bcda7c08ad79e56730329b096ced5fc47edc34aafe31b58"
+      "sha256": "15749f6d15f36d0a0603fd44e4b4053531cbdf435863f8ae4b38a5f1f9dbf1f2"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/lifecycle.py",
@@ -133,7 +133,7 @@
       "stage": "holycrab_runtime/settings.py",
       "target": "holycrab_runtime/settings.py",
       "kind": "runtime",
-      "sha256": "4242cc6d4d0e6da046596124b8b6ffe31b134dec185d89291db0fea962e11b90"
+      "sha256": "91296f85c309d68a166a457d2c9b8fec6cda885c05be1f31cd8fd251526a361e"
     },
     {
       "source": "holycrab/scripts/holycrab_runtime/state.py",
@@ -210,7 +210,7 @@
       "stage": "references/creative/catalog.json",
       "target": "references/creative/catalog.json",
       "kind": "runtime",
-      "sha256": "b1c5513745705195c66329dcdb8641a94eb5e5bae5de8aa84408f14b8e5bc1a1"
+      "sha256": "f98806f73917060e4180f0372fa3b00dd689194999dd60cd6f1f5eeb35787f7d"
     },
     {
       "source": "holycrab/references/creative/composition.md",
@@ -252,7 +252,7 @@
       "stage": "references/creative/image.md",
       "target": "references/creative/image.md",
       "kind": "runtime",
-      "sha256": "92d0e7489f23638816aa4db9431a080ed0dac9dfa5a1db35805ae98cca0bf8de"
+      "sha256": "f9bdaeaaab4ac93d021ceecf1d4af078f4ddf0fa2e500b8b471e5f87437f9f60"
     },
     {
       "source": "holycrab/references/creative/seedance.md",

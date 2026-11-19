@@ -50,6 +50,9 @@ class Service:
         self.linked_final_resolution = None
         self.final_resolution_override = None
         self.barrier = None
+        self.quote_credits = 7
+        self.task_response = None
+        self.created_task_id = 'task1'
         self.release = threading.Event()
         self.entered = threading.Event()
         owner = self
@@ -76,14 +79,14 @@ class Service:
                         return
                     if owner.barrier:
                         owner.barrier.wait(timeout=10)
-                    return self.respond({'code': 200, 'data': {'frozenCredit': 7}})
+                    return self.respond({'code': 200, 'data': {'frozenCredit': owner.quote_credits}})
                 if owner.mode == 'upload-block' and path == '/storage' and sum(c['path'] == '/storage' for c in owner.calls) == 1:
                     owner.entered.set()
                     owner.release.wait(timeout=15)
                 if owner.mode == 'register-disconnect' and path == '/api/user-assets/upload':
                     self.close_connection = True
                     return
-                if path.endswith('-generation') or path == '/api/tasks/generation':
+                if self.command == 'POST' and (path.endswith('-generation') or path in {'/api/tasks/generation', '/api/tasks/wan'}):
                     if owner.mode == 'slow-create':
                         time.sleep(1.5)
                     if owner.mode in {'disconnect', 'block'}:
@@ -92,7 +95,7 @@ class Service:
                             owner.release.wait(timeout=15)
                         self.close_connection = True
                         return
-                    data = {'uniqId': 'task1'}
+                    data = {'uniqId': owner.created_task_id}
                     if isinstance(body, dict) and body.get('sourceDraftTaskUniqId'):
                         data.update(resolution=owner.final_resolution_override or body['resolution'], step=0)
                     return self.respond({'code': 200, 'data': data})
@@ -103,7 +106,7 @@ class Service:
                         self.end_headers()
                         owner.mode = 'success'
                         return
-                    data = b'complete video bytes'
+                    data = path.encode() if path.startswith('/output/image-') else b'complete video bytes'
                     self.send_response(206 if owner.mode == 'partial' else 200)
                     if owner.mode == 'partial': self.send_header('Content-Range', 'bytes 0-19/100')
                     self.send_header('Content-Length', str(len(data) + (3 if owner.mode == 'truncated' else 0)))
@@ -118,7 +121,8 @@ class Service:
                     data = {'uniqId': 'final1', 'step': 2, 'resolution': owner.linked_final_resolution}
                 elif path == '/api/user/me': data = {'credit': 100, 'username': 'Fixture'}
                 elif path == '/api/tasks': data = {'records': [{'uniqId': 'task1', 'step': 2}], 'total': 1, 'pages': 1}
-                elif path == '/api/tasks/task1': data = {'uniqId': 'task1', 'step': 2, 'videoUrl': owner.endpoint + '/output/video'}
+                elif path == '/api/tasks/task1':
+                    data = owner.task_response or {'uniqId': 'task1', 'step': 2, 'videoUrl': owner.endpoint + '/output/video'}
                 elif path == '/api/user-assets/pre-signed-download-url': data = {'uniqId': 'asset1', 'preSignedUrl': owner.endpoint + '/storage', 'objectKey': 'private-object'}
                 elif path in {'/storage', '/api/user-assets/upload'}: data = True
                 elif path.startswith('/api/user-assets/asset1'): data = {'uniqId': 'asset1', 'step': 'UPLOADED_TO_ARK', 'metadataStatus': 'PENDING', 'durationSeconds': 1.25}

@@ -14,7 +14,11 @@
 
 `v0.4.1` 增加启动自检、每日更新提示、付费提交防重、严格下载防护和真人素材两阶段批量上传。真人功能依赖正式 API 和官方回调页；本人完成验证，Agent 只查询结果。
 
-## v0.7.4 候选：Flash、4K 与 Seedream 5.5
+## v0.7.5 候选
+
+CLI、MCP 和工作流使用 WAN 3.0 的新路由和四个 `wan3-*` 模型 ID，旧 `berry-*` 输入仍可识别。模型目录新增 Kling Image 4.0，支持独立图片、连贯组图和参考图。Skill 1.0.4 要求 CLI 0.7.5。接入依据是 Generate main `39d89116`。
+
+## v0.7.4：Flash、4K 与 Seedream 5.5
 
 模型目录增至 24 个，新增 Seedance 2.5 Flash（480p/720p）和 Seedream 5.5（1K/1.5K/2K）。Seedance 2.5 普通生成及样片转正片支持 4K；正片分辨率冲突会保留已有任务并停止，不自动重建。CLI、MCP 与工作流共用这些能力，积分仍以服务端预估为准。
 
@@ -222,17 +226,18 @@ python3 -m venv /tmp/holycrab-qr-validator
 候选版架构和验证范围见 [v0.6.0 实施记录](docs/v0.6.0-implementation.md)。Release 只允许复用同版本、同提交、同字节的 Draft；公开发布须手动启用 `publish_release`，且仍受当前候选版本验收门禁约束。
 
 
-## 素材校验与 Berry
+## 素材校验与 WAN 3.0
 
 能力快照描述模型规则；实际素材归属、格式、大小、数量、组合、时长、帧率和编码由后端统一判断。估算与提交返回的 `errors[]` 会在终端、JSON 和 MCP 中保留具体素材、字段、实际值及要求；`retryable` 不代表自动重试生成。
 
 素材查询保留 `durationSeconds`、宽高、大小、格式、帧率、编码和 `metadataStatus`；未知值不补成 0。元数据缺失、处理中或探测失败不构成 CLI 的额外阻断。`ready` 仅表示现有处理状态，不保证满足任意模型条件。需要重新采集信息时显式运行 `holycrab assets metadata retry ASSET_ID`，或调用 MCP `asset_metadata_retry`；成功响应可能仍处于原状态或冷却期。
 
-Berry 普通版及 Turbo 支持 480p / 720p / 1080p，Pro 及 Pro Turbo 支持 1080p / 2k / 4k，时长为 2–30 整数秒。默认时长 5 秒、1080p、adaptive、输出音频开启。使用 `audio` 控制音轨；不使用 Seedance 的 `generateAudio`。
+WAN 3.0 Stand 和 Prime 支持 480p / 720p / 1080p，Stand Pro 和 Prime Pro 支持 1080p / 2k / 4k。时长为 2–30 整数秒，默认 5 秒、1080p、adaptive，`audio` 默认开启。
 
 ```sh
-holycrab models show berry-1.0
-holycrab generate estimate --kind video --json '{"model":"berry-1.0","prompt":"A red crab on the beach"}'
+holycrab models show wan3-stand
+holycrab generate estimate --kind video --json '{"model":"wan3-stand","prompt":"A red crab on the beach"}'
+holycrab generate estimate --kind image --json '{"model":"kling-image-4.0","resultType":"series","seriesAmount":"auto","resolution":"2k"}'
 holycrab generate estimate --kind image --json '{"model":"seedream-5-0-lite-260128","prompt":"A red crab","imageAssetIds":["ASSET_ID"]}'
 holycrab generate estimate --kind audio --json '{"textPrompt":"@Audio1 speaks gently","references":[{"assetId":"ASSET_ID","type":"audio"}]}'
 ```

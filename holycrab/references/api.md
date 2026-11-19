@@ -642,7 +642,7 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 - 安装清单 schema 3 的 `enabledAgents` / `enabledMcp` 表示当前启用设置，`agents` / `agentRegistrations` / `retainedFiles` 保留仍由安装器管理的资源信息。
 
 
-## v0.6.0：服务端素材规则和 Berry
+## 服务端素材规则和 WAN 3.0
 
 素材合规最终由后端统一判断；本地只检查请求结构、生成输出参数和本地文件完整性。`errors[]` 每项公开 `code`、`scope`、`assetId`、`assetIds`、`role`、`requestPath`、`field`、`actual`、`rule`、`message`、`retryable`，并保留顶层 `errorCode`、`requestId`。CLI、JSON 和 MCP 展示相同结果并脱敏。`actual` 的 0、false、null 不丢失；旧服务端只有 message 时仍能展示。素材不合规与网络结果不明确分开处理，均不自动重试付费写入。
 
@@ -652,14 +652,14 @@ PATCH/DELETE 遇到连接中断、超时、5xx 或响应格式异常时只发送
 
 图片生成及估算支持 `imageAssetIds`，非空 ID 优先于 imageUrls；音频生成及估算接受素材 ID/type 或 audio_url/image_url。音频 freeze-credit 同样携带完整规范化 JSON 请求，返回 frozenCredit，不创建任务。
 
-Berry 生成：`POST /api/tasks/mulerouter-generation`；估算：`POST /api/tasks/mulerouter-generation/freeze-credit`。查询和下载使用现有通用任务流程。
+WAN 3.0 使用 `POST /api/tasks/wan` 提交，通过 `POST /api/tasks/wan/freeze-credit` 估算。查询和下载使用通用任务流程。CLI 和 MCP 会把旧 Berry 输入转换为对应的 WAN 3.0 ID，任务记录仍可能返回旧 ID。
 
 | 参数 | 合同 |
 | --- | --- |
-| model | berry-1.0 / berry-1.0-turbo / berry-1.0-pro / berry-1.0-pro-turbo |
+| model | wan3-stand / wan3-prime / wan3-stand-pro / wan3-prime-pro |
 | prompt | 必填，非空；最多 20,000 UTF-16 code units |
 | duration | 2–30 整数秒，默认 5 |
-| resolution | 普通版/Turbo：480p、720p、1080p；Pro/Pro Turbo：1080p、2k、4k；默认 1080p |
+| resolution | Stand / Prime 为 480p、720p、1080p。Stand Pro / Prime Pro 为 1080p、2k、4k。默认 1080p |
 | ratio | adaptive、16:9、4:3、1:1、3:4、9:16；默认 adaptive |
 | audio | boolean，默认 true |
 | seed | 可选，0–2147483647 整数 |
@@ -667,7 +667,16 @@ Berry 生成：`POST /api/tasks/mulerouter-generation`；估算：`POST /api/tas
 | firstFrameAssetId / lastFrameAssetId | 可选，账户图片素材 ID |
 | imageAssetIds / videoAssetIds / audioAssetIds | 可选，素材 ID 数组；后端限制分别为 10/5/5 |
 
-Berry 参考视频与输出总时长不得超过 30 秒；具体大小、格式、数量、组合和元数据规则由服务端实测判定。素材规则说明是版本快照，不是本地可用性保证。
+WAN 3.0 参考视频与输出总时长最多 30 秒。服务端校验素材大小、格式、数量、组合和元数据。
+
+## Kling Image 4.0（CLI 0.7.5）
+
+`kling-image-4.0` 使用 `POST /api/tasks/image-generation/freeze-credit` 估算，通过 `POST /api/tasks/image-generation` 提交。提交需要非空 `prompt`，估算可省略。提示词支持最多 50,000 个 ASCII 字符或 21,000 个非 ASCII Unicode 码点，混合文本按权重计算。
+
+- `resolution` 支持 `2k`（默认）、`4k` 和 `8k`。`aspectRatio` 支持 `16:9`、`9:16`、`1:1`、`4:3`、`3:4`、`3:2`、`2:3`、`21:9` 和 `auto`（默认）。
+- `resultType: "single"`（默认）使用 `n` 指定 1–9 张独立图片，默认 1。`resultType: "series"` 使用 `seriesAmount` 指定 `"2"`–`"10"` 或 `"auto"`，默认 `"4"`。每个模式只传自己的数量字段。
+- `references` 接受最多 10 张自有 JPG/JPEG/PNG 素材。每项为 `{ "type": "refer_image", "assetId": "ASSET_ID", "id": "cat" }`。`id` 以 ASCII 字母开头，可包含 ASCII 字母、数字、下划线和连字符，总长最多 64 字符，并在请求内唯一。提示词用 `@cat` 引用。
+- 预估返回 `frozenCredit`。`auto` 以 10 张预估，服务端按实际返回张数结算。任务查询按结果顺序返回 `imageUrls`，使用 `holycrab download --index` 选择图片。
 
 
 ## MiniMax H3 Highspeed and Lite (CLI 0.7.2)
@@ -706,7 +715,7 @@ Seedance 2.5 supports `draft:true` at 480p. Ordinary 480p is not a draft. To cre
 
 ## v0.7.4 Flash, 4K and Seedream 5.5
 
-The release snapshot contains 24 models (16 video, 7 image, 1 audio). Audio 1.5 and video upscale remain outside this CLI release.
+CLI 0.7.5 lists 25 models (16 video, 8 image, 1 audio). Audio 1.5 and video upscale remain outside this CLI release.
 
 `dreamina-seedance-2-5-flash-261115` uses the existing Seedance estimate/create endpoints and requires Ark-reviewed assets. Resolutions: 480p/720p. Modes: reference/frames/edit/extend, 4–30 integer seconds except edit=-1. Frames/edit/extend inherit the input ratio through backend normalization. References: 10 images / 5 videos / 5 audio, 20 total; combined video and audio duration each <=30 seconds. Audio-only references are supported. Draft and draft-final requests are unsupported for Flash.
 
@@ -722,4 +731,4 @@ holycrab generate estimate --kind video --json '{"sourceDraftTaskUniqId":"DRAFT_
 holycrab generate estimate --kind image --json '{"model":"dola-seedream-5-5-261028","prompt":"A crab on a white background","size":"1.5K","outputFormat":"png"}'
 ```
 
-4K is derived from the separately pinned 2.5-4k branch. The snapshot is not proof that a target environment has deployed that branch. An unsupported backend or account error must not trigger model substitution or resolution downgrade.
+The current snapshot uses Generate main for ordinary 4K and draft-to-final 4K. Use the estimate to check runtime availability on the target environment.

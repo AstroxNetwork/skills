@@ -1,6 +1,8 @@
 """The release stays blocked until real manual acceptance is recorded."""
 import copy
 import hashlib
+import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -107,7 +109,6 @@ class LocalContractEvidenceTests(unittest.TestCase):
 
 class ModelOnlyReuseTests(unittest.TestCase):
     def setUp(self):
-        import json
         self.root = Path(__file__).parents[1]
         self.record = json.loads((self.root / "docs/release-acceptance/v0.5.0.json").read_text())
 
@@ -163,30 +164,24 @@ class V050LocalContractTests(LocalContractEvidenceTests):
 
 class CandidateAcceptanceTests(unittest.TestCase):
     def test_new_candidate_requires_fresh_bound_acceptance(self):
-        from tools.verify_release_acceptance import candidate_fingerprint
-        root = Path(__file__).parents[1]
-        record = {'version': 'v0.7.4', 'candidateSha256': candidate_fingerprint(root), 'realHumanCoreFlow': {
-            'status': 'passed', 'operator': 'offline fixture only', 'testedAt': '2026-10-23T00:00:00Z', 'notes': 'Not actual acceptance'}}
         from tests.test_material_contract_evidence import evidence_for
+        root = Path(__file__).parents[1]
+        tag = 'v0.7.5'
         proof = evidence_for(root)
-        from tools.validate_generate_contract import SEEDANCE_4K_FILES
-        from tools.verify_release_acceptance import evidence_digest
-        proof.update(mode='local-immutable-main-with-seedance-4k', overlays={
-            'seedance4k': {'commit':'c'*40, 'sourceFiles':{name:'d'*64 for name in SEEDANCE_4K_FILES}}})
-        proof['evidenceSha256'] = evidence_digest(proof)
-        record['generateContractCheck'] = proof
-        validate(record, 'v0.7.4', root=root)
-        for status in ('pending', 'previously-accepted'):
-            changed = copy.deepcopy(record)
-            changed['realHumanCoreFlow']['status'] = status
-            changed['realHumanCoreFlow']['retestWaived'] = True
-            with self.assertRaises(ValueError): validate(changed, 'v0.7.4', root=root)
+        record = {'version': tag, 'candidateSha256': proof['candidateSha256'],
+                  'generateContractCheck': proof, 'realHumanCoreFlow': {
+            'status': 'passed', 'operator': 'offline fixture only', 'testedAt': '2026-11-19T00:00:00Z',
+            'notes': 'Not actual acceptance'}}
+        validate(record, tag, root=root, contract_only=True)
+        validate(record, tag, root=root)
+        pending = {**record, 'realHumanCoreFlow': {'status': 'pending'}}
+        with self.assertRaisesRegex(ValueError, 'real-person'):
+            validate(pending, tag, root=root)
         record['candidateSha256'] = '0' * 64
         with self.assertRaisesRegex(ValueError, 'exact candidate'):
-            validate(record, 'v0.7.4', root=root)
+            validate(record, tag, root=root)
 
     def test_module_change_invalidates_candidate_fingerprint(self):
-        import shutil
         from tools.verify_release_acceptance import candidate_fingerprint
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / 'candidate'
@@ -199,3 +194,77 @@ class CandidateAcceptanceTests(unittest.TestCase):
                     path.write_text(original + '\n# fixture mutation\n')
                     self.assertNotEqual(candidate_fingerprint(root), before)
                     path.write_text(original)
+
+
+class Candidate075ReuseTests(unittest.TestCase):
+    tag = "v0.7.5"
+    baseline_commit = "c5838ae836fb1f8482951dbc404a8329d98e5cf5"
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name) / "candidate"
+        shutil.copytree(Path(__file__).parents[1], self.root,
+                        ignore=shutil.ignore_patterns(".git", "build", "__pycache__", "*.pyc"))
+        self.flow = {
+            "status": "previously-accepted",
+            "retestWaived": True,
+            "operator": "fixture operator",
+            "confirmedAt": "2026-11-17T12:00:00+08:00",
+            "notes": "Fixture only. Reuses the tagged historical real-person upload check.",
+            "baselineVersion": "v0.7.4",
+            "baselineCommit": self.baseline_commit,
+        }
+
+    def record(self, *, tag=None, flow=None):
+        from tests.test_material_contract_evidence import evidence_for
+
+        proof = evidence_for(self.root)
+        return {"version": tag or self.tag, "candidateSha256": proof["candidateSha256"],
+                "generateContractCheck": proof, "realHumanCoreFlow": self.flow if flow is None else flow}
+
+    def test_pinned_historical_acceptance_and_matching_candidate_are_valid(self):
+        validate(self.record(), self.tag, root=self.root)
+
+    def test_changed_historical_document_is_rejected(self):
+        baseline = self.root / "docs/release-acceptance/v0.7.4.json"
+        altered = json.loads(baseline.read_bytes())
+        altered["realHumanCoreFlow"]["notes"] += " Altered."
+        baseline.write_text(json.dumps(altered), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "baseline|historical|v0[.]7[.]4"):
+            validate(self.record(), self.tag, root=self.root)
+
+    def test_core_and_reviewed_shared_changes_reject_reuse_even_with_fresh_candidate_proof(self):
+        scripts = self.root / "holycrab/scripts"
+        paths = [scripts / "holycrab_runtime" / name for name in (
+            "uploads.py", "real_human.py", "downloads.py", "settings.py",
+            "capabilities.py", "generation.py", "__init__.py", "exports.py",
+        )]
+        paths.append(scripts / "vendor/segno-1.6.6-py3-none-any.whl")
+        for path in paths:
+            original = path.read_bytes()
+            with self.subTest(file=path.name):
+                try:
+                    path.write_bytes(original + b"\n# fixture changed candidate\n")
+                    record = self.record()
+                    validate(record, self.tag, root=self.root, contract_only=True)
+                    with self.assertRaisesRegex(ValueError, "core|shared|reviewed"):
+                        validate(record, self.tag, root=self.root)
+                finally:
+                    path.write_bytes(original)
+
+    def test_reuse_requires_exact_baseline_and_explicit_aware_confirmation(self):
+        for name, value in (("baselineCommit", "0" * 40), ("baselineVersion", "v0.7.3"),
+                            ("retestWaived", False), ("retestWaived", 1), ("operator", " "),
+                            ("notes", ""), ("confirmedAt", "2026-11-19T22:30:00"),
+                            ("confirmedAt", "2026-11-15T22:30:00+08:00"),
+                            ("confirmedAt", "2099-01-01T00:00:00+08:00"), ("confirmedAt", "not-a-date")):
+            with self.subTest(field=name, value=value), self.assertRaises(ValueError):
+                validate(self.record(flow={**self.flow, name: value}), self.tag, root=self.root)
+
+    def test_following_candidate_cannot_inherit_the_retest_waiver(self):
+        manifest_path = self.root / "runtime-files.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_path.write_text(json.dumps({**manifest, "version": "0.7.6"}), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "real-person"):
+            validate(self.record(tag="v0.7.6"), "v0.7.6", root=self.root)
