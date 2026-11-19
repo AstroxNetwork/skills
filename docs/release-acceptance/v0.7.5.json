@@ -10,7 +10,9 @@
     "notes": "Ken authorized reuse for v0.7.5 only. The v0.7.4 production test uploaded one photo to an existing authorized group and verified CLI and MCP queries, a byte-identical download, and preservation of the previous asset. This candidate matches the pinned real-person core files. No new authorization or photo upload was performed."
   },
   "publication": {
-    "status": "awaiting-user-confirmation"
+    "status": "approved",
+    "operator": "Ken",
+    "authorization": "Explicit approval to merge PR #16 after native CI, publish v0.7.5 as GitHub Latest, and synchronize the website installers and Skill bundles."
   },
   "notes": "Independent offline regression passed the pinned Generate contract, the installed HTTP suite, and the v0.7.4 upgrade/rollback. Production Kling Image 4.0 completed from a 9-credit quote and the CLI downloaded a valid 2048x2048 PNG. The first WAN attempt reached terminal failure with Mulerouter HTTP 402. One explicitly authorized retry after replenishment completed from an 8-credit quote. The CLI downloaded an 854x480 MP4 with a two-second video track and its first frame decoded successfully.",
   "candidateSha256": "1d4195d43770906f94b5f9811c6812c9228bf6013c60ffea2d5a59c9b9e8cf75",
